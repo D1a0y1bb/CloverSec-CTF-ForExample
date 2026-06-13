@@ -1,4 +1,4 @@
 interface:
-  display_name: "cloversec-ctf-attachment-packager"
-  short_description: "CloverSec CTF workflow skill"
-  default_prompt: "Use this CloverSec CTF skill."
+  display_name: "CloverSec CTF Attachment Packager"
+  short_description: "检查附件题压缩包、解压状态、hash 与归档字段"
+  default_prompt: "使用 $cloversec-ctf-attachment-packager 检查附件题压缩包、文件清单、SHA256、解压状态和 xlsx 字段。"

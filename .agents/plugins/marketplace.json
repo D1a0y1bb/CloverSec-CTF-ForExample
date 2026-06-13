@@ -1,7 +1,7 @@
 {
-  "name": "cloversec-ctf-local",
+  "name": "cloversec-ctf",
   "interface": {
-    "displayName": "CloverSec CTF Local"
+    "displayName": "CloverSec CTF Plugins"
   },
   "plugins": [
     {

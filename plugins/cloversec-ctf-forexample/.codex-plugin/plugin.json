@@ -1,10 +1,22 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.1.0+codex.20260613133131",
+  "version": "0.1.1",
   "description": "CloverSec CTF collection, conversion, writeup, archive, review, and Hub submission workflows for Codex.",
   "author": {
-    "name": "CloverSec"
+    "name": "CloverSec",
+    "url": "https://github.com/D1a0y1bb"
   },
+  "homepage": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample#readme",
+  "repository": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample",
+  "keywords": [
+    "ctf",
+    "codex",
+    "cloversec",
+    "writeup",
+    "docker",
+    "hub",
+    "archive"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -13,6 +25,8 @@
     "longDescription": "CloverSec CTF ForExample packages Codex skills for contest research, challenge asset collection, container and attachment conversion, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting.",
     "developerName": "CloverSec",
     "category": "Developer Tools",
+    "websiteURL": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample",
+    "brandColor": "#2563EB",
     "capabilities": [
       "Read",
       "Write",
