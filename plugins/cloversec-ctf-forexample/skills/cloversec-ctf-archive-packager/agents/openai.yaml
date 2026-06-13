@@ -1,0 +1,4 @@
+interface:
+  display_name: "cloversec-ctf-archive-packager"
+  short_description: "CloverSec CTF workflow skill"
+  default_prompt: "Use this CloverSec CTF skill."

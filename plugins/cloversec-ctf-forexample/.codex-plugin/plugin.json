@@ -1,0 +1,22 @@
+{
+  "name": "cloversec-ctf-forexample",
+  "version": "0.1.0",
+  "description": "CloverSec CTF collection, conversion, writeup, archive, review, and Hub submission workflows for Codex.",
+  "author": {
+    "name": "CloverSec"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "CloverSec CTF ForExample",
+    "shortDescription": "CTF 收集、构建、手册、归档和 Hub 提交流程",
+    "longDescription": "CloverSec CTF ForExample packages Codex skills for contest research, challenge asset collection, container and attachment conversion, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting.",
+    "developerName": "CloverSec",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Interactive"],
+    "defaultPrompt": [
+      "按 CloverSec CTF 流程处理这批赛题",
+      "生成 Hub 提交材料和归档清单",
+      "检查题目、手册、附件和镜像"
+    ]
+  }
+}
