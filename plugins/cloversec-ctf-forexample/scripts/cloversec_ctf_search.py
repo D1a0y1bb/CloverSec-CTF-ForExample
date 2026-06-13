@@ -22,6 +22,24 @@ from urllib.request import Request, urlopen
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
 USER_AGENT = "CloverSec-CTF-ForExample/0.1 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+ALLOWED_URL_SCHEMES = {"http", "https"}
+GENERIC_EVENT_QUERY_TERMS = {
+    "ctf",
+    "writeup",
+    "writeups",
+    "challenge",
+    "challenges",
+    "archive",
+    "archives",
+    "web",
+    "pwn",
+    "misc",
+    "crypto",
+    "reverse",
+    "rev",
+    "forensics",
+    "osint",
+}
 
 ARCHIVE_SEEDS = [
     {
@@ -104,6 +122,11 @@ def discover(
         try:
             if source == "github":
                 results.extend(search_github_repositories(query, limit=limit))
+                try:
+                    results.extend(search_github_code(query, limit=min(limit, 10)))
+                except SearchSkipped as exc:
+                    errors.append({"provider": "github-code", "error": str(exc), "status": "skipped"})
+            elif source == "github-code":
                 results.extend(search_github_code(query, limit=min(limit, 10)))
             elif source == "ctftime":
                 for year in years or []:
@@ -210,7 +233,11 @@ def search_ctftime_events(*, year: int, query: str = "", limit: int = 100) -> li
     )
     payload = http_json(url)
     items = payload if isinstance(payload, list) else []
-    query_terms = [term.lower() for term in re.findall(r"[\w.-]+", query) if len(term) > 1]
+    query_terms = [
+        term.lower()
+        for term in re.findall(r"[\w.-]+", query)
+        if len(term) > 1 and term.lower() not in GENERIC_EVENT_QUERY_TERMS
+    ]
     results = []
     for item in items:
         if not isinstance(item, dict):
@@ -362,7 +389,8 @@ def seed_results(query: str = "") -> list[dict[str, Any]]:
 
 def fetch_url(url: str, *, max_bytes: int = DEFAULT_MAX_BYTES, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
     started = time.time()
-    response = http_request(url, timeout=timeout)
+    read_limit = max(max_bytes, 0) + 1
+    response = http_request(url, timeout=timeout, read_limit=read_limit)
     status = response["status"]
     headers = response["headers"]
     body = response["body"][:max_bytes]
@@ -392,9 +420,22 @@ def download_url(
     timeout: int = DEFAULT_TIMEOUT,
     filename: str | None = None,
 ) -> dict[str, Any]:
-    response = http_request(url, timeout=timeout)
+    read_limit = max(max_bytes, 0) + 1
+    response = http_request(url, timeout=timeout, read_limit=read_limit)
     body = response["body"][:max_bytes]
     truncated = len(response["body"]) > max_bytes
+    status = response["status"]
+    content_type = response["headers"].get("content-type", "")
+    if status >= 400:
+        return {
+            "url": url,
+            "status": status,
+            "content_type": content_type,
+            "size": len(body),
+            "sha256": sha256_bytes(body),
+            "truncated": truncated,
+            "error": f"HTTP {status}",
+        }
     parsed = urlparse(url)
     target_name = safe_filename(filename or Path(parsed.path).name or "download.bin")
     output = Path(output_dir)
@@ -403,14 +444,14 @@ def download_url(
     path.write_bytes(body)
     return {
         "url": url,
-        "status": response["status"],
-        "content_type": response["headers"].get("content-type", ""),
+        "status": status,
+        "content_type": content_type,
         "local_path": path.as_posix(),
         "name": path.name,
         "size": path.stat().st_size,
         "sha256": sha256_file(path),
         "truncated": truncated,
-        "asset_type": classify_download(path, response["headers"].get("content-type", "")),
+        "asset_type": classify_download(path, content_type),
     }
 
 
@@ -432,7 +473,11 @@ def download_from_manifest(
         if not looks_direct_asset_url(url):
             continue
         try:
-            downloads.append(download_url(url, output_dir, max_bytes=max_bytes))
+            record = download_url(url, output_dir, max_bytes=max_bytes)
+            if record.get("error"):
+                issues.append(record)
+            else:
+                downloads.append(record)
         except Exception as exc:  # noqa: BLE001
             issues.append({"url": url, "error": str(exc)})
     return {
@@ -515,28 +560,44 @@ def http_json(url: str, *, headers: dict[str, str] | None = None, timeout: int =
     return json.loads(decode_body(response["body"], response["headers"]))
 
 
-def http_request(url: str, *, headers: dict[str, str] | None = None, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
+def http_request(
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+    read_limit: int = DEFAULT_MAX_BYTES + 1,
+) -> dict[str, Any]:
+    validate_http_url(url)
     merged_headers = {"User-Agent": USER_AGENT}
     if headers:
         merged_headers.update(headers)
     request = Request(url, headers=merged_headers)
     try:
         with urlopen(request, timeout=timeout) as response:  # noqa: S310 - public-source fetch helper.
-            body = response.read(DEFAULT_MAX_BYTES + 1)
+            body = response.read(read_limit)
             return {
                 "status": getattr(response, "status", 200),
                 "headers": {key.lower(): value for key, value in response.headers.items()},
                 "body": body,
             }
     except HTTPError as exc:
-        body = exc.read(DEFAULT_MAX_BYTES + 1)
-        return {
-            "status": exc.code,
-            "headers": {key.lower(): value for key, value in exc.headers.items()},
-            "body": body,
-        }
+        try:
+            body = exc.read(read_limit)
+            return {
+                "status": exc.code,
+                "headers": {key.lower(): value for key, value in exc.headers.items()},
+                "body": body,
+            }
+        finally:
+            exc.close()
     except URLError as exc:
         raise RuntimeError(f"failed to fetch {url}: {exc}") from exc
+
+
+def validate_http_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in ALLOWED_URL_SCHEMES or not parsed.netloc:
+        raise ValueError("only http and https URLs are supported")
 
 
 def normalize_result(
@@ -679,7 +740,11 @@ def main(argv: list[str] | None = None) -> int:
     discover_parser = subparsers.add_parser("discover", help="search public sources and write a result manifest")
     discover_parser.add_argument("--query", required=True)
     discover_parser.add_argument("--year", type=int, action="append", default=[])
-    discover_parser.add_argument("--source", action="append", choices=["github", "ctftime", "duckduckgo", "brave", "bing", "seeds"])
+    discover_parser.add_argument(
+        "--source",
+        action="append",
+        choices=["github", "github-code", "ctftime", "duckduckgo", "brave", "bing", "seeds"],
+    )
     discover_parser.add_argument("--limit", type=int, default=20)
     discover_parser.add_argument("--output", required=True)
     discover_parser.add_argument("--cases-jsonl")

@@ -64,7 +64,10 @@
 
 - [x] 为收集阶段实现 C 方案：免费源优先，可选 key 增强，增加搜索脚本和 MCP server。
 - [x] 完成真实公网烟测：CTFTime 2025 events、GitHub/公开 seeds 搜索、DuckDuckGo lite writeup 搜索、GitHub 页面抓取。
+- [x] 审计搜索与下载边界：限制 fetch/download URL scheme、修正 `--max-bytes` 实际读取上限、HTTP 4xx/5xx 不再写成成功附件、GitHub code search 跳过信息独立为 `github-code`。
 - [ ] 对 `cloversec-ctf-research-intake` 做更多真实公网样例验收：CTFTime、GitHub archive、具体赛事 writeup、直接附件 URL。
+- [ ] 用户提供 key 后，验收 GitHub code search、Brave Search、Bing Search 的真实返回质量。
+- [ ] 插件重新安装后，在新的 Codex 会话确认 `cloversec-ctf-search` MCP 工具是否直接暴露给 Agent。
 - [ ] 对 `cloversec-ctf-asset-collector` 增加 GitHub release asset、raw 文件、目录树下载和压缩包内容预览。
 - [ ] 为 `cloversec-ctf-quality-review` 增加受控 Docker 执行模式：load、inspect、run、端口探测、停止容器、记录执行证据。
 - [ ] 为 `cloversec-ctf-hub-retag` 增加受控执行模式：tag、save、load、inspect、amd64 校验、hash 记录。

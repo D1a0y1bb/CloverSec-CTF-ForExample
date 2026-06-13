@@ -54,6 +54,9 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py downloa
 - `BING_SEARCH_API_KEY` 或 `CLOVERSEC_BING_API_KEY`
 
 没有 key 时，GitHub code search、Brave、Bing 会在 `errors` 中标记 skipped，其他免费源继续执行。
+`--source github` 会先做无需 key 的 GitHub repository search；没有 `GITHUB_TOKEN` 时，只会把增强项 `github-code` 记录为 skipped。
+也可以单独传 `--source github-code`，用于只跑 GitHub code search。
+抓取和下载只支持 `http://`、`https://` URL；HTTP 4xx/5xx 响应不会作为成功附件写入下载目录。
 
 ## MCP server
 

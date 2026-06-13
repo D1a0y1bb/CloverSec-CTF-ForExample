@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -72,6 +73,53 @@ class SearchEngineTests(unittest.TestCase):
             self.assertEqual(fetched["title"], "Local CTF")
             self.assertEqual(downloaded["asset_type"], "attachment")
             self.assertTrue(Path(downloaded["local_path"]).exists())
+
+    def test_fetch_url_rejects_non_http_scheme(self):
+        with self.assertRaises(ValueError):
+            search.fetch_url("file:///etc/passwd")
+
+    def test_download_url_does_not_write_http_error_page(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            downloads = root / "downloads"
+            with LocalServer(root) as server:
+                result = search.download_url(f"{server.url}/missing.zip", downloads)
+
+            self.assertEqual(result["status"], 404)
+            self.assertEqual(result["error"], "HTTP 404")
+            self.assertNotIn("local_path", result)
+            self.assertFalse((downloads / "missing.zip").exists())
+
+    def test_download_from_manifest_records_http_errors_as_issues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = {"results": []}
+            with LocalServer(root) as server:
+                manifest["results"].append({"url": f"{server.url}/missing.zip"})
+                result = search.download_from_manifest(manifest, root / "downloads")
+
+            self.assertEqual(result["summary"]["downloaded"], 0)
+            self.assertEqual(result["summary"]["issues"], 1)
+            self.assertEqual(result["issues"][0]["error"], "HTTP 404")
+
+    def test_github_source_keeps_repository_results_when_code_search_is_skipped(self):
+        repo_result = search.normalize_result(
+            provider="github",
+            kind="repository",
+            title="example/ctf-archive",
+            url="https://github.com/example/ctf-archive",
+            summary="Archive",
+            source_type="github",
+            confidence="medium",
+        )
+        with mock.patch.object(search, "search_github_repositories", return_value=[repo_result]):
+            with mock.patch.object(search, "search_github_code", side_effect=search.SearchSkipped("token missing")):
+                payload = search.discover("example ctf", sources=["github"], limit=5)
+
+        self.assertEqual(payload["results"][0]["url"], "https://github.com/example/ctf-archive")
+        self.assertEqual(payload["summary"]["provider_counts"]["github"], 1)
+        self.assertEqual(payload["errors"][0]["provider"], "github-code")
+        self.assertEqual(payload["errors"][0]["status"], "skipped")
 
     def test_mcp_tools_list_and_discover(self):
         process = subprocess.Popen(

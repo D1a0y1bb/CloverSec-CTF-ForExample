@@ -1,6 +1,6 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.1.0+codex.20260613132516",
+  "version": "0.1.0+codex.20260613133131",
   "description": "CloverSec CTF collection, conversion, writeup, archive, review, and Hub submission workflows for Codex.",
   "author": {
     "name": "CloverSec"
@@ -9,15 +9,19 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "CloverSec CTF ForExample",
-    "shortDescription": "CTF 收集、构建、手册、归档和 Hub 提交流程",
+    "shortDescription": "CTF \u6536\u96c6\u3001\u6784\u5efa\u3001\u624b\u518c\u3001\u5f52\u6863\u548c Hub \u63d0\u4ea4\u6d41\u7a0b",
     "longDescription": "CloverSec CTF ForExample packages Codex skills for contest research, challenge asset collection, container and attachment conversion, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting.",
     "developerName": "CloverSec",
     "category": "Developer Tools",
-    "capabilities": ["Read", "Write", "Interactive"],
+    "capabilities": [
+      "Read",
+      "Write",
+      "Interactive"
+    ],
     "defaultPrompt": [
-      "按 CloverSec CTF 流程处理这批赛题",
-      "生成 Hub 提交材料和归档清单",
-      "检查题目、手册、附件和镜像"
+      "\u6309 CloverSec CTF \u6d41\u7a0b\u5904\u7406\u8fd9\u6279\u8d5b\u9898",
+      "\u751f\u6210 Hub \u63d0\u4ea4\u6750\u6599\u548c\u5f52\u6863\u6e05\u5355",
+      "\u68c0\u67e5\u9898\u76ee\u3001\u624b\u518c\u3001\u9644\u4ef6\u548c\u955c\u50cf"
     ]
   }
 }

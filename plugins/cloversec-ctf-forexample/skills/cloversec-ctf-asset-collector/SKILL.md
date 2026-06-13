@@ -30,7 +30,7 @@ description: CloverSec CTF 题目附件、源码、WP、复现资料收集 skill
 2. 把 GitHub repo、CTFTime writeup、公开归档、直接附件 URL 分开记录。
 3. 只自动下载直接文件 URL，例如 `.zip`、`.tar.gz`、`.pdf`、`.md`、图片；网盘、登录页、未知动态页面只记录来源。
 4. 对下载文件计算 SHA256，记录大小、content-type 和来源 URL。
-5. 对失败下载、失效链接、疑似错题材料标记问题。
+5. 对 HTTP 4xx/5xx、失败下载、失效链接、疑似错题材料标记问题，不把错误页写成成功附件。
 6. 输出材料清单给下游 skill 使用。
 
 ## 脚本入口

@@ -22,7 +22,10 @@ TOOLS = [
                 "years": {"type": "array", "items": {"type": "integer"}},
                 "sources": {
                     "type": "array",
-                    "items": {"type": "string", "enum": ["github", "ctftime", "duckduckgo", "brave", "bing", "seeds"]},
+                    "items": {
+                        "type": "string",
+                        "enum": ["github", "github-code", "ctftime", "duckduckgo", "brave", "bing", "seeds"],
+                    },
                 },
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50},
             },
