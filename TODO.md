@@ -130,6 +130,10 @@
 - [x] 安装后真实测试完成：使用 cache 版本查询 `祥云杯 2024 pwn writeup`，默认免费源只得到旧年份/缺少年份线索时会返回 `weak_recall`，并要求继续使用 Agent 联网搜索、Chrome/Codex 浏览器辅助搜索或人工入口。
 - [x] 安装后浏览器可见结果导入测试完成：`祥云杯 2024 PWN Writeup` 保留为 `writeup_candidate`，`NepCTF 2025 PWN Writeup` 因赛事和年份不匹配降为 `noise`。
 - [x] 安装后 LLM 真实测试完成：CloudRouter `gpt-5.4-mini` 根据安装后的 search-plus 结果输出“未通过/弱召回”，没有把旧年份或缺少年份线索说成确认结果，并正确保留 Hub 人工确认、短 JSON 和完整 Flag 规则。
+- [x] `v0.2.2` 发布前真实验证完成：`validate_release.py`、官方 `validate_plugin.py`、脚本语法检查、79 个单元测试、官方 `busybox:1.36` Docker 执行、archive runner、quality runner、三个新 MCP stdio 调用和 CloudRouter `gpt-5.4-mini` 调用均通过。
+- [x] `v0.2.2` Release 已发布：Git tag 指向 `de7b947`，GitHub Actions run `27475099474` 成功，Release 标题为 `v0.2.2`，资产包含 repo marketplace zip、plugin zip、tar.gz 和 release notes。
+- [x] 本机 Codex 插件已更新到 `0.2.2`：通过 `codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.2.2` 重新安装，cache 中 manifest 为 `0.2.2`，MCP servers 包含 `cloversec-ctf-docker`、`cloversec-ctf-archive`、`cloversec-ctf-quality-runner`。
+- [x] 安装后真实测试完成：cache 版本成功运行 archive runner、quality runner 和 busybox Docker 证据，Docker 记录 `linux/amd64`、日志路径和 tar SHA256；三个新 MCP server 均可初始化并列出工具。
 
 ### 待处理问题
 
@@ -156,6 +160,7 @@
 - [x] 完整 Flag 写入 xlsx 的规则可见性已增强：插件级说明、workflow、writeup/final-report description 都可见。
 - [x] `v0.2.1` 发布过程中发现并修复实际问题：Codex marketplace 旧 ref 会导致列表显示 `0.2.1` 但实际 cache 仍是 `0.2.0`；处理方式是移除旧 plugin 和旧 marketplace，再用 `--ref v0.2.1` 重新添加。
 - [x] `v0.2.1` 发布过程中发现并修复搜索问题：`祥云杯 2024 pwn writeup` 会把 `2021/2022 祥云杯` 旧文章当候选；已增加年份冲突识别，错误年份降为 `noise`，缺少年份不计入有效候选。
+- [x] `v0.2.2` App 边界已确认：Workbench、Hub Uploader、Review Dashboard、Archive Browser 四个 App 当前不做；本版本只做 plugin、skills、MCP、脚本和文件化证据。
 
 ## MCP / App 后续规划
 
