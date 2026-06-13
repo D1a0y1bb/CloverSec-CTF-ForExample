@@ -23,6 +23,7 @@ def main() -> int:
 
     manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     version = manifest["version"]
+    display_name = manifest.get("interface", {}).get("displayName", PLUGIN_NAME)
     archive_base = f"{PLUGIN_NAME}-{version}"
 
     plugin_zip = DIST / f"{archive_base}.zip"
@@ -38,7 +39,7 @@ def main() -> int:
     notes.write_text(
         "\n".join(
             [
-                f"# {PLUGIN_NAME} {version}",
+                f"# {display_name} {version}",
                 "",
                 "Install as a Codex marketplace from GitHub:",
                 "",

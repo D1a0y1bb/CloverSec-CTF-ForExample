@@ -16,11 +16,10 @@
 
 ## 本仓库约束
 
-- 本仓库用于开发 `CloverSec-CTF-ForExample` Codex plugin。
+- 本仓库用于开发 `CloverSec CTF For Example` Codex plugin。
 - 插件源码放在 `plugins/cloversec-ctf-forexample/`。
 - repo marketplace 放在 `.agents/plugins/marketplace.json`。
 - 每个流程能力必须 skill 化，skill 名使用 `cloversec-ctf-*`。
 - Hub 自动化第一版只生成提交材料和核对清单，不做自动提交。
 - xlsx 输出必须包含完整 `Flag` 字段，这是内部归档要求。
 - 不得自造 Hub API、镜像 tag 规则、审核编号来源。
-

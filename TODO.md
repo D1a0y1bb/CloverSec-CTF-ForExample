@@ -43,7 +43,7 @@
 - [x] 在源项目增强后再迁移，不使用简化替代版 skill。
 - [x] 发布 `CloverSec-CTF-Build-Dockerizer` `v2.2.0-r7`，并更新本地安装版 Skill。
 - [x] 优化 `CloverSec-CTF-Writeup-Scaffold` 运行入口，改为安装版可直接使用的渐进加载说明。
-- [x] 验证两个源 Skill 与 ForExample 插件副本一致。
+- [x] 验证两个源 Skill 与 For Example 插件副本一致。
 
 ## 阶段 6：归档、审核、最终报告
 
