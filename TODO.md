@@ -77,3 +77,15 @@
 - [ ] 设计 Hub 浏览器辅助填表方案：只使用用户当前登录态，不读取或保存 Cookie、token、localStorage、sessionStorage。
 - [ ] 增加批量归档命令，支持 `ctf_cases.jsonl` 一次性生成所有题目的归档目录和最终报告。
 - [ ] 增加真实样例 fixture，覆盖容器题、附件题、缺手册、缺截图、Hub 已编号等场景。
+
+## MCP / App 后续规划
+
+- [ ] MCP：`cloversec-ctf-search-plus`，统一 GitHub、Brave、Bing、CTFTime、公开归档站、writeup 站点和直接附件 URL 的搜索、证据记录、下载预览与来源评分。
+- [ ] MCP：`cloversec-ctf-docker`，受控执行 `docker build/load/inspect/run/logs/stop/save`，记录 amd64 校验、端口、启动日志、hash 和失败证据。
+- [ ] MCP：`cloversec-ctf-archive`，批量读取 `ctf_cases.jsonl`，生成归档目录、资源索引、manifest、最终 xlsx、语雀表和缺失项报告。
+- [ ] MCP：`cloversec-ctf-hub-assistant`，使用用户当前浏览器登录态辅助填写 Hub 表单、上传截图和资源清单；禁止读取或保存 Cookie、token、localStorage、sessionStorage。
+- [ ] MCP：`cloversec-ctf-quality-runner`，把题目资源、Docker 验证、手册解题步骤、Flag 字段和归档状态汇总成可复核的质量检查证据。
+- [ ] App：`CloverSec CTF Workbench`，展示赛事、题目、资源、手册、镜像、Hub 审核和归档进度，支持从表格进入单题工作流。
+- [ ] App：`CloverSec CTF Hub Uploader`，浏览器辅助提交界面，所有字段和上传动作都需要人工确认，保留提交前截图和字段差异。
+- [ ] App：`CloverSec CTF Review Dashboard`，聚合 Docker 验证、附件检查、手册质量、Flag 验证、Hub 编号和最终归档状态。
+- [ ] App：`CloverSec CTF Archive Browser`，查看归档包、manifest、附件预览、hash、镜像 tar 信息、手册路径和最终导出位置。
