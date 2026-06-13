@@ -124,6 +124,12 @@
 - [x] 已增加赛事名、年份、标题 token、WP/附件词、搜索首页和登录页过滤规则；`IrisCTF` 场景中 `NepCTF`、`Compfest CTF` 会降为 `noise`。
 - [x] 已增加 `lead_only=true`：CTFTime、NSSCTF、CTFHub、BUUOJ 等平台入口只能作为 `platform_lead`。
 - [x] 已增加浏览器辅助搜索第一版：`cloversec-ctf-browser-search` MCP server，支持 Google、Baidu、CSDN、博客园、语雀的搜索计划和页面可见结果导入，不读取 Cookie、token、localStorage、sessionStorage。
+- [x] `v0.2.1` 发布前真实验证完成：`validate_release.py`、官方 `validate_plugin.py`、脚本语法检查、75 个单元测试、真实公网 search-plus、浏览器 DOM 导入、MCP stdio 调用和 CloudRouter `gpt-5.4-mini` 调用均通过。
+- [x] `v0.2.1` Release 已发布：Git tag 指向 `d6220f0`，GitHub Actions run `27474634504` 成功，Release 标题为 `v0.2.1`，资产包含 repo marketplace zip、plugin zip、tar.gz 和 release notes。
+- [x] 本机 Codex 插件已更新到 `0.2.1`：通过 `codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.2.1` 重新安装，cache 中 manifest 为 `0.2.1`，MCP servers 包含 `cloversec-ctf-search-plus`。
+- [x] 安装后真实测试完成：使用 cache 版本查询 `祥云杯 2024 pwn writeup`，默认免费源只得到旧年份/缺少年份线索时会返回 `weak_recall`，并要求继续使用 Agent 联网搜索、Chrome/Codex 浏览器辅助搜索或人工入口。
+- [x] 安装后浏览器可见结果导入测试完成：`祥云杯 2024 PWN Writeup` 保留为 `writeup_candidate`，`NepCTF 2025 PWN Writeup` 因赛事和年份不匹配降为 `noise`。
+- [x] 安装后 LLM 真实测试完成：CloudRouter `gpt-5.4-mini` 根据安装后的 search-plus 结果输出“未通过/弱召回”，没有把旧年份或缺少年份线索说成确认结果，并正确保留 Hub 人工确认、短 JSON 和完整 Flag 规则。
 
 ### 待处理问题
 
@@ -148,6 +154,8 @@
 - [x] `hub-retag` 小模型输出约束已加强：布尔字段为 `null` 会判 invalid。
 - [x] Prompt 体积偏大问题按本阶段范围处理：`research-intake` 约 2.8KB、`asset-collector` 约 2.1KB、`hub-submission` 约 2.6KB；`build-dockerizer` 和 `writeup-scaffold` 是用户自研验证 skill，本阶段不改。
 - [x] 完整 Flag 写入 xlsx 的规则可见性已增强：插件级说明、workflow、writeup/final-report description 都可见。
+- [x] `v0.2.1` 发布过程中发现并修复实际问题：Codex marketplace 旧 ref 会导致列表显示 `0.2.1` 但实际 cache 仍是 `0.2.0`；处理方式是移除旧 plugin 和旧 marketplace，再用 `--ref v0.2.1` 重新添加。
+- [x] `v0.2.1` 发布过程中发现并修复搜索问题：`祥云杯 2024 pwn writeup` 会把 `2021/2022 祥云杯` 旧文章当候选；已增加年份冲突识别，错误年份降为 `noise`，缺少年份不计入有效候选。
 
 ## MCP / App 后续规划
 
