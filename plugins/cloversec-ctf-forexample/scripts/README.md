@@ -28,20 +28,17 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py valida
 
 ## `cloversec_ctf_search.py`
 
-公网搜索、抓取和下载工具。免费源默认包括 GitHub repository search、CTFTime events/writeups、DuckDuckGo HTML 和内置公开 CTF 归档 seeds；可选 key 会增强搜索面。
+公网搜索、抓取和下载工具。免费源默认包括 GitHub repository search、GitHub code search（有 `gh auth login` 或 token 时）、CTFTime events/writeups、DuckDuckGo HTML、内置公开 CTF 归档 seeds、CTF 平台 seeds、CSDN/博客园/语雀 `site:` 定向搜索；可选 key 会增强搜索面。
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discover \
   --query "LA CTF 2024 web challenge writeup" \
   --year 2024 \
-  --source github \
-  --source ctftime \
-  --source duckduckgo \
-  --source seeds \
   --limit 20 \
   --output search_results.json \
   --cases-jsonl ctf_cases.jsonl
 
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py import-agent-search --input agent_web_results.json --query "IrisCTF 2025 web writeup" --provider agent-web-search --output search_results.agent.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py fetch-url https://example.com/writeup --output fetched_url.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-url https://example.com/challenge.zip --output-dir downloads --output downloaded_asset.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-from-manifest --manifest search_results.json --output-dir downloads --output asset_downloads.json
@@ -55,25 +52,78 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py preview
 可选环境变量：
 
 - `GITHUB_TOKEN` 或 `GH_TOKEN`
-- `CLOVERSEC_USE_GH_AUTH_TOKEN=1`，明确允许脚本读取本机 `gh auth token`；默认不读取
+- 本机已执行 `gh auth login` 时，脚本默认尝试读取 `gh auth token`
+- `CLOVERSEC_DISABLE_GH_AUTH_TOKEN=1`，禁止读取本机 `gh auth token`
 - `BRAVE_SEARCH_API_KEY` 或 `CLOVERSEC_BRAVE_API_KEY`
 - `BING_SEARCH_API_KEY` 或 `CLOVERSEC_BING_API_KEY`
 
-没有 key 时，GitHub code search、Brave、Bing 会在 `errors` 中标记 skipped，其他免费源继续执行。
+没有 GitHub token 时，GitHub code search 会在 `errors` 中标记 skipped，其他免费源继续执行。Brave、Bing 只在显式传 `--source brave` / `--source bing` 时使用。
 `--source github` 会先做无需 key 的 GitHub repository search；没有 `GITHUB_TOKEN` 时，只会把增强项 `github-code` 记录为 skipped。
 也可以单独传 `--source github-code`，用于只跑 GitHub code search。
 抓取和下载只支持 `http://`、`https://` URL；HTTP 4xx/5xx 响应不会作为成功附件写入下载目录。
 GitHub 专用入口支持 Release asset、blob/raw 文件、目录树下载。目录树下载默认保留相对路径；`--asset-only` 只下载常见附件、文档和图片后缀。
 `preview-archive` 只预览 zip/tar，记录文件清单和路径穿越风险，不解压文件。
 
+搜索结果会写入：
+
+- `source_url`
+- `title`
+- `snippet`
+- `provider`
+- `confidence`
+- `evidence`
+- `layer`
+- `score`
+- `lead_only`
+- `quality_issues`
+
+`layer` 可取值：
+
+- `confirmed_challenge`
+- `writeup_candidate`
+- `attachment_candidate`
+- `platform_lead`
+- `noise`
+
+查询 `IrisCTF` 时，`NepCTF`、`Compfest CTF` 等其他赛事会降为 `noise`。CTFTime、NSSCTF、CTFHub、BUUOJ 等平台首页会标为 `platform_lead` 和 `lead_only=true`。
+
+## `cloversec_ctf_browser_search.py`
+
+浏览器辅助搜索工具，用于 Google、Baidu、CSDN、博客园、语雀这类直连不稳定或需要用户浏览器状态的搜索。工具只生成搜索页、导入页面可见结果，不读取 Cookie、token、localStorage、sessionStorage、密码或验证码。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py plan --query "IrisCTF 2025 web writeup" --engine google --output browser_search_plan.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py import-visible --input visible_results.json --query "IrisCTF 2025 web writeup" --engine google --output browser_search_results.json
+```
+
+`visible_results.json` 格式：
+
+```json
+{
+  "results": [
+    {
+      "rank": 1,
+      "title": "IrisCTF 2025 web writeup",
+      "url": "https://example.com/writeup",
+      "snippet": "visible summary"
+    }
+  ],
+  "blocked_by_captcha": false,
+  "blocked_reason": ""
+}
+```
+
 ## MCP server
 
-插件带有 `cloversec-ctf-search` MCP server，配置文件为 `.mcp.json`。工具：
+插件带有 `cloversec-ctf-search` 和 `cloversec-ctf-browser-search` MCP server，配置文件为 `.mcp.json`。工具：
 
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
 - `cloversec_ctf_fetch_url`
 - `cloversec_ctf_github_release_assets`
+- `cloversec_ctf_import_agent_web_results`
+- `cloversec_ctf_browser_search_plan`
+- `cloversec_ctf_browser_search_import_visible`
 
 ## `cloversec_ctf_build.py`
 

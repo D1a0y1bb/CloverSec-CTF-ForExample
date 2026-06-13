@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.1.8"><img alt="Version" src="https://img.shields.io/badge/version-v0.1.8-2563eb?style=for-the-badge"></a>
   <img alt="Skills" src="https://img.shields.io/badge/skills-10-16a34a?style=for-the-badge">
-  <img alt="MCP" src="https://img.shields.io/badge/MCP-search-f59e0b?style=for-the-badge">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-search%20%2B%20browser-f59e0b?style=for-the-badge">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-plugin-111827?style=for-the-badge">
 </p>
 
@@ -22,7 +22,7 @@
 
 ## Overview
 
-CloverSec CTF For Example is a Codex plugin marketplace for internal CTF production workflows. It packages 10 Codex skills and one MCP server to help an agent move from public contest research to challenge asset collection, container or attachment conversion, writeup scaffolding, resource archiving, quality review, Hub submission preparation, post-review image retagging, and final xlsx/Yuque reporting.
+CloverSec CTF For Example is a Codex plugin marketplace for internal CTF production workflows. It packages 10 Codex skills and two MCP servers to help an agent move from public contest research to challenge asset collection, container or attachment conversion, writeup scaffolding, resource archiving, quality review, Hub submission preparation, post-review image retagging, and final xlsx/Yuque reporting.
 
 The repository is designed as a GitHub-installable Codex marketplace. A teammate can add this repository from Codex, install `cloversec-ctf-forexample`, and then use the packaged skills from a fresh Codex thread.
 
@@ -105,7 +105,10 @@ Core data is carried through `ctf_case.json` or `ctf_cases.jsonl`. The final xls
 
 ## MCP Search
 
-The plugin includes `cloversec-ctf-search`, a local stdio MCP server.
+The plugin includes two local stdio MCP servers:
+
+- `cloversec-ctf-search` for CTF public-source search, URL fetch, GitHub Release listing, and Agent web-search result import.
+- `cloversec-ctf-browser-search` for browser-assisted Google/Baidu/CSDN/Cnblogs/Yuque search planning and visible-result import.
 
 Available tools:
 
@@ -115,20 +118,36 @@ Available tools:
 | `cloversec_ctf_ctftime_events` | Fetch CTFTime events for a target year and optional query. |
 | `cloversec_ctf_fetch_url` | Fetch URL metadata, title, text, hash, and status. |
 | `cloversec_ctf_github_release_assets` | List downloadable GitHub Release assets. |
+| `cloversec_ctf_import_agent_web_results` | Import web search results gathered by the current Agent and score them into CloverSec layers. |
+| `cloversec_ctf_browser_search_plan` | Create a browser-assisted Google/Baidu/CSDN/Cnblogs/Yuque search plan, optionally opening the search page. |
+| `cloversec_ctf_browser_search_import_visible` | Import visible browser search results without reading cookies, tokens, localStorage, sessionStorage, passwords, or captcha data. |
 
 Free sources:
 
 - GitHub repository search
+- GitHub code search through `GITHUB_TOKEN`, `GH_TOKEN`, or local `gh auth token` when available
 - CTFTime events/writeups
 - DuckDuckGo Lite HTML
 - Built-in public CTF archive seeds
+- CTF platform seeds as `platform_lead` / `lead_only`
+- CSDN, Cnblogs, and Yuque `site:` search through DuckDuckGo
 
 Optional key-backed sources:
 
 - `GITHUB_TOKEN` or `GH_TOKEN` for GitHub code search
-- `CLOVERSEC_USE_GH_AUTH_TOKEN=1` to explicitly allow reading `gh auth token`
+- `CLOVERSEC_DISABLE_GH_AUTH_TOKEN=1` to disable reading local `gh auth token`
 - `BRAVE_SEARCH_API_KEY` or `CLOVERSEC_BRAVE_API_KEY`
 - `BING_SEARCH_API_KEY` or `CLOVERSEC_BING_API_KEY`
+
+Search results are scored into:
+
+- `confirmed_challenge`
+- `writeup_candidate`
+- `attachment_candidate`
+- `platform_lead`
+- `noise`
+
+Google/Baidu HTML direct scraping is not treated as a stable default path. Use the Agent's current web-search capability when it exists, then import results through `cloversec_ctf_import_agent_web_results`. For pages that need a human browser because of captcha, login, or risk control, use `cloversec-ctf-browser-search`; it only records visible titles, URLs, snippets, ranks, and blocked status.
 
 ## Asset Collection Commands
 
@@ -136,13 +155,20 @@ Optional key-backed sources:
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discover \
   --query "LA CTF 2024 web challenge writeup" \
   --year 2024 \
-  --source github \
-  --source ctftime \
-  --source duckduckgo \
-  --source seeds \
   --limit 20 \
   --output search_results.json \
   --cases-jsonl ctf_cases.jsonl
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py import-agent-search \
+  --input agent_web_results.json \
+  --query "IrisCTF 2025 web writeup" \
+  --provider agent-web-search \
+  --output search_results.agent.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py plan \
+  --query "IrisCTF 2025 web writeup" \
+  --engine google \
+  --output browser_search_plan.json
 
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py github-release-assets \
   --repo owner/repo \

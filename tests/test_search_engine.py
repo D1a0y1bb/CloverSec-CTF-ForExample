@@ -15,6 +15,7 @@ SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import cloversec_ctf_search as search
+import cloversec_ctf_browser_search as browser_search
 
 
 class SearchEngineTests(unittest.TestCase):
@@ -47,14 +48,16 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertIn("https://ctftime.org/", urls)
         self.assertTrue(any(item["provider"] == "ctf-platforms" for item in payload["results"]))
+        self.assertTrue(all(item["layer"] == "platform_lead" for item in payload["results"]))
+        self.assertTrue(all(item["lead_only"] for item in payload["results"]))
 
     def test_site_profile_search_marks_profile_and_query(self):
         result = search.normalize_result(
             provider="duckduckgo",
             kind="web",
-            title="CSDN writeup",
+            title="IrisCTF 2025 CSDN writeup",
             url="https://blog.csdn.net/example/article/details/1",
-            summary="DuckDuckGo HTML result",
+            summary="IrisCTF 2025 web challenge writeup",
             source_type="public_web",
             confidence="low",
         )
@@ -148,23 +151,81 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(payload["errors"][0]["provider"], "github-code")
         self.assertEqual(payload["errors"][0]["status"], "skipped")
 
-    def test_github_token_does_not_read_gh_auth_by_default(self):
-        with mock.patch.dict(search.os.environ, {}, clear=True):
+    def test_github_token_can_disable_gh_auth_lookup(self):
+        with mock.patch.dict(search.os.environ, {"CLOVERSEC_DISABLE_GH_AUTH_TOKEN": "1"}, clear=True):
             with mock.patch.object(search.subprocess, "run") as run:
                 token = search.github_token()
 
         self.assertEqual(token, "")
         run.assert_not_called()
 
-    def test_github_token_reads_gh_auth_only_when_enabled(self):
+    def test_github_token_reads_gh_auth_by_default(self):
         result = subprocess.CompletedProcess(["gh", "auth", "token"], 0, stdout="abc123\n", stderr="")
 
-        with mock.patch.dict(search.os.environ, {"CLOVERSEC_USE_GH_AUTH_TOKEN": "1"}, clear=True):
+        with mock.patch.dict(search.os.environ, {}, clear=True):
             with mock.patch.object(search.subprocess, "run", return_value=result) as run:
                 token = search.github_token()
 
         self.assertEqual(token, "abc123")
         run.assert_called_once()
+
+    def test_default_discover_sources_are_free_sources(self):
+        self.assertIn("github", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertIn("ctftime", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertIn("duckduckgo", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertIn("ctf-platforms", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertIn("csdn", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertIn("cnblogs", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertIn("yuque", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertNotIn("brave", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertNotIn("bing", search.DEFAULT_DISCOVER_SOURCES)
+
+    def test_agent_search_import_scores_and_filters_wrong_event(self):
+        payload = search.import_agent_search_results(
+            [
+                {
+                    "rank": 1,
+                    "title": "IrisCTF 2025 web writeup",
+                    "url": "https://example.com/irisctf-2025-web-writeup",
+                    "snippet": "IrisCTF 2025 web challenge writeup with source",
+                },
+                {
+                    "rank": 2,
+                    "title": "NepCTF 2025 web writeup",
+                    "url": "https://blog.csdn.net/nepctf/article/details/1",
+                    "snippet": "NepCTF web writeup",
+                },
+                {
+                    "rank": 3,
+                    "title": "DuckDuckGo",
+                    "url": "https://duckduckgo.com/?q=IrisCTF+2025",
+                    "snippet": "Search page",
+                },
+            ],
+            query="IrisCTF 2025 web writeup",
+        )
+
+        layers_by_title = {item["title"]: item["layer"] for item in payload["results"]}
+        self.assertEqual(layers_by_title["IrisCTF 2025 web writeup"], "confirmed_challenge")
+        self.assertEqual(layers_by_title["NepCTF 2025 web writeup"], "noise")
+        self.assertEqual(layers_by_title["DuckDuckGo"], "noise")
+        self.assertEqual(payload["results"][0]["provider"], "agent-web-search")
+        self.assertEqual(payload["results"][0]["source_url"], "https://example.com/irisctf-2025-web-writeup")
+
+    def test_markdown_writeup_is_not_attachment_candidate(self):
+        result = search.normalize_result(
+            provider="github-code",
+            kind="code",
+            title="salty-byte/ctf/writeup/2025/IrisCTF 2025/README.md",
+            url="https://github.com/salty-byte/ctf/blob/main/writeup/2025/IrisCTF%202025/README.md",
+            summary="IrisCTF 2025 web writeup source notes",
+            source_type="github",
+            confidence="high",
+        )
+
+        enriched = search.enrich_results([result], query="IrisCTF 2025 web writeup", years=[2025])[0]
+
+        self.assertNotEqual(enriched["layer"], "attachment_candidate")
 
     def test_github_release_assets_extracts_download_urls(self):
         payload = [
@@ -272,6 +333,47 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(preview["summary"]["issues"], 1)
         self.assertTrue(any(entry["unsafe_path"] for entry in preview["entries"]))
 
+    def test_browser_search_plan_and_visible_import(self):
+        plan = browser_search.create_browser_search_plan("IrisCTF 2025 web writeup", engine="google")
+        self.assertIn("https://www.google.com/search?", plan["search_url"])
+        self.assertIn("IrisCTF+2025+web+writeup", plan["search_url"])
+        self.assertFalse(plan["opened"])
+        self.assertTrue(any("Cookie" in item for item in plan["privacy_boundary"]))
+
+        payload = browser_search.normalize_visible_results(
+            {
+                "results": [
+                    {
+                        "rank": 1,
+                        "title": "IrisCTF 2025 web writeup",
+                        "url": "https://example.com/irisctf-2025-web",
+                        "snippet": "IrisCTF 2025 web challenge writeup source",
+                    },
+                    {
+                        "rank": 2,
+                        "title": "Compfest CTF 2025 writeup",
+                        "url": "https://example.com/compfest",
+                        "snippet": "Compfest CTF",
+                    },
+                ]
+            },
+            query="IrisCTF 2025 web writeup",
+            engine="google",
+        )
+        layers_by_title = {item["title"]: item["layer"] for item in payload["results"]}
+        self.assertEqual(layers_by_title["IrisCTF 2025 web writeup"], "confirmed_challenge")
+        self.assertEqual(layers_by_title["Compfest CTF 2025 writeup"], "noise")
+
+    def test_browser_search_blocked_result_is_structured(self):
+        payload = browser_search.normalize_visible_results(
+            {"blocked_by_captcha": True, "blocked_reason": "captcha page"},
+            query="IrisCTF 2025",
+            engine="baidu",
+        )
+
+        self.assertEqual(payload["errors"][0]["status"], "blocked_by_captcha")
+        self.assertEqual(payload["results"], [])
+
     def test_mcp_tools_list_and_discover(self):
         process = subprocess.Popen(
             [sys.executable, str(SCRIPTS / "cloversec_ctf_search_mcp.py")],
@@ -312,7 +414,62 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(init["result"]["serverInfo"]["name"], "cloversec-ctf-search")
         self.assertTrue(any(item["name"] == "cloversec_ctf_discover" for item in tools["result"]["tools"]))
+        self.assertTrue(any(item["name"] == "cloversec_ctf_import_agent_web_results" for item in tools["result"]["tools"]))
         self.assertIn("google/google-ctf", call["result"]["content"][0]["text"])
+
+    def test_browser_mcp_tools_list_and_import(self):
+        process = subprocess.Popen(
+            [sys.executable, str(SCRIPTS / "cloversec_ctf_browser_search_mcp.py")],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            assert process.stdin is not None
+            assert process.stdout is not None
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}) + "\n")
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}) + "\n")
+            process.stdin.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 3,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "cloversec_ctf_browser_search_import_visible",
+                            "arguments": {
+                                "query": "IrisCTF 2025 web writeup",
+                                "engine": "google",
+                                "results": [
+                                    {
+                                        "rank": 1,
+                                        "title": "IrisCTF 2025 web writeup",
+                                        "url": "https://example.com/irisctf-2025-web",
+                                        "snippet": "IrisCTF 2025 web challenge writeup source",
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                )
+                + "\n"
+            )
+            process.stdin.flush()
+            init = json.loads(process.stdout.readline())
+            tools = json.loads(process.stdout.readline())
+            call = json.loads(process.stdout.readline())
+        finally:
+            if process.stdin:
+                process.stdin.close()
+            if process.stdout:
+                process.stdout.close()
+            process.terminate()
+            process.wait(timeout=5)
+
+        self.assertEqual(init["result"]["serverInfo"]["name"], "cloversec-ctf-browser-search")
+        self.assertTrue(any(item["name"] == "cloversec_ctf_browser_search_plan" for item in tools["result"]["tools"]))
+        self.assertIn("browser-google", call["result"]["content"][0]["text"])
+        self.assertIn("confirmed_challenge", call["result"]["content"][0]["text"])
 
 
 class LocalServer:

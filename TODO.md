@@ -68,8 +68,8 @@
 - [x] 修正 skill UI 占位介绍，完善 plugin 对外元数据、repo marketplace 名称和 GitHub 安装说明。
 - [x] 配置 GitHub Release 工作流，增加发布前校验和插件包生成脚本。
 - [x] 对 `cloversec-ctf-research-intake` 做更多真实公网样例验收：CTFTime、GitHub archive、具体赛事 writeup、直接附件 URL。
-- [ ] 用户提供 key 后，验收 GitHub code search、Brave Search、Bing Search 的真实返回质量。
-- [ ] 插件重新安装后，在新的 Codex 会话确认 `cloversec-ctf-search` MCP 工具是否直接暴露给 Agent。
+- [ ] 可选 key 质量验收：默认不要求 Brave/Bing；后续只在已有 key 时验收 GitHub code search、Brave Search、Bing Search 的真实返回质量。
+- [x] 插件重新安装后，在新的 Codex 会话确认 `cloversec-ctf-search` MCP 工具可通过 `tool_search` 发现并调用。
 - [x] 对 `cloversec-ctf-asset-collector` 增加 GitHub release asset、raw 文件、目录树下载和压缩包内容预览。
 - [x] 对 GitHub release asset、raw 文件、目录树下载和 zip 预览做真实公网烟测。
 - [x] 为 `cloversec-ctf-quality-review` 增加受控 Docker 执行模式：load、inspect、run、端口探测、停止容器、记录执行证据。
@@ -80,17 +80,70 @@
 - [x] 对 8 个非自研验证 skill 做真实链路质量验收，修复 GitHub Release 限流异常输出和 Hub retag 大写 Docker tag 问题。
 - [x] 使用临时浏览器登录 Hub，验证 CTF 列表、提交页路由、表单字段、上传入口和提交接口；不保存 Cookie/token/session，不执行最终提交。
 - [x] 扩展收集源：增加 `ctf-platforms` seeds，以及 CSDN、博客园、语雀 `site:` 定向搜索。
-- [ ] 研究 Google/Baidu 直连搜索可行性；若直连受验证码/反爬影响，改为浏览器辅助或独立 MCP，不把它作为默认稳定来源。
+- [x] 使用临时官方 `busybox:1.36` amd64 镜像完成真实 Docker 验收，覆盖 `run`、`probe`、`tag`、`save`、`load`、`inspect`；没有执行未知题目镜像。
+- [x] 本机插件已安装到 `0.1.8`，`.mcp.json` / `mcpServers` 配置存在。
+- [x] 新开独立 Codex 会话验收 `cloversec-ctf-search` MCP 可发现并可调用：线程 `019ec18b-a5c2-7cd0-987a-929467d11dae`，通过 `tool_search` 加载后出现 `mcp__cloversec_ctf_search`，调用 `cloversec_ctf_ctftime_events(year=2026, limit=1)` 成功返回 `Scarlet CTF 2026`。
+- [x] 使用 CloudRouter 真实 LLM 调用测试当前插件效果，主测 `gpt-5.4-mini`，抽样复测 `gpt-5.4` / `gpt-5.5`；记录搜索质量、Hub、retag、附件 fixture、prompt 体积等问题。
+- [x] Google/Baidu 直连不作为默认稳定来源；已改为浏览器辅助 MCP 第一版。
+- [ ] 验收更严格的 MCP 可见性标准：不调用 `tool_search`，新会话初始工具列表里是否直接出现 `cloversec-ctf-search`。
+- [x] 搜索质量第一版改进：赛事名精确匹配、标题 token 评分、无关赛事降级、搜索引擎首页剔除，避免 `IrisCTF 2025 web writeup` 混入 NepCTF、Compfest 或 DuckDuckGo 首页。
+- [x] 调整 `ctf-platforms` 数据层语义：平台首页默认标记为 `lead_only`，不和真实 writeup、附件、题目归档结果放在同一可信等级。
+- [ ] 修复附件测试 fixture：`tests/fixtures/resources/attachment/challenge.zip` 当前只是 12 字节文本 `zip fixture`，但 case 名为 `fixture-attachment-ok`；需要替换为真实 zip，或改名为 broken fixture 并调整测试预期。
+- [ ] 增强 Hub 提交自动化前置能力：把 `题目分类` 文本映射为 Hub 分类 ID，记录附件上传返回结果，检查 `题目内容`、`题目解答`、关键字和截图文件是否齐全。
+- [ ] 明确 Hub 当前能力边界：插件现在能生成提交包、字段 payload 和浏览器填表计划；还没有真正实现自动填表、自动上传、自动提交。
+- [ ] 强化 `cloversec-ctf-hub-retag` 小模型输出约束：停止条件下 `can_execute` 必须返回布尔 `false`，不能返回 `null`；在 skill/schema 中增加严格 JSON 示例。
+- [ ] 降低真实 LLM 调用 prompt 体积：把 skill 的 Agent 可读摘要、严格 JSON 模板、深层参考文档分层，避免单次 6k-9k tokens 和 100 秒以上延迟。
+- [ ] 把“内部 xlsx 必须写入完整 Flag”放到更浅层：插件级说明、workflow 参考、相关 skill description 都要能被只读 catalog 的 Agent 看到。
 
 ## 需要用户配合的验收项
 
-- [ ] 提供 GitHub/Brave/Bing key 后，执行 key-backed 搜索质量验收。
-- [ ] 在新 Codex 会话中确认 `cloversec-ctf-search` MCP 工具是否直接暴露给 Agent。
+- [ ] 如已有 GitHub/Brave/Bing key，再执行 key-backed 搜索质量验收；Brave/Bing 不作为默认要求。
+- [x] 在新 Codex 会话中确认 `cloversec-ctf-search` MCP 工具可通过 `tool_search` 发现并调用，线程 `019ec18b-a5c2-7cd0-987a-929467d11dae`。
+- [ ] 如需更严格验收，再确认新会话初始工具列表是否无需 `tool_search` 就直接包含 `cloversec-ctf-search`。
+
+## 真实验收记录与问题台账
+
+### 已完成 / 已验证
+
+- [x] Docker 真实执行不是 mock：已用临时官方 `busybox:1.36` amd64 镜像验证 `quality-review` 与 `hub-retag` 的受控 Docker 路径，覆盖 `run`、`probe`、`tag`、`save`、`load`、`inspect`。
+- [x] Docker 验收没有执行未知题目镜像：只使用官方临时镜像，不对来源不明镜像做 `run`。
+- [x] 搜索 key 输入方式已明确：不要在聊天里发送 key；推荐使用本机 `gh auth login` 或终端环境变量 `GITHUB_TOKEN` / `GH_TOKEN`，Brave/Bing key 只作为可选增强。
+- [x] 无 key 情况下的免费源已具备：CTFTime、GitHub public、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀 `site:` 定向搜索。
+- [x] 本机 Codex 插件安装版本已确认：`cloversec-ctf-forexample@cloversec-ctf` 为 `0.1.8`，`mcpServers` 配置存在。
+- [x] 新会话 MCP 可发现性已验收：线程 `019ec18b-a5c2-7cd0-987a-929467d11dae` 中通过 `tool_search` 发现 `mcp__cloversec_ctf_search`，并成功调用 `cloversec_ctf_ctftime_events` 返回 `Scarlet CTF 2026`。
+- [x] Hub 页面真实验证已完成：可登录、进入 CTF 列表、打开提交表单；字段和接口已写入 `hub-submission`；没有最终提交、没有上传测试资源、没有保存账号密码、token 或 session。
+- [x] Research 来源扩展已完成第一版：新增 `ctf-platforms`、`csdn`、`cnblogs`、`yuque`，并做过真实搜索样例测试。
+- [x] Google/Baidu 直连搜索已判断为不适合默认稳定源，后续走浏览器辅助或独立 MCP 方案。
+- [x] CloudRouter 真实 LLM 调用已完成：`/v1/models` 和 `/v1/chat/completions` 可用；主测 `gpt-5.4-mini`，抽样复测 `gpt-5.4`、`gpt-5.5`。
+- [x] 真实 LLM 测试暴露的问题已记录到本台账：搜索质量、平台首页语义、附件 fixture、Hub 自动化、retag JSON 严格性、prompt 体积、Flag 规则可见性。
+- [x] 默认搜索源改为免费源：GitHub、CTFTime、DuckDuckGo、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀；Brave/Bing 不再作为默认要求。
+- [x] GitHub code search 改为优先使用 `GITHUB_TOKEN` / `GH_TOKEN`，没有环境变量时读取本机 `gh auth token`；可用 `CLOVERSEC_DISABLE_GH_AUTH_TOKEN=1` 禁用。
+- [x] 已增加 Agent 联网搜索结果导入：`cloversec_ctf_import_agent_web_results` / `import-agent-search`，字段包含 `source_url`、`title`、`snippet`、`provider`、`confidence`、`evidence`、`layer`、`score`。
+- [x] 已增加结果评分分层：`confirmed_challenge`、`writeup_candidate`、`attachment_candidate`、`platform_lead`、`noise`。
+- [x] 已增加赛事名、年份、标题 token、WP/附件词、搜索首页和登录页过滤规则；`IrisCTF` 场景中 `NepCTF`、`Compfest CTF` 会降为 `noise`。
+- [x] 已增加 `lead_only=true`：CTFTime、NSSCTF、CTFHub、BUUOJ 等平台入口只能作为 `platform_lead`。
+- [x] 已增加浏览器辅助搜索第一版：`cloversec-ctf-browser-search` MCP server，支持 Google、Baidu、CSDN、博客园、语雀的搜索计划和页面可见结果导入，不读取 Cookie、token、localStorage、sessionStorage。
+
+### 待处理问题
+
+- [ ] Key-backed 搜索质量未验收：现在只把 GitHub token 作为推荐增强；Brave/Bing 属于可选项，不再要求用户申请付费 key。后续有 key 时再跑真实返回质量、限额、失败原因和排序效果。
+- [ ] 更严格 MCP 可见性未验收：已验证 `tool_search` 可发现并加载 MCP；还没验证“新会话初始工具列表无需搜索就直接出现”。
+- [ ] 搜索质量仍需真实世界扩大验证：已实现 query 评分、赛事名强匹配、无关赛事降权和首页剔除；还需要用多个赛事、多分类、多中文站点抽样确认误报率。
+- [ ] `confirmed_challenge` 语义仍需收紧：当前 event-level writeup 页面可能因为赛事、年份、分类齐全被升为 confirmed；后续应要求明确题目名或题目页证据。
+- [ ] 附件 fixture 与名称不一致：`fixture-attachment-ok` 指向的 `challenge.zip` 实际不是 zip；需要真实 zip fixture 或改为 broken fixture。
+- [ ] Hub 提交还不是全自动：当前插件能生成提交包、字段 payload、浏览器填表计划；没有自动填表、没有自动上传、没有自动点击提交。
+- [ ] Hub 分类映射缺失：`题目分类` 目前仍可能是 `Misc` 等文本，需要拉取或缓存 Hub 分类 ID 并完成映射。
+- [ ] Hub 附件上传结果未自动回写：自动化方案需要在上传后记录 Hub 返回的文件路径、文件名和错误信息。
+- [ ] Hub 提交前字段完整性不足：fixture 中 `题目内容`、`题目解答`、关键字、截图内容可能为空，需要提交前阻断和修复建议。
+- [ ] `hub-retag` 小模型输出不够严格：`gpt-5.4-mini` 曾返回 `can_execute:null`；skill/schema 要强制布尔字段，停止时必须是 `false`。
+- [ ] Prompt 体积偏大：真实 LLM 场景多次达到 6k-9k tokens，`flag_xlsx_policy` 曾耗时 135 秒；需要更短的摘要入口和按需加载参考文档。
+- [ ] 完整 Flag 写入 xlsx 的规则可见性不足：只看 skill catalog 时模型可能漏写，需要放到插件级说明、workflow 和相关 skill description。
 
 ## MCP / App 后续规划
 
 - [ ] MCP：`cloversec-ctf-search-plus`，统一 GitHub、Brave、Bing、CTFTime、公开归档站、writeup 站点和直接附件 URL 的搜索、证据记录、下载预览与来源评分。
-- [ ] MCP：`cloversec-ctf-browser-search`，用用户授权的浏览器执行 Google/Baidu/CSDN 等容易反爬的检索，只记录结果链接和证据摘要，不保存账号、Cookie 或搜索登录态。
+- [x] MCP：`cloversec-ctf-browser-search` 第一版，生成 Google/Baidu/CSDN/博客园/语雀搜索计划，导入页面可见结果，只记录标题、URL、摘要、排名和 blocked 状态，不保存账号、Cookie 或搜索登录态。
+- [ ] MCP：`cloversec-ctf-browser-search` 后续增强，接入 Codex/Chrome 浏览器可见 DOM 读取，把用户确认后的页面结果自动转成 `visible_results.json`。
 - [ ] MCP：`cloversec-ctf-docker`，受控执行 `docker build/load/inspect/run/logs/stop/save`，记录 amd64 校验、端口、启动日志、hash 和失败证据。
 - [ ] MCP：`cloversec-ctf-archive`，批量读取 `ctf_cases.jsonl`，生成归档目录、资源索引、manifest、最终 xlsx、语雀表和缺失项报告。
 - [ ] MCP：`cloversec-ctf-hub-assistant`，使用用户当前浏览器登录态辅助填写 Hub 表单、上传截图和资源清单；禁止读取或保存 Cookie、token、localStorage、sessionStorage。

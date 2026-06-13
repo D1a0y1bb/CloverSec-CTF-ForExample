@@ -194,6 +194,57 @@ SEARCH_SOURCES = [
     "yuque",
 ]
 
+DEFAULT_DISCOVER_SOURCES = [
+    "github",
+    "ctftime",
+    "duckduckgo",
+    "seeds",
+    "ctf-platforms",
+    "csdn",
+    "cnblogs",
+    "yuque",
+]
+
+RESULT_LAYERS = [
+    "confirmed_challenge",
+    "writeup_candidate",
+    "attachment_candidate",
+    "platform_lead",
+    "noise",
+]
+
+LAYER_PRIORITY = {
+    "confirmed_challenge": 0,
+    "attachment_candidate": 1,
+    "writeup_candidate": 2,
+    "platform_lead": 3,
+    "noise": 9,
+}
+
+SEARCH_ENGINE_DOMAINS = {
+    "duckduckgo.com",
+    "www.duckduckgo.com",
+    "lite.duckduckgo.com",
+    "html.duckduckgo.com",
+    "google.com",
+    "www.google.com",
+    "baidu.com",
+    "www.baidu.com",
+}
+
+LOGIN_OR_BLOCK_DOMAINS = {
+    "accounts.google.com",
+    "login.live.com",
+    "passport.baidu.com",
+    "github.com/login",
+}
+
+EVENT_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_.-]*ctf[a-z0-9_.-]*", re.I)
+CATEGORY_TERMS = {"web", "pwn", "misc", "crypto", "reverse", "rev", "forensics", "osint", "mobile", "iot", "ai"}
+WRITEUP_TERMS = {"writeup", "write-up", "wp", "题解", "复现"}
+ATTACHMENT_TERMS = {"attachment", "attachments", "source", "源码", "附件", "release", "download", "challenge.zip"}
+ATTACHMENT_CANDIDATE_EXTENSIONS = {".zip", ".7z", ".rar", ".tar", ".tgz", ".gz", ".xz", ".bz2"}
+
 DIRECT_ASSET_EXTENSIONS = {
     ".zip",
     ".7z",
@@ -467,7 +518,7 @@ def discover(
     sources: list[str] | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
-    selected = sources or ["github", "ctftime", "duckduckgo", "brave", "bing", "seeds"]
+    selected = sources or DEFAULT_DISCOVER_SOURCES
     results: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
     for source in selected:
@@ -503,7 +554,7 @@ def discover(
         except Exception as exc:  # noqa: BLE001 - command line tool must keep provider failures isolated.
             errors.append({"provider": source, "error": str(exc), "status": "failed"})
 
-    deduped = dedupe_results(results)
+    deduped = rank_results(enrich_results(dedupe_results(results), query=query, years=years or []))
     return {
         "query": query,
         "years": years or [],
@@ -513,6 +564,7 @@ def discover(
         "summary": {
             "total_results": len(deduped),
             "provider_counts": provider_counts(deduped),
+            "layer_counts": layer_counts(deduped),
             "errors": len(errors),
         },
         "errors": errors,
@@ -777,6 +829,67 @@ def search_site_profile(profile: str, query: str, *, limit: int = 20) -> list[di
     return dedupe_results(results)
 
 
+def import_agent_search_results(
+    payload: Any,
+    *,
+    query: str,
+    provider: str = "agent-web-search",
+    limit: int = 50,
+) -> dict[str, Any]:
+    rows = extract_agent_search_rows(payload)
+    results = []
+    for index, row in enumerate(rows[: max(limit, 0)], start=1):
+        title = str(row.get("title") or row.get("name") or "").strip()
+        url = str(row.get("url") or row.get("source_url") or row.get("link") or "").strip()
+        snippet = str(row.get("snippet") or row.get("summary") or row.get("description") or "").strip()
+        if not title or not url:
+            continue
+        results.append(
+            normalize_result(
+                provider=provider,
+                kind="web",
+                title=title,
+                url=url,
+                summary=snippet,
+                source_type="agent_web_search",
+                confidence=str(row.get("confidence") or "medium"),
+                metadata={
+                    "rank": row.get("rank", index),
+                    "source_provider": row.get("provider") or provider,
+                    "raw_provider": row.get("raw_provider", ""),
+                },
+            )
+        )
+    ranked = rank_results(enrich_results(dedupe_results(results), query=query, years=[]))
+    return {
+        "query": query,
+        "generated_at": utc_now(),
+        "sources": [provider],
+        "results": ranked,
+        "summary": {
+            "total_results": len(ranked),
+            "provider_counts": provider_counts(ranked),
+            "layer_counts": layer_counts(ranked),
+            "errors": 0,
+        },
+        "errors": [],
+    }
+
+
+def extract_agent_search_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ["results", "items", "web_results", "sources", "organic_results"]:
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    if {"title", "url"} & set(payload):
+        return [payload]
+    return []
+
+
 def fetch_url(url: str, *, max_bytes: int = DEFAULT_MAX_BYTES, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
     started = time.time()
     read_limit = max(max_bytes, 0) + 1
@@ -884,6 +997,8 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     for index, result in enumerate(manifest.get("results", []), start=1):
         if not isinstance(result, dict):
             continue
+        if result.get("layer") in {"noise", "platform_lead"}:
+            continue
         title = str(result.get("title") or "").strip()
         if not title:
             continue
@@ -927,6 +1042,9 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                         "accessed_at": utc_date(),
                         "summary": result.get("summary", ""),
                         "confidence": result.get("confidence", "low"),
+                        "layer": result.get("layer", ""),
+                        "score": result.get("score", 0),
+                        "quality_issues": result.get("quality_issues", []),
                         "status": "found",
                     }
                 ],
@@ -999,7 +1117,7 @@ def github_token() -> str:
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
         return token
-    if os.environ.get("CLOVERSEC_USE_GH_AUTH_TOKEN") != "1":
+    if os.environ.get("CLOVERSEC_DISABLE_GH_AUTH_TOKEN") == "1":
         return ""
     try:
         result = subprocess.run(
@@ -1072,16 +1190,207 @@ def normalize_result(
     confidence: str,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    clean_url = str(url or "").strip()
+    clean_summary = str(summary or "").strip()
     return {
         "provider": provider,
         "kind": kind,
         "title": str(title or "").strip(),
-        "url": str(url or "").strip(),
-        "summary": str(summary or "").strip(),
+        "url": clean_url,
+        "source_url": clean_url,
+        "summary": clean_summary,
+        "snippet": clean_summary,
         "source_type": source_type,
         "confidence": confidence,
         "metadata": metadata or {},
     }
+
+
+def enrich_results(results: list[dict[str, Any]], *, query: str, years: list[int] | None = None) -> list[dict[str, Any]]:
+    profile = build_query_profile(query, years=years or [])
+    enriched = []
+    for item in results:
+        current = dict(item)
+        layer, score, reasons, issues = classify_result(current, profile)
+        current["layer"] = layer
+        current["score"] = score
+        current["lead_only"] = layer == "platform_lead"
+        current["ranking_reasons"] = reasons
+        current["quality_issues"] = issues
+        current["evidence"] = {
+            "source_url": current.get("url", ""),
+            "title": current.get("title", ""),
+            "snippet": current.get("summary", ""),
+            "provider": current.get("provider", ""),
+            "captured_at": utc_now(),
+            "search_query": query,
+        }
+        enriched.append(current)
+    return enriched
+
+
+def build_query_profile(query: str, *, years: list[int]) -> dict[str, Any]:
+    lowered = query.lower()
+    tokens = [token.lower() for token in re.findall(r"[a-z0-9_.-]+", lowered)]
+    year_terms = {str(year) for year in years}
+    year_terms.update(token for token in tokens if re.fullmatch(r"20\d{2}", token))
+    event_terms = {
+        token.strip("._-")
+        for token in EVENT_TOKEN_RE.findall(lowered)
+        if token.lower() not in GENERIC_EVENT_QUERY_TERMS
+    }
+    meaningful_terms = {
+        token
+        for token in tokens
+        if len(token) > 1 and token not in GENERIC_EVENT_QUERY_TERMS and token not in year_terms
+    }
+    categories = {token for token in tokens if token in CATEGORY_TERMS}
+    return {
+        "query": query,
+        "tokens": tokens,
+        "event_terms": event_terms,
+        "year_terms": year_terms,
+        "meaningful_terms": meaningful_terms,
+        "categories": categories,
+    }
+
+
+def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[str, int, list[str], list[str]]:
+    title = str(result.get("title") or "")
+    url = str(result.get("url") or "")
+    summary = str(result.get("summary") or "")
+    provider = str(result.get("provider") or "")
+    kind = str(result.get("kind") or "")
+    haystack = f"{title} {url} {summary}".lower()
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower()
+    score = 0
+    reasons: list[str] = []
+    issues: list[str] = []
+
+    if provider == "ctf-platforms" or kind == "ctf_platform":
+        return "platform_lead", 10, ["platform homepage lead"], ["platform homepage is not a confirmed challenge"]
+
+    if is_search_or_login_noise(url):
+        return "noise", -100, [], ["search engine, login, or blocked page"]
+
+    event_terms: set[str] = set(profile.get("event_terms") or set())
+    year_terms: set[str] = set(profile.get("year_terms") or set())
+    categories: set[str] = set(profile.get("categories") or set())
+
+    if event_terms:
+        if any(term in haystack for term in event_terms):
+            score += 55
+            reasons.append("event name matched")
+        else:
+            score -= 70
+            issues.append("event name mismatch")
+
+        foreign_events = {
+            token.lower()
+            for token in EVENT_TOKEN_RE.findall(haystack)
+            if not is_same_event_token(token.lower(), event_terms)
+        }
+        if foreign_events:
+            score -= 45
+            issues.append(f"other event names found: {', '.join(sorted(foreign_events)[:5])}")
+
+    if year_terms:
+        if any(year in haystack for year in year_terms):
+            score += 12
+            reasons.append("year matched")
+        else:
+            score -= 12
+            issues.append("year missing")
+
+    if categories and any(category in haystack for category in categories):
+        score += 10
+        reasons.append("category matched")
+
+    if looks_attachment_candidate_url(url) or kind == "release_asset" or (kind == "raw_file" and any(term in haystack for term in ATTACHMENT_TERMS)):
+        score += 30
+        reasons.append("direct asset or release file")
+        layer = "attachment_candidate"
+    elif any(term in haystack for term in WRITEUP_TERMS) or kind in {"writeup", "code", "site_search"}:
+        score += 18
+        reasons.append("writeup or code clue")
+        layer = "writeup_candidate"
+    elif provider in {"github", "github-code", "github-release", "github-tree"}:
+        score += 12
+        reasons.append("github source")
+        layer = "writeup_candidate"
+    elif provider == "ctftime" and kind == "event":
+        score += 10
+        reasons.append("ctftime event lead")
+        layer = "platform_lead"
+    else:
+        layer = "writeup_candidate"
+
+    if any(term in haystack for term in ATTACHMENT_TERMS):
+        score += 10
+        reasons.append("attachment keyword")
+
+    if domain.endswith("csdn.net") or domain.endswith("cnblogs.com") or domain.endswith("yuque.com"):
+        score += 4
+        reasons.append("targeted site profile")
+
+    if score < 5 or "event name mismatch" in issues:
+        layer = "noise"
+
+    if layer == "writeup_candidate" and score >= 85 and event_terms and year_terms and categories:
+        layer = "confirmed_challenge"
+        reasons.append("strong event/year/category evidence")
+
+    return layer, score, reasons, issues
+
+
+def is_same_event_token(token: str, event_terms: set[str]) -> bool:
+    normalized = token.strip("._-").lower()
+    for event in event_terms:
+        event_name = event.strip("._-").lower()
+        if normalized == event_name:
+            return True
+        if normalized.startswith(f"{event_name}-") or normalized.startswith(f"{event_name}_") or normalized.startswith(f"{event_name}."):
+            return True
+    return False
+
+
+def looks_attachment_candidate_url(url: str) -> bool:
+    parsed = urlparse(str(url or ""))
+    path = parsed.path.lower()
+    suffixes = Path(path).suffixes
+    suffix = suffixes[-1] if suffixes else ""
+    if suffix in ATTACHMENT_CANDIDATE_EXTENSIONS:
+        return True
+    return "/releases/download/" in path or "challenge.zip" in path or "attachments" in path
+
+
+def is_search_or_login_noise(url: str) -> bool:
+    parsed = urlparse(str(url or ""))
+    domain = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if not domain:
+        return True
+    if domain in SEARCH_ENGINE_DOMAINS:
+        if path in {"", "/", "/search", "/s", "/lite/"} or path.startswith(("/search", "/s", "/lite")):
+            return True
+    if domain in LOGIN_OR_BLOCK_DOMAINS or f"{domain}{path}" in LOGIN_OR_BLOCK_DOMAINS:
+        return True
+    if "captcha" in path or "verify" in path:
+        return True
+    return False
+
+
+def rank_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        results,
+        key=lambda item: (
+            LAYER_PRIORITY.get(str(item.get("layer") or "noise"), 9),
+            -int(item.get("score") or 0),
+            str(item.get("provider") or ""),
+            str(item.get("title") or "").lower(),
+        ),
+    )
 
 
 def dedupe_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1103,6 +1412,14 @@ def provider_counts(results: list[dict[str, Any]]) -> dict[str, int]:
     for item in results:
         provider = str(item.get("provider") or "unknown")
         counts[provider] = counts.get(provider, 0) + 1
+    return counts
+
+
+def layer_counts(results: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in results:
+        layer = str(item.get("layer") or "unknown")
+        counts[layer] = counts.get(layer, 0) + 1
     return counts
 
 
@@ -1274,6 +1591,13 @@ def main(argv: list[str] | None = None) -> int:
     cases_parser.add_argument("--manifest", required=True)
     cases_parser.add_argument("--output", required=True)
 
+    agent_parser = subparsers.add_parser("import-agent-search", help="normalize Agent web search results into a scored search manifest")
+    agent_parser.add_argument("--input", required=True, help="JSON list or object containing web search results")
+    agent_parser.add_argument("--query", required=True)
+    agent_parser.add_argument("--provider", default="agent-web-search")
+    agent_parser.add_argument("--limit", type=int, default=50)
+    agent_parser.add_argument("--output", required=True)
+
     args = parser.parse_args(argv)
 
     if args.command == "discover":
@@ -1375,6 +1699,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "results-to-cases":
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
         write_jsonl(args.output, results_to_cases(manifest))
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "import-agent-search":
+        payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
+        write_json(
+            args.output,
+            import_agent_search_results(payload, query=args.query, provider=args.provider, limit=args.limit),
+        )
         print(f"wrote {args.output}")
         return 0
 

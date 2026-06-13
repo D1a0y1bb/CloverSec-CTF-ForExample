@@ -69,6 +69,20 @@ TOOLS = [
             "required": ["repo"],
         },
     },
+    {
+        "name": "cloversec_ctf_import_agent_web_results",
+        "description": "Normalize web search results gathered by the current Agent into CloverSec scored search results.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "results": {"type": "array", "items": {"type": "object"}},
+                "provider": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            },
+            "required": ["query", "results"],
+        },
+    },
 ]
 
 
@@ -132,6 +146,13 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             "errors": errors,
             "summary": {"total_results": len(results), "errors": len(errors)},
         }
+    if name == "cloversec_ctf_import_agent_web_results":
+        return search.import_agent_search_results(
+            arguments.get("results", []),
+            query=str(arguments.get("query", "")),
+            provider=str(arguments.get("provider", "agent-web-search")),
+            limit=int(arguments.get("limit", 50)),
+        )
     raise ValueError(f"unknown tool: {name}")
 
 

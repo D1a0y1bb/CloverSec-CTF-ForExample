@@ -17,7 +17,9 @@
 
 - 每个阶段产生结构化结果，写入 `ctf_case.json` 或批量 `ctf_cases.jsonl`。
 - 不确定字段保留为空，并记录需要用户确认的原因。
-- 公网收集优先使用免费源；用户提供 key 后启用增强 provider。
+- 公网收集优先使用免费源：GitHub、CTFTime、DuckDuckGo、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀。
+- 当前 Agent 有联网搜索工具时，优先使用 Agent 搜索 Google/Baidu/全网结果，再导入插件数据模型。
+- GitHub 增强优先使用本机 `gh auth login` 或 `GITHUB_TOKEN` / `GH_TOKEN`；Brave/Bing 只作为可选 provider。
 - 搜索、抓取、下载必须写入来源 URL、访问时间、hash、HTTP 状态和失败原因。
 - Hub 自动化第一版不提交，只生成材料。
 - 涉及镜像导出时必须检查 `linux/amd64`。
@@ -37,8 +39,12 @@ MCP 入口：
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
 - `cloversec_ctf_fetch_url`
+- `cloversec_ctf_github_release_assets`
+- `cloversec_ctf_import_agent_web_results`
+- `cloversec_ctf_browser_search_plan`
+- `cloversec_ctf_browser_search_import_visible`
 
-没有 API key 时，仍可用 GitHub repository search、CTFTime、DuckDuckGo HTML 和公开 archive seeds。`GITHUB_TOKEN`、`BRAVE_SEARCH_API_KEY`、`BING_SEARCH_API_KEY` 存在时，自动启用对应 provider。
+没有付费 API key 时，仍可用 GitHub repository search、CTFTime、DuckDuckGo HTML、公开 archive seeds、CTF 平台入口、CSDN、博客园和语雀。平台入口标记为 `platform_lead` / `lead_only`，不能直接当成确认题目。
 
 ## 阶段 6 命令顺序
 
