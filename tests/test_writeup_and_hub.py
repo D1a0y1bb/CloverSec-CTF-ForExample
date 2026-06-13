@@ -119,6 +119,27 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertEqual(manifest["summary"]["total_upload_files"], 2)
             self.assertEqual(manifest["hub_fields"]["题目Flag"], "flag{stage-five-full-flag}")
 
+    def test_browser_assist_plan_keeps_security_boundaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            fields = writeup.build_hub_fields(case)
+            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manifest = hub.create_submission_package(
+                case=case,
+                hub_fields=fields["hub_fields"],
+                manual_markdown=manual,
+                output_dir=tmp_path / "hub_submission_package",
+            )
+
+            plan = hub.create_browser_assist_plan(manifest)
+            report = hub.render_browser_assist_plan(plan)
+
+            self.assertEqual(plan["mode"], "browser-assisted")
+            self.assertTrue(any("不读取或保存 Cookie" in item for item in plan["security_boundaries"]))
+            self.assertTrue(any(step["id"] == "manual-submit" for step in plan["steps"]))
+            self.assertIn("Hub 浏览器辅助填表方案", report)
+
     def test_cli_writeup_outputs_json_and_manual(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

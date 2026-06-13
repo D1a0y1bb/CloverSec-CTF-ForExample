@@ -1,7 +1,9 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -83,6 +85,21 @@ def sample_case(tmp_path):
 
 
 class ArchiveReviewFinalTests(unittest.TestCase):
+    def test_public_fixture_cases_cover_expected_states(self):
+        fixture_path = ROOT / "tests" / "fixtures" / "ctf_cases.jsonl"
+        cases = data.load_cases(fixture_path)
+        by_id = {case["case_id"]: case for case in cases}
+
+        self.assertIn("fixture-container-ok", by_id)
+        self.assertIn("fixture-attachment-ok", by_id)
+        self.assertIn("fixture-missing-manual", by_id)
+        self.assertIn("fixture-missing-screenshot", by_id)
+        self.assertIn("fixture-hub-numbered", by_id)
+        self.assertEqual(by_id["fixture-hub-numbered"]["metadata"]["HUB编号"], "CTF-2026060001")
+        self.assertFalse(by_id["fixture-missing-screenshot"]["archive"]["screenshots"])
+        for case in cases:
+            self.assertEqual(data.validate_case(case), [])
+
     def test_archive_package_copies_files_and_updates_xlsx_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -182,6 +199,97 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((tmp_path / "quality" / "quality_review.json").exists())
             self.assertTrue((tmp_path / "quality" / "quality_review_report.md").exists())
             self.assertTrue((tmp_path / "ctf_case.reviewed.json").exists())
+
+    def test_execute_docker_review_records_load_run_probe_and_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["docker_artifacts"]["ports"] = ["18080:80"]
+
+            class Response:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            def fake_run(args, **kwargs):
+                if args[:3] == ["docker", "image", "inspect"]:
+                    stdout = '[{"Os":"linux","Architecture":"amd64"}]'
+                elif args[:2] == ["docker", "logs"]:
+                    stdout = "service ready\n"
+                elif args[:2] == ["docker", "run"]:
+                    stdout = "container-id\n"
+                else:
+                    stdout = "ok\n"
+                return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+            with mock.patch.object(review.subprocess, "run", side_effect=fake_run):
+                with mock.patch.object(review.time, "sleep", return_value=None):
+                    with mock.patch.object(review, "urlopen", return_value=Response()):
+                        evidence = review.execute_docker_review(case, tmp_path / "quality", startup_wait=0)
+
+            self.assertEqual(evidence["summary"]["status"], "pass")
+            self.assertTrue(evidence["summary"]["run_verified"])
+            self.assertEqual(evidence["summary"]["platform"], "linux/amd64")
+            self.assertTrue((tmp_path / "quality" / "docker_logs.txt").exists())
+
+            result = review.create_quality_review(case, docker_execution=evidence)
+            by_id = {item["id"]: item for item in result["checks"]}
+            self.assertEqual(by_id["docker-run"]["status"], "pass")
+            self.assertEqual(by_id["docker-port-probe"]["status"], "pass")
+
+    def test_retag_execute_records_tar_hash_and_platform(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            plan = retag.create_retag_plan(case, "CTF-2026060001", tmp_path / "retagged")
+
+            def fake_run(args, **kwargs):
+                if args[:2] == ["docker", "save"]:
+                    Path(args[-1]).write_bytes(b"image-tar")
+                if args[:3] == ["docker", "image", "inspect"]:
+                    stdout = '[{"Os":"linux","Architecture":"amd64"}]'
+                else:
+                    stdout = "ok\n"
+                return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+            with mock.patch.object(retag.subprocess, "run", side_effect=fake_run):
+                execution = retag.execute_retag_plan(plan)
+            plan["execution"] = execution
+            updated = retag.apply_retag_outputs(case, plan)
+
+            self.assertEqual(execution["summary"]["status"], "pass")
+            self.assertEqual(execution["summary"]["platform"], "linux/amd64")
+            self.assertEqual(len(execution["summary"]["tar_sha256"]), 64)
+            self.assertEqual(updated["docker_artifacts"]["sha256"], execution["summary"]["tar_sha256"])
+
+    def test_batch_archive_writes_updated_cases_and_final_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            cases_path = tmp_path / "ctf_cases.jsonl"
+            cases_path.write_text(json.dumps(case, ensure_ascii=False) + "\n", encoding="utf-8")
+
+            code = archive.main([
+                "batch",
+                "--cases",
+                str(cases_path),
+                "--output-root",
+                str(tmp_path / "archive"),
+                "--output-cases",
+                str(tmp_path / "ctf_cases.archived.jsonl"),
+                "--final-output-dir",
+                str(tmp_path / "final"),
+            ])
+
+            self.assertEqual(code, 0)
+            self.assertTrue((tmp_path / "archive" / "_batch" / "batch_archive_summary.json").exists())
+            self.assertTrue((tmp_path / "archive" / "_batch" / "batch_archive_report.md").exists())
+            self.assertTrue((tmp_path / "ctf_cases.archived.jsonl").exists())
+            self.assertTrue((tmp_path / "final" / "archive.xlsx").exists())
 
 
 if __name__ == "__main__":

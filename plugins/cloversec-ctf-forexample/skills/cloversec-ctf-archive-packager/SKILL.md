@@ -48,6 +48,18 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py packag
 
 只生成索引、不复制文件时加 `--no-copy`。用于预览路径规划，不能写成正式归档完成。
 
+批量归档：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py batch \
+  --cases ctf_cases.jsonl \
+  --output-root archive \
+  --output-cases ctf_cases.archived.jsonl \
+  --final-output-dir final_out
+```
+
+批量模式会为每道题生成归档目录，写入 `_batch/batch_archive_summary.json`、`_batch/batch_archive_report.md`，并可生成最终 xlsx 和语雀表。
+
 ## 验证
 
 - manifest 中记录的文件必须存在。

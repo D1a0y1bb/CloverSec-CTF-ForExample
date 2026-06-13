@@ -33,6 +33,20 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review 
 
 脚本读取已有验证记录和本地文件状态。没有真实 Docker run、import、按手册解题记录时，状态写为 `skip`，不会写成通过。
 
+需要受控执行 Docker 时，必须显式传入 `--execute-docker`：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review \
+  --case-json ctf_case.json \
+  --output-dir quality_review \
+  --archive-dir archive/case-001-title \
+  --execute-docker \
+  --probe-url http://127.0.0.1:18080/ \
+  --output-case ctf_case.reviewed.json
+```
+
+该模式会记录 load、inspect、run、端口探测、logs、stop、rm 的结构化证据，输出 `docker_execution.json`。
+
 ## 检查项
 
 - 题目名称、分类、来源、Flag、附件和手册是否一致。
@@ -46,7 +60,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review 
 ## 验证
 
 - 能执行的检查必须执行。
-- 当前脚本不会执行未知 Docker 命令，只读取 `docker_artifacts.run_verified` 等明确结果。
+- 默认不执行 Docker；只有 `--execute-docker` 会执行受控命令。
 - 不能执行的检查写清原因，状态保持 `skip`。
 - 失败项不得改写成警告。
 - 有失败项时 `验证状态=失败`；只有未执行项时 `验证状态=部分通过`；全部通过时 `验证状态=通过`。

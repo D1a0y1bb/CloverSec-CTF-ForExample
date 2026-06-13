@@ -12,6 +12,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import cloversec_ctf_data as data
+
 
 ARCHIVE_SUBDIRS = ["source", "attachments", "image", "writeup", "screenshots", "manifests"]
 
@@ -87,6 +89,83 @@ def apply_archive_outputs(case: dict[str, Any], manifest: dict[str, Any]) -> dic
     for key, value in manifest.get("xlsx_fields", {}).items():
         updated["metadata"][key] = value
     return updated
+
+
+def create_batch_archive(
+    cases: list[dict[str, Any]],
+    output_root: str | Path,
+    *,
+    copy_files: bool = True,
+) -> dict[str, Any]:
+    root = Path(output_root)
+    root.mkdir(parents=True, exist_ok=True)
+    manifests = []
+    updated_cases = []
+    for case in cases:
+        manifest = create_archive_package(case, root, copy_files=copy_files)
+        manifests.append(manifest)
+        updated_cases.append(apply_archive_outputs(case, manifest))
+
+    summary = {
+        "total": len(cases),
+        "archived": sum(1 for item in manifests if not item.get("issues")),
+        "with_issues": sum(1 for item in manifests if item.get("issues")),
+        "file_count": sum(int(item.get("summary", {}).get("file_count", 0)) for item in manifests),
+        "issue_count": sum(int(item.get("summary", {}).get("issue_count", 0)) for item in manifests),
+    }
+    payload = {
+        "summary": summary,
+        "manifests": manifests,
+        "updated_cases": updated_cases,
+    }
+    batch_dir = root / "_batch"
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    (batch_dir / "batch_archive_summary.json").write_text(
+        json.dumps({"summary": summary, "manifests": manifests}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (batch_dir / "batch_archive_report.md").write_text(render_batch_archive_report(payload), encoding="utf-8")
+    return payload
+
+
+def write_cases_jsonl(cases: list[dict[str, Any]], path: str | Path) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        "".join(json.dumps(case, ensure_ascii=False) + "\n" for case in cases),
+        encoding="utf-8",
+    )
+
+
+def render_batch_archive_report(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary", {})
+    lines = [
+        "# 批量归档报告",
+        "",
+        f"- 题目数量：{summary.get('total', 0)}",
+        f"- 成功归档：{summary.get('archived', 0)}",
+        f"- 有问题：{summary.get('with_issues', 0)}",
+        f"- 文件数：{summary.get('file_count', 0)}",
+        f"- 问题数：{summary.get('issue_count', 0)}",
+        "",
+        "| 题目 ID | 归档目录 | 文件数 | 问题数 |",
+        "|---|---|---|---|",
+    ]
+    for manifest in payload.get("manifests", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                _escape_table(value)
+                for value in [
+                    manifest.get("case_id", ""),
+                    manifest.get("archive_dir", ""),
+                    manifest.get("summary", {}).get("file_count", 0),
+                    manifest.get("summary", {}).get("issue_count", 0),
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def archive_folder_name(case: dict[str, Any]) -> str:
@@ -167,6 +246,10 @@ def _safe_filename(value: str) -> str:
     return _safe_name(name)
 
 
+def _escape_table(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="CloverSec CTF archive packaging utilities")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -177,6 +260,13 @@ def main(argv: list[str] | None = None) -> int:
     package_parser.add_argument("--output-case")
     package_parser.add_argument("--no-copy", action="store_true")
 
+    batch_parser = subparsers.add_parser("batch", help="create archive packages for ctf_cases.jsonl")
+    batch_parser.add_argument("--cases", required=True)
+    batch_parser.add_argument("--output-root", required=True)
+    batch_parser.add_argument("--output-cases")
+    batch_parser.add_argument("--final-output-dir")
+    batch_parser.add_argument("--no-copy", action="store_true")
+
     args = parser.parse_args(argv)
     if args.command == "package":
         case = json.loads(Path(args.case_json).read_text(encoding="utf-8"))
@@ -185,6 +275,19 @@ def main(argv: list[str] | None = None) -> int:
             updated = apply_archive_outputs(case, manifest)
             Path(args.output_case).write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"wrote {Path(manifest['archive_dir']) / 'manifests' / 'archive_manifest.json'}")
+        return 0
+
+    if args.command == "batch":
+        cases = data.load_cases(args.cases)
+        payload = create_batch_archive(cases, args.output_root, copy_files=not args.no_copy)
+        if args.output_cases:
+            write_cases_jsonl(payload["updated_cases"], args.output_cases)
+        if args.final_output_dir:
+            import cloversec_ctf_final as final
+
+            final.create_final_outputs(payload["updated_cases"], args.final_output_dir)
+        summary_path = Path(args.output_root) / "_batch" / "batch_archive_summary.json"
+        print(f"wrote {summary_path}")
         return 0
 
     parser.error("unknown command")

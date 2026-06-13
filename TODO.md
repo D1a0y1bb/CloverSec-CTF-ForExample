@@ -67,16 +67,21 @@
 - [x] 审计搜索与下载边界：限制 fetch/download URL scheme、修正 `--max-bytes` 实际读取上限、HTTP 4xx/5xx 不再写成成功附件、GitHub code search 跳过信息独立为 `github-code`。
 - [x] 修正 skill UI 占位介绍，完善 plugin 对外元数据、repo marketplace 名称和 GitHub 安装说明。
 - [x] 配置 GitHub Release 工作流，增加发布前校验和插件包生成脚本。
-- [ ] 对 `cloversec-ctf-research-intake` 做更多真实公网样例验收：CTFTime、GitHub archive、具体赛事 writeup、直接附件 URL。
+- [x] 对 `cloversec-ctf-research-intake` 做更多真实公网样例验收：CTFTime、GitHub archive、具体赛事 writeup、直接附件 URL。
 - [ ] 用户提供 key 后，验收 GitHub code search、Brave Search、Bing Search 的真实返回质量。
 - [ ] 插件重新安装后，在新的 Codex 会话确认 `cloversec-ctf-search` MCP 工具是否直接暴露给 Agent。
 - [x] 对 `cloversec-ctf-asset-collector` 增加 GitHub release asset、raw 文件、目录树下载和压缩包内容预览。
 - [x] 对 GitHub release asset、raw 文件、目录树下载和 zip 预览做真实公网烟测。
-- [ ] 为 `cloversec-ctf-quality-review` 增加受控 Docker 执行模式：load、inspect、run、端口探测、停止容器、记录执行证据。
-- [ ] 为 `cloversec-ctf-hub-retag` 增加受控执行模式：tag、save、load、inspect、amd64 校验、hash 记录。
-- [ ] 设计 Hub 浏览器辅助填表方案：只使用用户当前登录态，不读取或保存 Cookie、token、localStorage、sessionStorage。
-- [ ] 增加批量归档命令，支持 `ctf_cases.jsonl` 一次性生成所有题目的归档目录和最终报告。
-- [ ] 增加真实样例 fixture，覆盖容器题、附件题、缺手册、缺截图、Hub 已编号等场景。
+- [x] 为 `cloversec-ctf-quality-review` 增加受控 Docker 执行模式：load、inspect、run、端口探测、停止容器、记录执行证据。
+- [x] 为 `cloversec-ctf-hub-retag` 增加受控执行模式：tag、save、load、inspect、amd64 校验、hash 记录。
+- [x] 设计 Hub 浏览器辅助填表方案：只使用用户当前登录态，不读取或保存 Cookie、token、localStorage、sessionStorage。
+- [x] 增加批量归档命令，支持 `ctf_cases.jsonl` 一次性生成所有题目的归档目录和最终报告。
+- [x] 增加真实样例 fixture，覆盖容器题、附件题、缺手册、缺截图、Hub 已编号等场景。
+
+## 需要用户配合的验收项
+
+- [ ] 提供 GitHub/Brave/Bing key 后，执行 key-backed 搜索质量验收。
+- [ ] 在新 Codex 会话中确认 `cloversec-ctf-search` MCP 工具是否直接暴露给 Agent。
 
 ## MCP / App 后续规划
 

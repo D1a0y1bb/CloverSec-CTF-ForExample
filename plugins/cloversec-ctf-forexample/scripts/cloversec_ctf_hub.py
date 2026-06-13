@@ -116,6 +116,64 @@ def render_checklist(manifest: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def create_browser_assist_plan(
+    manifest: dict[str, Any],
+    *,
+    hub_url: str = "https://hub.yunyansec.com/#/resource/ctf",
+) -> dict[str, Any]:
+    fields = manifest.get("hub_fields", {}) if isinstance(manifest.get("hub_fields"), dict) else {}
+    upload_files = manifest.get("upload_files", []) if isinstance(manifest.get("upload_files"), list) else []
+    screenshots = manifest.get("screenshots", []) if isinstance(manifest.get("screenshots"), list) else []
+    return {
+        "hub_url": hub_url,
+        "mode": "browser-assisted",
+        "security_boundaries": [
+            "只使用用户已经登录的浏览器会话。",
+            "不读取或保存 Cookie、token、CSRF、localStorage、sessionStorage、密码或验证码。",
+            "提交前必须让用户确认字段、上传文件和截图。",
+            "默认不自动点击最终提交按钮。",
+        ],
+        "steps": [
+            {"id": "open-hub", "action": "打开 Hub CTF 资源页面", "target": hub_url, "requires_user_confirmation": False},
+            {"id": "verify-login", "action": "确认页面处于用户已登录状态", "target": "browser", "requires_user_confirmation": True},
+            {"id": "fill-fields", "action": "按 hub_fields 填写表单字段", "target": "form", "requires_user_confirmation": False},
+            {"id": "upload-files", "action": "上传附件、镜像 tar 和手册材料", "target": "upload", "requires_user_confirmation": True},
+            {"id": "upload-screenshots", "action": "上传截图并核对截图用途", "target": "screenshots", "requires_user_confirmation": True},
+            {"id": "pre-submit-review", "action": "生成提交前字段差异和缺失项", "target": "preview", "requires_user_confirmation": True},
+            {"id": "manual-submit", "action": "用户确认后手动提交或明确授权自动提交", "target": "submit", "requires_user_confirmation": True},
+        ],
+        "field_count": len(fields),
+        "upload_file_count": len(upload_files),
+        "screenshot_count": len(screenshots),
+        "fields": fields,
+        "upload_files": upload_files,
+        "screenshots": screenshots,
+    }
+
+
+def render_browser_assist_plan(plan: dict[str, Any]) -> str:
+    lines = [
+        "# Hub 浏览器辅助填表方案",
+        "",
+        f"- Hub 页面：{plan.get('hub_url', '')}",
+        f"- 字段数：{plan.get('field_count', 0)}",
+        f"- 上传文件数：{plan.get('upload_file_count', 0)}",
+        f"- 截图数：{plan.get('screenshot_count', 0)}",
+        "",
+        "## 安全边界",
+        "",
+    ]
+    lines.extend(f"- {item}" for item in plan.get("security_boundaries", []))
+    lines.extend(["", "## 步骤", ""])
+    for step in plan.get("steps", []):
+        confirm = "需要确认" if step.get("requires_user_confirmation") else "无需确认"
+        lines.append(f"- {step.get('id', '')}：{step.get('action', '')}（{confirm}）")
+    lines.extend(["", "## 字段预览", ""])
+    for key, value in plan.get("fields", {}).items():
+        lines.append(f"- {key}：{value}")
+    return "\n".join(lines) + "\n"
+
+
 def _copy_file(source: Path, target: Path, issues: list[str]) -> Path | None:
     if not source.exists() or not source.is_file():
         issues.append(f"missing file: {source}")
@@ -152,6 +210,12 @@ def main(argv: list[str] | None = None) -> int:
     package_parser.add_argument("--manual", required=True)
     package_parser.add_argument("--output-dir", required=True)
 
+    browser_parser = subparsers.add_parser("browser-plan", help="create Hub browser-assisted filling plan")
+    browser_parser.add_argument("--manifest", required=True)
+    browser_parser.add_argument("--output", required=True)
+    browser_parser.add_argument("--report")
+    browser_parser.add_argument("--hub-url", default="https://hub.yunyansec.com/#/resource/ctf")
+
     args = parser.parse_args(argv)
     if args.command == "package":
         case = json.loads(Path(args.case_json).read_text(encoding="utf-8"))
@@ -159,6 +223,16 @@ def main(argv: list[str] | None = None) -> int:
         manual = Path(args.manual).read_text(encoding="utf-8")
         create_submission_package(case, fields, manual, args.output_dir)
         print(f"wrote {args.output_dir}")
+        return 0
+    if args.command == "browser-plan":
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        plan = create_browser_assist_plan(manifest, hub_url=args.hub_url)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        report = Path(args.report) if args.report else output.with_suffix(".md")
+        report.write_text(render_browser_assist_plan(plan), encoding="utf-8")
+        print(f"wrote {output}")
         return 0
     parser.error("unknown command")
     return 2

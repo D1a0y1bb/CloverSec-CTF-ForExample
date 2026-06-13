@@ -195,8 +195,11 @@ hub_submission_package/
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py package --case-json ctf_case.json --output-root archive --output-case ctf_case.archived.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py batch --cases ctf_cases.jsonl --output-root archive --output-cases ctf_cases.archived.jsonl --final-output-dir final_out
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review --case-json ctf_case.json --output-dir quality_review --archive-dir archive/case-001-title --output-case ctf_case.reviewed.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review --case-json ctf_case.json --output-dir quality_review --archive-dir archive/case-001-title --execute-docker --output-case ctf_case.reviewed.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan --case-json ctf_case.json --hub-id CTF-2026060001 --output-dir archive/retagged-images --output retag_plan.json --output-case ctf_case.retagged.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan --case-json ctf_case.json --hub-id CTF-2026060001 --output-dir archive/retagged-images --output retag_plan.json --execute --output-case ctf_case.retagged.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate --cases ctf_cases.jsonl --output-dir final_out
 ```
 
@@ -208,6 +211,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate
 - `cloversec_ctf_final.py`：生成最终 `archive.xlsx`，其中 `Flag` 必须完整保留
 
 `quality_review.json` 使用 `pass`、`fail`、`skip` 三种状态。没有真实 Docker run 或按手册解题记录时，对应检查必须是 `skip`。
+受控 Docker 执行只在显式传入 `--execute-docker` 或 `--execute` 时运行，并把命令、退出码、平台、日志路径、端口探测、tar SHA256 写入结构化证据。
 
 ## 状态值
 

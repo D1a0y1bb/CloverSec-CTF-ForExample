@@ -5,9 +5,13 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import re
 import shlex
+import subprocess
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -76,9 +80,65 @@ def apply_retag_outputs(case: dict[str, Any], plan: dict[str, Any]) -> dict[str,
     updated["docker_artifacts"]["tar_path"] = plan.get("tar_path", "")
     updated["docker_artifacts"]["platform"] = plan.get("target_platform", TARGET_PLATFORM)
     updated["docker_artifacts"]["retag_plan"] = copy.deepcopy(plan)
+    if plan.get("execution"):
+        updated["docker_artifacts"]["retag_execution"] = copy.deepcopy(plan["execution"])
+        if plan["execution"].get("summary", {}).get("tar_sha256"):
+            updated["docker_artifacts"]["sha256"] = plan["execution"]["summary"]["tar_sha256"]
+        if plan["execution"].get("summary", {}).get("platform"):
+            updated["docker_artifacts"]["platform"] = plan["execution"]["summary"]["platform"]
     for key, value in plan.get("xlsx_fields", {}).items():
         updated["metadata"][key] = value
     return updated
+
+
+def execute_retag_plan(plan: dict[str, Any], *, command_timeout: int = 60) -> dict[str, Any]:
+    tar_path = Path(str(plan.get("tar_path") or ""))
+    tar_path.parent.mkdir(parents=True, exist_ok=True)
+    source_image = str(plan.get("source_image") or "")
+    new_image = str(plan.get("new_image") or "")
+    execution: dict[str, Any] = {
+        "executed_at": datetime.now(timezone.utc).isoformat(),
+        "source_image": source_image,
+        "new_image": new_image,
+        "tar_path": tar_path.as_posix(),
+        "steps": [],
+        "summary": {
+            "status": "fail",
+            "platform": "",
+            "tar_sha256": "",
+            "issues": [],
+        },
+    }
+    issues = []
+    if not source_image:
+        issues.append("source_image 为空")
+    if not new_image:
+        issues.append("new_image 为空")
+    if issues:
+        execution["summary"]["issues"] = issues
+        return execution
+
+    steps = execution["steps"]
+    steps.append(_run_command(["docker", "tag", source_image, new_image], timeout=command_timeout))
+    steps.append(_run_command(["docker", "save", new_image, "-o", tar_path.as_posix()], timeout=command_timeout))
+    if tar_path.is_file():
+        execution["summary"]["tar_sha256"] = sha256_file(tar_path)
+    else:
+        issues.append(f"tar 未生成：{tar_path}")
+    steps.append(_run_command(["docker", "load", "-i", tar_path.as_posix()], timeout=command_timeout))
+    inspect = _run_command(["docker", "image", "inspect", new_image], timeout=command_timeout)
+    steps.append(inspect)
+    platform = _platform_from_inspect_output(inspect.get("stdout", ""))
+    if platform:
+        execution["summary"]["platform"] = platform
+    if platform and platform != TARGET_PLATFORM:
+        issues.append(f"镜像平台不是 {TARGET_PLATFORM}: {platform}")
+    for step in steps:
+        if step.get("status") == "fail":
+            issues.append(f"{step.get('id')}: exit_code={step.get('exit_code')}")
+    execution["summary"]["issues"] = issues
+    execution["summary"]["status"] = "pass" if not issues else "fail"
+    return execution
 
 
 def render_retag_report(plan: dict[str, Any]) -> str:
@@ -102,7 +162,93 @@ def render_retag_report(plan: dict[str, Any]) -> str:
         lines.extend(f"- {issue}" for issue in plan["issues"])
     else:
         lines.extend(["", "## 状态", "", "- 可按命令执行 retag、导出和 inspect。"])
+    if plan.get("execution"):
+        summary = plan["execution"].get("summary", {})
+        lines.extend(["", "## 执行证据", ""])
+        lines.append(f"- 状态：{summary.get('status', '')}")
+        lines.append(f"- 平台：{summary.get('platform', '')}")
+        lines.append(f"- tar SHA256：{summary.get('tar_sha256', '')}")
+        if summary.get("issues"):
+            lines.extend(f"- {issue}" for issue in summary["issues"])
     return "\n".join(lines) + "\n"
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _run_command(args: list[str], *, timeout: int) -> dict[str, Any]:
+    started = time.time()
+    command_id = _command_id(args)
+    try:
+        result = subprocess.run(args, check=False, capture_output=True, text=True, timeout=timeout)
+        status = "pass" if result.returncode == 0 else "fail"
+        return {
+            "id": command_id,
+            "status": status,
+            "command": args,
+            "exit_code": result.returncode,
+            "stdout": _truncate(result.stdout),
+            "stderr": _truncate(result.stderr),
+            "duration_seconds": round(time.time() - started, 3),
+            "message": "ok" if status == "pass" else _truncate(result.stderr or result.stdout),
+        }
+    except FileNotFoundError as exc:
+        return {
+            "id": command_id,
+            "status": "fail",
+            "command": args,
+            "exit_code": 127,
+            "stdout": "",
+            "stderr": str(exc),
+            "duration_seconds": round(time.time() - started, 3),
+            "message": str(exc),
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "id": command_id,
+            "status": "fail",
+            "command": args,
+            "exit_code": 124,
+            "stdout": _truncate(exc.stdout or ""),
+            "stderr": _truncate(exc.stderr or ""),
+            "duration_seconds": round(time.time() - started, 3),
+            "message": f"timeout after {timeout}s",
+        }
+
+
+def _command_id(args: list[str]) -> str:
+    if args[:2] == ["docker", "tag"]:
+        return "docker-tag"
+    if args[:2] == ["docker", "save"]:
+        return "docker-save"
+    if args[:2] == ["docker", "load"]:
+        return "docker-load"
+    if args[:3] == ["docker", "image", "inspect"]:
+        return "docker-image-inspect"
+    return "-".join(args[:3])
+
+
+def _platform_from_inspect_output(output: str) -> str:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return ""
+    image = payload[0] if isinstance(payload, list) and payload else payload
+    if not isinstance(image, dict):
+        return ""
+    os_name = image.get("Os") or image.get("OS") or ""
+    arch = image.get("Architecture") or ""
+    return f"{os_name}/{arch}" if os_name and arch else ""
+
+
+def _truncate(value: Any, limit: int = 4000) -> str:
+    text = value.decode() if isinstance(value, bytes) else str(value or "")
+    return text if len(text) <= limit else text[-limit:]
 
 
 def _safe_tag_part(value: str) -> str:
@@ -124,6 +270,8 @@ def main(argv: list[str] | None = None) -> int:
     plan_parser.add_argument("--output", required=True)
     plan_parser.add_argument("--report")
     plan_parser.add_argument("--output-case")
+    plan_parser.add_argument("--execute", action="store_true", help="run docker tag/save/load/inspect and record evidence")
+    plan_parser.add_argument("--command-timeout", type=int, default=60)
 
     args = parser.parse_args(argv)
     if args.command == "plan":
@@ -135,6 +283,8 @@ def main(argv: list[str] | None = None) -> int:
             registry_prefix=args.registry_prefix,
             tag_template=args.tag_template,
         )
+        if args.execute:
+            plan["execution"] = execute_retag_plan(plan, command_timeout=args.command_timeout)
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

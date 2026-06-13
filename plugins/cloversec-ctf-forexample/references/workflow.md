@@ -66,4 +66,11 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan --c
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate --cases ctf_cases.jsonl --output-dir final_out
 ```
 
-`cloversec_ctf_retag.py` 只生成命令计划。真实 Docker tag/save/load/inspect 执行结果需要用户执行或明确授权后写回。
+默认命令只生成计划和读取已有证据。需要真实执行时必须显式传入：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review --case-json ctf_case.archived.json --output-dir quality_review --archive-dir archive/<case_id>-<title> --execute-docker --output-case ctf_case.reviewed.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan --case-json ctf_case.reviewed.json --hub-id <HUB编号> --output-dir archive/retagged-images --output retag_plan.json --execute --output-case ctf_case.retagged.json
+```
+
+受控 Docker 执行会写入 JSON 证据，包含命令、退出码、平台、日志路径、端口探测和 tar SHA256。

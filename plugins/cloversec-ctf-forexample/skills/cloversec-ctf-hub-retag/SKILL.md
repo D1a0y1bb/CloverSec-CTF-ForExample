@@ -48,12 +48,26 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan \
 
 脚本只生成命令计划，不自动运行 Docker。
 
+需要受控执行时，必须显式传入 `--execute`：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan \
+  --case-json ctf_case.json \
+  --hub-id CTF-2026060001 \
+  --output-dir archive/retagged-images \
+  --output retag_plan.json \
+  --execute \
+  --output-case ctf_case.retagged.json
+```
+
+该模式会执行 Docker tag、save、load、inspect，并记录 tar SHA256、平台和每条命令的退出码。
+
 ## 验证
 
 - HUB 编号来源明确。
 - 新 tag 符合用户确认规则。
 - 原始 `docker_artifacts.platform` 必须为 `linux/amd64`。
-- Docker 命令执行、导出 tar、import 后运行属于真实执行检查；没有执行记录时不得写成通过。
+- 默认只生成计划；只有 `--execute` 才运行 Docker 并写入执行证据。
 
 ## 停止条件
 

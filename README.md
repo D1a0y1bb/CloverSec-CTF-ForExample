@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.1.5"><img alt="Version" src="https://img.shields.io/badge/version-v0.1.5-2563eb?style=for-the-badge"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.1.6"><img alt="Version" src="https://img.shields.io/badge/version-v0.1.6-2563eb?style=for-the-badge"></a>
   <img alt="Skills" src="https://img.shields.io/badge/skills-10-16a34a?style=for-the-badge">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-search-f59e0b?style=for-the-badge">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-plugin-111827?style=for-the-badge">
@@ -26,7 +26,7 @@ CloverSec CTF For Example is a Codex plugin marketplace for internal CTF product
 
 The repository is designed as a GitHub-installable Codex marketplace. A teammate can add this repository from Codex, install `cloversec-ctf-forexample`, and then use the packaged skills from a fresh Codex thread.
 
-Current version: `v0.1.5`
+Current version: `v0.1.6`
 
 ## Install
 
@@ -34,7 +34,7 @@ In Codex, open **Plugins -> Add plugin marketplace** and fill:
 
 ```text
 Source: D1a0y1bb/CloverSec-CTF-ForExample
-Git reference: v0.1.5
+Git reference: v0.1.6
 Sparse path: empty
 ```
 
@@ -48,7 +48,7 @@ plugins
 CLI install:
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.1.5
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.1.6
 codex plugin list
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
@@ -194,7 +194,7 @@ scripts/
 - Hub browser assistance should use a user's active browser session only after explicit confirmation.
 - Full Flag values are intentionally written into internal xlsx/Yuque outputs.
 - Public repository content must not include private challenge assets, internal xlsx files, Hub credentials, cookies, tokens, or private writeups.
-- Docker execution modes are still controlled work items. Current scripts can generate plans and inspect recorded evidence; future phases will add guarded execution for load/run/save/inspect.
+- Docker execution is opt-in. `cloversec_ctf_review.py --execute-docker` runs controlled load/inspect/run/probe/logs/stop/rm, and `cloversec_ctf_retag.py --execute` runs controlled tag/save/load/inspect.
 
 ## Development
 
@@ -215,7 +215,7 @@ python3 scripts/package_plugin_release.py
 Release tags must match `plugin.json`:
 
 ```text
-plugin version 0.1.5 -> git tag v0.1.5
+plugin version 0.1.6 -> git tag v0.1.6
 ```
 
 The GitHub Release workflow validates metadata, compiles scripts, runs tests, packages release assets, and creates the GitHub Release.

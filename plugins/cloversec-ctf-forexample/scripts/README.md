@@ -132,6 +132,10 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package \
   --hub-fields writeup_out/hub_fields.json \
   --manual writeup_out/manual_filled_draft.md \
   --output-dir hub_submission_package
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py browser-plan \
+  --manifest hub_submission_package/manifests/upload_manifest.json \
+  --output hub_submission_package/browser_assist_plan.json
 ```
 
 输出目录：
@@ -155,6 +159,12 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py packag
   --case-json ctf_case.json \
   --output-root archive \
   --output-case ctf_case.archived.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py batch \
+  --cases ctf_cases.jsonl \
+  --output-root archive \
+  --output-cases ctf_cases.archived.jsonl \
+  --final-output-dir final_out
 ```
 
 输出目录：
@@ -176,9 +186,18 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review 
   --output-dir quality_review \
   --archive-dir archive/case-001-title \
   --output-case ctf_case.reviewed.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review \
+  --case-json ctf_case.json \
+  --output-dir quality_review \
+  --archive-dir archive/case-001-title \
+  --execute-docker \
+  --probe-url http://127.0.0.1:18080/ \
+  --output-case ctf_case.reviewed.json
 ```
 
-脚本不会自动执行未知 Docker 命令。没有 `docker_artifacts.run_verified=true` 或 `writeup.solve_verified=true` 时，相关检查写为 `skip`。
+脚本默认不会执行 Docker。只有显式传入 `--execute-docker` 时，才会执行受控的 load、inspect、run、端口探测、logs、stop、rm，并写入 `docker_execution.json`。
+没有 `docker_artifacts.run_verified=true`、`--execute-docker` 证据或 `writeup.solve_verified=true` 时，相关检查写为 `skip`。
 
 ## `cloversec_ctf_retag.py`
 
@@ -194,7 +213,17 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan \
   --output retag_plan.json \
   --report retag_report.md \
   --output-case ctf_case.retagged.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan \
+  --case-json ctf_case.json \
+  --hub-id CTF-2026060001 \
+  --output-dir archive/retagged-images \
+  --output retag_plan.json \
+  --execute \
+  --output-case ctf_case.retagged.json
 ```
+
+默认只生成命令计划。只有显式传入 `--execute` 时，才会执行 Docker tag、save、load、inspect，并记录 tar SHA256 与平台。
 
 ## `cloversec_ctf_final.py`
 
