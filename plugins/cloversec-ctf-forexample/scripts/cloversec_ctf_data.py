@@ -1,0 +1,483 @@
+#!/usr/bin/env python3
+"""CloverSec CTF data model helpers.
+
+The module intentionally uses only the Python standard library so the plugin can
+run in a fresh Codex environment without extra package installation.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+import zipfile
+from collections import Counter
+from pathlib import Path
+from typing import Any
+from xml.etree import ElementTree as ET
+
+
+XLSX_FIELDS = [
+    "HUB编号",
+    "赛事来源",
+    "题目来源",
+    "名称",
+    "分类",
+    "题目类型",
+    "Flag类型",
+    "Flag",
+    "难度编号",
+    "星级",
+    "分值",
+    "资源等级",
+    "提交时间",
+    "开放端口",
+    "离线/在线解题",
+    "解题工具",
+    "提交用户名",
+    "审核人",
+    "是否通过",
+    "问题",
+    "是否归档",
+    "材料状态",
+    "构建状态",
+    "手册状态",
+    "验证状态",
+    "归档目录",
+    "环境包/附件包路径",
+    "备注",
+]
+
+REQUIRED_XLSX_FIELDS = ["名称", "分类", "题目类型", "Flag类型", "Flag", "验证状态"]
+
+FLAG_TYPES = {"static", "dynamic", "unknown", "静态Flag", "动态Flag", "未知"}
+CONFIDENCE_VALUES = {"high", "medium", "low"}
+
+STATUS_ENUMS = {
+    "材料状态": {"未开始", "收集中", "已收集", "缺材料", "无法确认"},
+    "构建状态": {"不适用", "未开始", "已构建", "验证失败"},
+    "手册状态": {"未开始", "草稿", "待人工完善", "已校验"},
+    "验证状态": {"未验证", "部分通过", "通过", "失败"},
+    "是否归档": {"是", "否"},
+    "是否通过": {"是", "否"},
+}
+
+LIST_FIELDS = ["source_files", "attachments", "evidence"]
+DICT_FIELDS = [
+    "metadata",
+    "research",
+    "asset_collection",
+    "flag",
+    "environment",
+    "docker_artifacts",
+    "writeup",
+    "hub_fields",
+    "review",
+    "archive",
+]
+
+NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+NS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+NS_PACKAGE_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+
+def validate_case(case: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(case, dict):
+        return ["case must be a JSON object"]
+
+    if not _text(case.get("case_id")):
+        errors.append("case_id is required")
+
+    for field in DICT_FIELDS:
+        if field in case and not isinstance(case[field], dict):
+            errors.append(f"{field} must be an object")
+
+    for field in LIST_FIELDS:
+        if field in case and not isinstance(case[field], list):
+            errors.append(f"{field} must be an array")
+
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    flag = case.get("flag") if isinstance(case.get("flag"), dict) else {}
+
+    if not _text(flag.get("value")):
+        errors.append("flag.value is required and must contain the full Flag")
+    if _text(flag.get("type")) and str(flag.get("type")) not in FLAG_TYPES:
+        errors.append(f"flag.type has unsupported value: {flag.get('type')}")
+    if flag.get("sensitive") is not True:
+        errors.append("flag.sensitive must be true")
+
+    confidence = case.get("confidence")
+    if _text(confidence) and str(confidence) not in CONFIDENCE_VALUES:
+        errors.append(f"confidence has unsupported value: {confidence}")
+
+    row = case_to_xlsx_row(case)
+    for field in REQUIRED_XLSX_FIELDS:
+        if not _text(row.get(field)):
+            errors.append(f"{field} is required for xlsx output")
+
+    for field, allowed in STATUS_ENUMS.items():
+        value = metadata.get(field)
+        if _text(value) and str(value) not in allowed:
+            errors.append(f"{field} has unsupported value: {value}")
+
+    return errors
+
+
+def validate_rows(rows: list[dict[str, str]]) -> list[str]:
+    errors: list[str] = []
+    for index, row in enumerate(rows, start=2):
+        for field in REQUIRED_XLSX_FIELDS:
+            if not _text(row.get(field)):
+                errors.append(f"row {index}: {field} is required")
+        for field, allowed in STATUS_ENUMS.items():
+            value = row.get(field)
+            if _text(value) and value not in allowed:
+                errors.append(f"row {index}: {field} has unsupported value: {value}")
+    return errors
+
+
+def case_to_xlsx_row(case: dict[str, Any]) -> dict[str, str]:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    flag = case.get("flag") if isinstance(case.get("flag"), dict) else {}
+    row = {field: _string(metadata.get(field, "")) for field in XLSX_FIELDS}
+    row["Flag"] = _string(flag.get("value") or metadata.get("Flag") or row["Flag"])
+    row["Flag类型"] = _string(metadata.get("Flag类型") or flag.get("type") or row["Flag类型"])
+    return row
+
+
+def load_cases(path: str | Path) -> list[dict[str, Any]]:
+    source = Path(path)
+    text = source.read_text(encoding="utf-8")
+    if source.suffix.lower() == ".jsonl":
+        cases = []
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{source}:{line_number}: invalid JSON: {exc}") from exc
+            if not isinstance(value, dict):
+                raise ValueError(f"{source}:{line_number}: JSONL item must be an object")
+            cases.append(value)
+        return cases
+
+    value = json.loads(text)
+    if isinstance(value, list):
+        if not all(isinstance(item, dict) for item in value):
+            raise ValueError(f"{source}: all JSON array items must be objects")
+        return value
+    if isinstance(value, dict):
+        return [value]
+    raise ValueError(f"{source}: expected object, array, or JSONL")
+
+
+def write_xlsx(cases: list[dict[str, Any]], path: str | Path) -> None:
+    rows = [case_to_xlsx_row(case) for case in cases]
+    write_rows_xlsx(rows, path)
+
+
+def write_rows_xlsx(rows: list[dict[str, Any]], path: str | Path) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    matrix = [XLSX_FIELDS]
+    for row in rows:
+        matrix.append([_string(row.get(field, "")) for field in XLSX_FIELDS])
+
+    sheet_xml = _worksheet_xml(matrix)
+    files = {
+        "[Content_Types].xml": _content_types_xml(),
+        "_rels/.rels": _root_rels_xml(),
+        "xl/workbook.xml": _workbook_xml(),
+        "xl/_rels/workbook.xml.rels": _workbook_rels_xml(),
+        "xl/worksheets/sheet1.xml": sheet_xml,
+        "docProps/core.xml": _core_xml(),
+        "docProps/app.xml": _app_xml(),
+    }
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+
+
+def read_xlsx(path: str | Path) -> list[dict[str, str]]:
+    matrix = _read_xlsx_matrix(Path(path))
+    if not matrix:
+        return []
+    headers = [cell.strip() for cell in matrix[0]]
+    rows: list[dict[str, str]] = []
+    for raw_row in matrix[1:]:
+        if not any(_text(cell) for cell in raw_row):
+            continue
+        row = {}
+        for index, header in enumerate(headers):
+            if not header:
+                continue
+            row[header] = raw_row[index] if index < len(raw_row) else ""
+        for field in XLSX_FIELDS:
+            row.setdefault(field, "")
+        rows.append({field: row.get(field, "") for field in XLSX_FIELDS})
+    return rows
+
+
+def summarize_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    rows = [case_to_xlsx_row(case) for case in cases]
+    missing = {
+        field: sum(1 for row in rows if not _text(row.get(field)))
+        for field in REQUIRED_XLSX_FIELDS
+    }
+    validation_status = Counter(row.get("验证状态", "") or "未填写" for row in rows)
+    archive_status = Counter(row.get("是否归档", "") or "未填写" for row in rows)
+    return {
+        "total": len(cases),
+        "by_validation_status": dict(validation_status),
+        "by_archive_status": dict(archive_status),
+        "missing_required_fields": missing,
+    }
+
+
+def _read_xlsx_matrix(path: Path) -> list[list[str]]:
+    with zipfile.ZipFile(path) as archive:
+        shared_strings = _read_shared_strings(archive)
+        sheet_name = _first_sheet_path(archive)
+        root = ET.fromstring(archive.read(sheet_name))
+
+    rows: list[list[str]] = []
+    for row_node in root.findall(f".//{{{NS_MAIN}}}sheetData/{{{NS_MAIN}}}row"):
+        values: dict[int, str] = {}
+        max_col = 0
+        for cell in row_node.findall(f"{{{NS_MAIN}}}c"):
+            ref = cell.attrib.get("r", "")
+            col = _column_index(ref)
+            if col < 1:
+                col = max_col + 1
+            max_col = max(max_col, col)
+            values[col] = _cell_value(cell, shared_strings)
+        rows.append([values.get(col, "") for col in range(1, max_col + 1)])
+    return rows
+
+
+def _read_shared_strings(archive: zipfile.ZipFile) -> list[str]:
+    if "xl/sharedStrings.xml" not in archive.namelist():
+        return []
+    root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+    values = []
+    for item in root.findall(f"{{{NS_MAIN}}}si"):
+        texts = [node.text or "" for node in item.findall(f".//{{{NS_MAIN}}}t")]
+        values.append("".join(texts))
+    return values
+
+
+def _first_sheet_path(archive: zipfile.ZipFile) -> str:
+    workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+    first_sheet = workbook.find(f".//{{{NS_MAIN}}}sheet")
+    if first_sheet is None:
+        raise ValueError("workbook has no sheets")
+    rel_id = first_sheet.attrib.get(f"{{{NS_REL}}}id")
+    rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+    for rel in rels.findall(f"{{{NS_PACKAGE_REL}}}Relationship"):
+        if rel.attrib.get("Id") == rel_id:
+            target = rel.attrib["Target"]
+            return "xl/" + target.lstrip("/")
+    return "xl/worksheets/sheet1.xml"
+
+
+def _cell_value(cell: ET.Element, shared_strings: list[str]) -> str:
+    cell_type = cell.attrib.get("t")
+    if cell_type == "inlineStr":
+        texts = [node.text or "" for node in cell.findall(f".//{{{NS_MAIN}}}t")]
+        return "".join(texts)
+    value_node = cell.find(f"{{{NS_MAIN}}}v")
+    value = value_node.text if value_node is not None and value_node.text is not None else ""
+    if cell_type == "s" and value:
+        index = int(value)
+        return shared_strings[index] if index < len(shared_strings) else ""
+    return value
+
+
+def _worksheet_xml(matrix: list[list[str]]) -> str:
+    row_xml = []
+    for row_index, row in enumerate(matrix, start=1):
+        cell_xml = []
+        for col_index, value in enumerate(row, start=1):
+            ref = f"{_column_name(col_index)}{row_index}"
+            cell_xml.append(
+                f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">'
+                f"{_xml_escape(value)}</t></is></c>"
+            )
+        row_xml.append(f'<row r="{row_index}">{"".join(cell_xml)}</row>')
+    last_ref = f"{_column_name(len(matrix[0]))}{len(matrix)}" if matrix else "A1"
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<worksheet xmlns="{NS_MAIN}" xmlns:r="{NS_REL}">'
+        f'<dimension ref="A1:{last_ref}"/>'
+        f'<sheetData>{"".join(row_xml)}</sheetData>'
+        "</worksheet>"
+    )
+
+
+def _content_types_xml() -> str:
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>"""
+
+
+def _root_rels_xml() -> str:
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>"""
+
+
+def _workbook_xml() -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<workbook xmlns="{NS_MAIN}" xmlns:r="{NS_REL}">'
+        '<sheets><sheet name="归档表" sheetId="1" r:id="rId1"/></sheets>'
+        "</workbook>"
+    )
+
+
+def _workbook_rels_xml() -> str:
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>"""
+
+
+def _core_xml() -> str:
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+ xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <dc:creator>CloverSec CTF ForExample</dc:creator>
+</cp:coreProperties>"""
+
+
+def _app_xml() -> str:
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+ xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>CloverSec CTF ForExample</Application>
+</Properties>"""
+
+
+def _column_name(index: int) -> str:
+    name = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
+def _column_index(cell_ref: str) -> int:
+    match = re.match(r"([A-Z]+)", cell_ref.upper())
+    if not match:
+        return 0
+    value = 0
+    for char in match.group(1):
+        value = value * 26 + ord(char) - 64
+    return value
+
+
+def _xml_escape(value: Any) -> str:
+    return (
+        _string(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _string(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _text(value: Any) -> bool:
+    return bool(_string(value).strip())
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="CloverSec CTF data model utilities")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    validate_parser = subparsers.add_parser("validate-json", help="validate ctf_case JSON or JSONL")
+    validate_parser.add_argument("input")
+
+    export_parser = subparsers.add_parser("export-xlsx", help="export JSON/JSONL cases to xlsx")
+    export_parser.add_argument("input")
+    export_parser.add_argument("output")
+
+    import_parser = subparsers.add_parser("import-xlsx", help="read xlsx and emit JSON rows")
+    import_parser.add_argument("input")
+    import_parser.add_argument("--output-jsonl")
+
+    summary_parser = subparsers.add_parser("summary", help="summarize JSON/JSONL cases")
+    summary_parser.add_argument("input")
+
+    args = parser.parse_args(argv)
+
+    if args.command == "validate-json":
+        cases = load_cases(args.input)
+        errors = []
+        for index, case in enumerate(cases, start=1):
+            for error in validate_case(case):
+                errors.append(f"case {index}: {error}")
+        if errors:
+            print("\n".join(errors), file=sys.stderr)
+            return 1
+        print(f"validated {len(cases)} case(s)")
+        return 0
+
+    if args.command == "export-xlsx":
+        cases = load_cases(args.input)
+        all_errors = []
+        for index, case in enumerate(cases, start=1):
+            for error in validate_case(case):
+                all_errors.append(f"case {index}: {error}")
+        if all_errors:
+            print("\n".join(all_errors), file=sys.stderr)
+            return 1
+        write_xlsx(cases, args.output)
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "import-xlsx":
+        rows = read_xlsx(args.input)
+        errors = validate_rows(rows)
+        if errors:
+            print("\n".join(errors), file=sys.stderr)
+            return 1
+        if args.output_jsonl:
+            output = Path(args.output_jsonl)
+            output.write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+            print(f"wrote {output}")
+        else:
+            print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "summary":
+        cases = load_cases(args.input)
+        print(json.dumps(summarize_cases(cases), ensure_ascii=False, indent=2))
+        return 0
+
+    parser.error("unknown command")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

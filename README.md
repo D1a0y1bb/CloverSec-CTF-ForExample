@@ -26,5 +26,16 @@ plugins/cloversec-ctf-forexample/
 ```bash
 python3 /Users/d1a0y1bb/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/cloversec-ctf-forexample
 python3 /Users/d1a0y1bb/.codex/skills/.system/skill-creator/scripts/quick_validate.py plugins/cloversec-ctf-forexample/skills/cloversec-ctf-research-intake
+python3 -m unittest tests.test_data_model
 ```
 
+## 数据模型脚本
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl archive.xlsx
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx archive.xlsx
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py summary ctf_cases.jsonl
+```
+
+脚本只使用 Python 标准库。`export-xlsx` 会把完整 `Flag` 写入 xlsx 的 `Flag` 列。

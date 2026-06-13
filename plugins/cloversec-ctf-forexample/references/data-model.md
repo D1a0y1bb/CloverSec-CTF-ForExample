@@ -63,6 +63,19 @@
 
 `Flag` 是 xlsx 必填字段。脚本在日志、错误输出、公开报告中避免打印完整 Flag。
 
+## 脚本入口
+
+统一数据模型脚本：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl archive.xlsx
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx archive.xlsx
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py summary ctf_cases.jsonl
+```
+
+脚本只使用 Python 标准库，方便随 plugin 分发。
+
 ## 状态值
 
 - `材料状态`：`未开始`、`收集中`、`已收集`、`缺材料`、`无法确认`
@@ -71,4 +84,3 @@
 - `验证状态`：`未验证`、`部分通过`、`通过`、`失败`
 - `是否归档`：`是`、`否`
 - `是否通过`：`是`、`否`
-
