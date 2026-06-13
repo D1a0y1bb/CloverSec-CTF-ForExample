@@ -1,6 +1,6 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CloverSec CTF collection, conversion, writeup, archive, review, and Hub submission workflows for Codex.",
   "author": {
     "name": "CloverSec",

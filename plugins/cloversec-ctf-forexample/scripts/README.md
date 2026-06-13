@@ -45,11 +45,16 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discove
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py fetch-url https://example.com/writeup --output fetched_url.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-url https://example.com/challenge.zip --output-dir downloads --output downloaded_asset.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-from-manifest --manifest search_results.json --output-dir downloads --output asset_downloads.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py github-release-assets --repo owner/repo --output github_release_assets.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-github-release-assets --repo owner/repo --output-dir downloads --output release_downloads.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-github-raw https://github.com/owner/repo/blob/main/path/file.zip --output-dir downloads --output raw_download.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-github-tree --repo owner/repo --ref main --path-prefix challenges --output-dir downloads --output tree_downloads.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py preview-archive downloads/challenge.zip --output archive_preview.json
 ```
 
 可选环境变量：
 
-- `GITHUB_TOKEN` 或 `GH_TOKEN`
+- `GITHUB_TOKEN` 或 `GH_TOKEN`，未设置时会尝试读取本机 `gh auth token`
 - `BRAVE_SEARCH_API_KEY` 或 `CLOVERSEC_BRAVE_API_KEY`
 - `BING_SEARCH_API_KEY` 或 `CLOVERSEC_BING_API_KEY`
 
@@ -57,6 +62,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py downloa
 `--source github` 会先做无需 key 的 GitHub repository search；没有 `GITHUB_TOKEN` 时，只会把增强项 `github-code` 记录为 skipped。
 也可以单独传 `--source github-code`，用于只跑 GitHub code search。
 抓取和下载只支持 `http://`、`https://` URL；HTTP 4xx/5xx 响应不会作为成功附件写入下载目录。
+GitHub 专用入口支持 Release asset、blob/raw 文件、目录树下载。目录树下载默认保留相对路径；`--asset-only` 只下载常见附件、文档和图片后缀。
+`preview-archive` 只预览 zip/tar，记录文件清单和路径穿越风险，不解压文件。
 
 ## MCP server
 
@@ -65,6 +72,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py downloa
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
 - `cloversec_ctf_fetch_url`
+- `cloversec_ctf_github_release_assets`
 
 ## `cloversec_ctf_build.py`
 

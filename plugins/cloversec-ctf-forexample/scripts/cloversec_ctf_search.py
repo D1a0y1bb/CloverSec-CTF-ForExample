@@ -8,14 +8,17 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
+import tarfile
 import time
+import zipfile
 from datetime import datetime, timezone
 from html import unescape
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 
@@ -108,6 +111,248 @@ DIRECT_ASSET_EXTENSIONS = {
 }
 
 
+def parse_github_repo(value: str) -> tuple[str, str]:
+    cleaned = value.strip()
+    if re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", cleaned):
+        owner, repo = cleaned.split("/", 1)
+        return owner, repo.removesuffix(".git")
+    parsed = urlparse(cleaned)
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        raise ValueError("GitHub repo must be owner/repo or a github.com URL")
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2:
+        raise ValueError("GitHub URL must include owner and repo")
+    return parts[0], parts[1].removesuffix(".git")
+
+
+def github_blob_to_raw_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.netloc.lower() == "raw.githubusercontent.com":
+        return url
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        raise ValueError("expected github.com or raw.githubusercontent.com URL")
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 5 or parts[2] != "blob":
+        raise ValueError("expected GitHub blob URL")
+    owner, repo, _, ref = parts[:4]
+    file_path = "/".join(quote(part) for part in parts[4:])
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/{quote(ref)}/{file_path}"
+
+
+def github_release_assets(repo: str, *, limit: int = 30) -> list[dict[str, Any]]:
+    owner, repo_name = parse_github_repo(repo)
+    payload = github_json(f"/repos/{owner}/{repo_name}/releases", params={"per_page": str(min(max(limit, 1), 100))})
+    releases = payload if isinstance(payload, list) else []
+    results = []
+    for release in releases:
+        if not isinstance(release, dict):
+            continue
+        tag = str(release.get("tag_name") or "")
+        release_name = str(release.get("name") or tag)
+        for asset in release.get("assets", []):
+            if not isinstance(asset, dict):
+                continue
+            url = str(asset.get("browser_download_url") or "")
+            name = str(asset.get("name") or Path(urlparse(url).path).name)
+            if not url or not name:
+                continue
+            results.append(
+                normalize_result(
+                    provider="github-release",
+                    kind="release_asset",
+                    title=f"{owner}/{repo_name} {tag} {name}".strip(),
+                    url=url,
+                    summary=f"GitHub Release asset from {release_name}".strip(),
+                    source_type="github",
+                    confidence="high",
+                    metadata={
+                        "repository": f"{owner}/{repo_name}",
+                        "release": release_name,
+                        "tag": tag,
+                        "asset_name": name,
+                        "size": asset.get("size", 0),
+                        "content_type": asset.get("content_type", ""),
+                        "download_count": asset.get("download_count", 0),
+                    },
+                )
+            )
+            if len(results) >= limit:
+                return results
+    return results
+
+
+def download_github_release_assets(
+    repo: str,
+    output_dir: str | Path,
+    *,
+    max_files: int = 10,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    pattern: str = "",
+) -> dict[str, Any]:
+    downloads = []
+    issues = []
+    matcher = re.compile(pattern, flags=re.I) if pattern else None
+    for item in github_release_assets(repo, limit=max(max_files * 3, max_files)):
+        if len(downloads) >= max_files:
+            break
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        name = str(metadata.get("asset_name") or Path(urlparse(str(item.get("url") or "")).path).name)
+        if matcher and not matcher.search(name):
+            continue
+        try:
+            record = download_url(str(item["url"]), output_dir, max_bytes=max_bytes, filename=name)
+            record["github"] = metadata
+            if record.get("error"):
+                issues.append(record)
+            else:
+                downloads.append(record)
+        except Exception as exc:  # noqa: BLE001
+            issues.append({"url": str(item.get("url") or ""), "error": str(exc), "name": name})
+    return {
+        "generated_at": utc_now(),
+        "repository": normalize_repo_name(repo),
+        "output_dir": Path(output_dir).as_posix(),
+        "downloads": downloads,
+        "issues": issues,
+        "summary": {"downloaded": len(downloads), "issues": len(issues)},
+    }
+
+
+def github_tree_files(repo: str, *, ref: str = "main", path_prefix: str = "", limit: int = 200) -> list[dict[str, Any]]:
+    owner, repo_name = parse_github_repo(repo)
+    payload = github_json(f"/repos/{owner}/{repo_name}/git/trees/{quote(ref, safe='')}", params={"recursive": "1"})
+    tree = payload.get("tree", []) if isinstance(payload, dict) else []
+    prefix = path_prefix.strip("/")
+    results = []
+    for item in tree:
+        if not isinstance(item, dict) or item.get("type") != "blob":
+            continue
+        file_path = str(item.get("path") or "")
+        if prefix and file_path != prefix and not file_path.startswith(prefix + "/"):
+            continue
+        raw_url = github_raw_file_url(owner, repo_name, ref, file_path)
+        results.append(
+            normalize_result(
+                provider="github-tree",
+                kind="raw_file",
+                title=f"{owner}/{repo_name}/{file_path}",
+                url=f"https://github.com/{owner}/{repo_name}/blob/{quote(ref)}/{quote(file_path)}",
+                summary="GitHub repository file from recursive tree",
+                source_type="github",
+                confidence="high",
+                metadata={
+                    "repository": f"{owner}/{repo_name}",
+                    "ref": ref,
+                    "path": file_path,
+                    "raw_url": raw_url,
+                    "size": item.get("size", 0),
+                    "sha": item.get("sha", ""),
+                },
+            )
+        )
+        if len(results) >= limit:
+            break
+    return results
+
+
+def download_github_tree(
+    repo: str,
+    output_dir: str | Path,
+    *,
+    ref: str = "main",
+    path_prefix: str = "",
+    max_files: int = 30,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    asset_only: bool = False,
+) -> dict[str, Any]:
+    downloads = []
+    issues = []
+    output = Path(output_dir)
+    prefix = path_prefix.strip("/")
+    candidates = github_tree_files(repo, ref=ref, path_prefix=prefix, limit=max_files * 3)
+    for item in candidates:
+        if len(downloads) >= max_files:
+            break
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        file_path = str(metadata.get("path") or "")
+        raw_url = str(metadata.get("raw_url") or "")
+        if asset_only and not looks_direct_asset_url(raw_url):
+            continue
+        try:
+            relative = relative_tree_output_path(file_path, prefix)
+            target_dir = output / relative.parent
+            record = download_url(raw_url, target_dir, max_bytes=max_bytes, filename=relative.name)
+            record["github"] = metadata
+            if record.get("error"):
+                issues.append(record)
+            else:
+                downloads.append(record)
+        except Exception as exc:  # noqa: BLE001
+            issues.append({"url": raw_url, "path": file_path, "error": str(exc)})
+    return {
+        "generated_at": utc_now(),
+        "repository": normalize_repo_name(repo),
+        "ref": ref,
+        "path_prefix": prefix,
+        "output_dir": output.as_posix(),
+        "downloads": downloads,
+        "issues": issues,
+        "summary": {"downloaded": len(downloads), "issues": len(issues)},
+    }
+
+
+def preview_archive(path: str | Path, *, max_entries: int = 200) -> dict[str, Any]:
+    archive_path = Path(path)
+    if not archive_path.exists():
+        raise FileNotFoundError(archive_path)
+    if not archive_path.is_file():
+        raise ValueError(f"archive path is not a file: {archive_path}")
+    entries: list[dict[str, Any]] = []
+    issues: list[dict[str, str]] = []
+    archive_type = "unknown"
+    total_uncompressed = 0
+    if zipfile.is_zipfile(archive_path):
+        archive_type = "zip"
+        with zipfile.ZipFile(archive_path) as archive:
+            for info in archive.infolist()[:max_entries]:
+                entry = archive_entry_record(info.filename, info.file_size, info.is_dir())
+                entries.append(entry)
+                total_uncompressed += info.file_size
+                if entry["unsafe_path"]:
+                    issues.append({"path": info.filename, "error": "unsafe archive path"})
+    elif tarfile.is_tarfile(archive_path):
+        archive_type = "tar"
+        with tarfile.open(archive_path) as archive:
+            for member in archive.getmembers()[:max_entries]:
+                entry = archive_entry_record(member.name, int(member.size or 0), member.isdir())
+                entries.append(entry)
+                total_uncompressed += int(member.size or 0)
+                if entry["unsafe_path"]:
+                    issues.append({"path": member.name, "error": "unsafe archive path"})
+    else:
+        suffix = archive_path.suffix.lower()
+        if suffix in {".7z", ".rar"}:
+            archive_type = suffix.lstrip(".")
+            issues.append({"path": archive_path.name, "error": f"{archive_type} preview is not supported by stdlib"})
+        else:
+            issues.append({"path": archive_path.name, "error": "unsupported archive type"})
+    return {
+        "generated_at": utc_now(),
+        "path": archive_path.as_posix(),
+        "archive_type": archive_type,
+        "size": archive_path.stat().st_size,
+        "sha256": sha256_file(archive_path),
+        "entries": entries,
+        "issues": issues,
+        "summary": {
+            "entries": len(entries),
+            "issues": len(issues),
+            "total_uncompressed": total_uncompressed,
+            "truncated": len(entries) >= max_entries,
+        },
+    }
+
+
 def discover(
     query: str,
     *,
@@ -196,9 +441,9 @@ def search_github_repositories(query: str, *, limit: int = 20) -> list[dict[str,
 
 
 def search_github_code(query: str, *, limit: int = 10) -> list[dict[str, Any]]:
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    token = github_token()
     if not token:
-        raise SearchSkipped("GITHUB_TOKEN/GH_TOKEN not set; GitHub code search skipped")
+        raise SearchSkipped("GITHUB_TOKEN/GH_TOKEN or gh auth not available; GitHub code search skipped")
     params = {
         "q": f"{query} ctf filename:README OR filename:writeup OR filename:wp",
         "per_page": str(min(max(limit, 1), 50)),
@@ -546,13 +791,73 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     return cases
 
 
+def normalize_repo_name(repo: str) -> str:
+    owner, repo_name = parse_github_repo(repo)
+    return f"{owner}/{repo_name}"
+
+
+def github_raw_file_url(owner: str, repo: str, ref: str, path: str) -> str:
+    encoded_path = "/".join(quote(part) for part in path.split("/"))
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/{quote(ref)}/{encoded_path}"
+
+
+def relative_tree_output_path(file_path: str, prefix: str = "") -> Path:
+    cleaned = file_path.strip("/")
+    base = prefix.strip("/")
+    if base and (cleaned == base or cleaned.startswith(base + "/")):
+        cleaned = cleaned[len(base) :].strip("/")
+    parts = [part for part in cleaned.split("/") if part]
+    if not parts or any(part in {"..", "."} for part in parts):
+        raise ValueError(f"unsafe GitHub tree path: {file_path}")
+    return Path(*[safe_filename(part) for part in parts])
+
+
+def archive_entry_record(name: str, size: int, is_dir: bool) -> dict[str, Any]:
+    return {
+        "path": name,
+        "name": Path(name).name,
+        "size": size,
+        "is_dir": is_dir,
+        "unsafe_path": is_unsafe_archive_path(name),
+    }
+
+
+def is_unsafe_archive_path(name: str) -> bool:
+    path = Path(name)
+    return path.is_absolute() or any(part in {"..", ""} for part in path.parts)
+
+
 def github_json(path: str, *, params: dict[str, Any]) -> Any:
     url = "https://api.github.com" + path + "?" + urlencode(params)
-    headers = {"Accept": "application/vnd.github+json"}
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    token = github_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    return http_json(url, headers=headers)
+    payload = http_json(url, headers=headers)
+    if isinstance(payload, dict) and payload.get("message") and payload.get("documentation_url"):
+        raise RuntimeError(f"GitHub API error: {payload.get('message')}")
+    return payload
+
+
+def github_token() -> str:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        return token
+    if os.environ.get("CLOVERSEC_NO_GH_AUTH"):
+        return ""
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
 
 
 def http_json(url: str, *, headers: dict[str, str] | None = None, timeout: int = DEFAULT_TIMEOUT) -> Any:
@@ -774,6 +1079,41 @@ def main(argv: list[str] | None = None) -> int:
     download_manifest_parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
     download_manifest_parser.add_argument("--output", required=True)
 
+    release_assets_parser = subparsers.add_parser("github-release-assets", help="list GitHub release downloadable assets")
+    release_assets_parser.add_argument("--repo", required=True, help="owner/repo or github.com URL")
+    release_assets_parser.add_argument("--limit", type=int, default=30)
+    release_assets_parser.add_argument("--output", required=True)
+
+    download_release_parser = subparsers.add_parser("download-github-release-assets", help="download GitHub release assets")
+    download_release_parser.add_argument("--repo", required=True, help="owner/repo or github.com URL")
+    download_release_parser.add_argument("--output-dir", required=True)
+    download_release_parser.add_argument("--max-files", type=int, default=10)
+    download_release_parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
+    download_release_parser.add_argument("--pattern", default="")
+    download_release_parser.add_argument("--output", required=True)
+
+    raw_parser = subparsers.add_parser("download-github-raw", help="download one GitHub blob/raw URL")
+    raw_parser.add_argument("url")
+    raw_parser.add_argument("--output-dir", required=True)
+    raw_parser.add_argument("--filename")
+    raw_parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
+    raw_parser.add_argument("--output", required=True)
+
+    tree_parser = subparsers.add_parser("download-github-tree", help="download files from a GitHub repository tree")
+    tree_parser.add_argument("--repo", required=True, help="owner/repo or github.com URL")
+    tree_parser.add_argument("--ref", default="main")
+    tree_parser.add_argument("--path-prefix", default="")
+    tree_parser.add_argument("--output-dir", required=True)
+    tree_parser.add_argument("--max-files", type=int, default=30)
+    tree_parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
+    tree_parser.add_argument("--asset-only", action="store_true")
+    tree_parser.add_argument("--output", required=True)
+
+    preview_parser = subparsers.add_parser("preview-archive", help="preview zip/tar archive entries without extraction")
+    preview_parser.add_argument("archive")
+    preview_parser.add_argument("--max-entries", type=int, default=200)
+    preview_parser.add_argument("--output", required=True)
+
     cases_parser = subparsers.add_parser("results-to-cases", help="convert search results to ctf_cases.jsonl draft")
     cases_parser.add_argument("--manifest", required=True)
     cases_parser.add_argument("--output", required=True)
@@ -815,6 +1155,57 @@ def main(argv: list[str] | None = None) -> int:
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
         payload = download_from_manifest(manifest, args.output_dir, max_files=args.max_files, max_bytes=args.max_bytes)
         write_json(args.output, payload)
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "github-release-assets":
+        payload = {
+            "repository": normalize_repo_name(args.repo),
+            "generated_at": utc_now(),
+            "results": github_release_assets(args.repo, limit=args.limit),
+        }
+        payload["summary"] = {"total_results": len(payload["results"])}
+        write_json(args.output, payload)
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "download-github-release-assets":
+        payload = download_github_release_assets(
+            args.repo,
+            args.output_dir,
+            max_files=args.max_files,
+            max_bytes=args.max_bytes,
+            pattern=args.pattern,
+        )
+        write_json(args.output, payload)
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "download-github-raw":
+        raw_url = github_blob_to_raw_url(args.url)
+        payload = download_url(raw_url, args.output_dir, max_bytes=args.max_bytes, filename=args.filename)
+        payload["source_url"] = args.url
+        payload["raw_url"] = raw_url
+        write_json(args.output, payload)
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "download-github-tree":
+        payload = download_github_tree(
+            args.repo,
+            args.output_dir,
+            ref=args.ref,
+            path_prefix=args.path_prefix,
+            max_files=args.max_files,
+            max_bytes=args.max_bytes,
+            asset_only=args.asset_only,
+        )
+        write_json(args.output, payload)
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "preview-archive":
+        write_json(args.output, preview_archive(args.archive, max_entries=args.max_entries))
         print(f"wrote {args.output}")
         return 0
 

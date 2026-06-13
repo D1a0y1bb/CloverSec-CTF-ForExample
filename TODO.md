@@ -70,7 +70,8 @@
 - [ ] 对 `cloversec-ctf-research-intake` 做更多真实公网样例验收：CTFTime、GitHub archive、具体赛事 writeup、直接附件 URL。
 - [ ] 用户提供 key 后，验收 GitHub code search、Brave Search、Bing Search 的真实返回质量。
 - [ ] 插件重新安装后，在新的 Codex 会话确认 `cloversec-ctf-search` MCP 工具是否直接暴露给 Agent。
-- [ ] 对 `cloversec-ctf-asset-collector` 增加 GitHub release asset、raw 文件、目录树下载和压缩包内容预览。
+- [x] 对 `cloversec-ctf-asset-collector` 增加 GitHub release asset、raw 文件、目录树下载和压缩包内容预览。
+- [x] 对 GitHub release asset、raw 文件、目录树下载和 zip 预览做真实公网烟测。
 - [ ] 为 `cloversec-ctf-quality-review` 增加受控 Docker 执行模式：load、inspect、run、端口探测、停止容器、记录执行证据。
 - [ ] 为 `cloversec-ctf-hub-retag` 增加受控执行模式：tag、save、load、inspect、amd64 校验、hash 记录。
 - [ ] 设计 Hub 浏览器辅助填表方案：只使用用户当前登录态，不读取或保存 Cookie、token、localStorage、sessionStorage。

@@ -57,6 +57,18 @@ TOOLS = [
             "required": ["year"],
         },
     },
+    {
+        "name": "cloversec_ctf_github_release_assets",
+        "description": "List downloadable assets from GitHub Releases for a repository.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            },
+            "required": ["repo"],
+        },
+    },
 ]
 
 
@@ -70,7 +82,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-search", "version": "0.1.0"},
+                    "serverInfo": {"name": "cloversec-ctf-search", "version": "0.1.2"},
                 },
             )
         if method == "tools/list":
@@ -106,6 +118,11 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
                 query=str(arguments.get("query", "")),
                 limit=int(arguments.get("limit", 100)),
             ),
+        }
+    if name == "cloversec_ctf_github_release_assets":
+        return {
+            "repository": search.normalize_repo_name(str(arguments.get("repo", ""))),
+            "results": search.github_release_assets(str(arguments.get("repo", "")), limit=int(arguments.get("limit", 30))),
         }
     raise ValueError(f"unknown tool: {name}")
 

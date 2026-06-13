@@ -27,11 +27,12 @@ description: CloverSec CTF 题目附件、源码、WP、复现资料收集 skill
 ## 工作流程
 
 1. 读取赛题清单或 `search_results.json`，按题目建立材料目录。
-2. 把 GitHub repo、CTFTime writeup、公开归档、直接附件 URL 分开记录。
+2. 把 GitHub repo、GitHub Release asset、GitHub raw/blob、CTFTime writeup、公开归档、直接附件 URL 分开记录。
 3. 只自动下载直接文件 URL，例如 `.zip`、`.tar.gz`、`.pdf`、`.md`、图片；网盘、登录页、未知动态页面只记录来源。
 4. 对下载文件计算 SHA256，记录大小、content-type 和来源 URL。
 5. 对 HTTP 4xx/5xx、失败下载、失效链接、疑似错题材料标记问题，不把错误页写成成功附件。
-6. 输出材料清单给下游 skill 使用。
+6. 对 zip/tar 附件先用 `preview-archive` 生成目录预览，检查路径穿越和文件清单。
+7. 输出材料清单给下游 skill 使用。
 
 ## 脚本入口
 
@@ -51,6 +52,45 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py downloa
   --output-dir downloads \
   --max-files 10 \
   --output asset_downloads.json
+```
+
+GitHub Release 附件：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py github-release-assets \
+  --repo owner/repo \
+  --output github_release_assets.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-github-release-assets \
+  --repo owner/repo \
+  --output-dir downloads \
+  --max-files 10 \
+  --output release_downloads.json
+```
+
+GitHub raw/blob 文件和目录树：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-github-raw \
+  https://github.com/owner/repo/blob/main/path/challenge.zip \
+  --output-dir downloads \
+  --output raw_download.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-github-tree \
+  --repo owner/repo \
+  --ref main \
+  --path-prefix challenges \
+  --output-dir downloads \
+  --asset-only \
+  --output tree_downloads.json
+```
+
+压缩包预览：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py preview-archive \
+  downloads/challenge.zip \
+  --output archive_preview.json
 ```
 
 抓取单个 URL：
@@ -74,6 +114,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py asset-
 - 远程材料未下载时，不能写成已收集；必须保留 `source_url` 和失败原因。
 - 题目名称、赛事来源和附件名称不一致时，写入风险项。
 - 下载文件超过上限、HTTP 失败、content-type 可疑时，写入 `issues`。
+- GitHub 目录树下载保留相对路径，遇到异常路径或下载失败写入 `issues`。
+- zip/tar 预览发现路径穿越时，禁止直接进入归档交付流程。
 
 ## 停止条件
 

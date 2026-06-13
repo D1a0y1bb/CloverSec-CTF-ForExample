@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import zipfile
 from unittest import mock
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -120,6 +121,83 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["provider_counts"]["github"], 1)
         self.assertEqual(payload["errors"][0]["provider"], "github-code")
         self.assertEqual(payload["errors"][0]["status"], "skipped")
+
+    def test_github_release_assets_extracts_download_urls(self):
+        payload = [
+            {
+                "tag_name": "v1.0.0",
+                "name": "Release v1",
+                "assets": [
+                    {
+                        "name": "challenge.zip",
+                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.0.0/challenge.zip",
+                        "size": 123,
+                        "content_type": "application/zip",
+                        "download_count": 7,
+                    }
+                ],
+            }
+        ]
+
+        with mock.patch.object(search, "github_json", return_value=payload):
+            results = search.github_release_assets("example/repo")
+
+        self.assertEqual(results[0]["provider"], "github-release")
+        self.assertEqual(results[0]["metadata"]["asset_name"], "challenge.zip")
+        self.assertEqual(results[0]["metadata"]["tag"], "v1.0.0")
+
+    def test_github_blob_to_raw_url(self):
+        raw_url = search.github_blob_to_raw_url("https://github.com/example/repo/blob/main/challenges/web/app.py")
+
+        self.assertEqual(raw_url, "https://raw.githubusercontent.com/example/repo/main/challenges/web/app.py")
+
+    def test_download_github_tree_preserves_relative_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "challenge.zip").write_bytes(b"zip bytes")
+            with LocalServer(root) as server:
+                item = search.normalize_result(
+                    provider="github-tree",
+                    kind="raw_file",
+                    title="example/repo/challenges/web/challenge.zip",
+                    url="https://github.com/example/repo/blob/main/challenges/web/challenge.zip",
+                    summary="GitHub repository file from recursive tree",
+                    source_type="github",
+                    confidence="high",
+                    metadata={
+                        "repository": "example/repo",
+                        "ref": "main",
+                        "path": "challenges/web/challenge.zip",
+                        "raw_url": f"{server.url}/challenge.zip",
+                    },
+                )
+                with mock.patch.object(search, "github_tree_files", return_value=[item]):
+                    result = search.download_github_tree(
+                        "example/repo",
+                        root / "downloads",
+                        ref="main",
+                        path_prefix="challenges",
+                        max_files=5,
+                    )
+
+            self.assertEqual(result["summary"]["downloaded"], 1)
+            local_path = Path(result["downloads"][0]["local_path"])
+            self.assertEqual(local_path.name, "challenge.zip")
+            self.assertEqual(local_path.parent.name, "web")
+            self.assertTrue(local_path.exists())
+
+    def test_preview_archive_flags_unsafe_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "challenge.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("safe/readme.txt", "ok")
+                archive.writestr("../evil.txt", "bad")
+
+            preview = search.preview_archive(archive_path)
+
+        self.assertEqual(preview["archive_type"], "zip")
+        self.assertEqual(preview["summary"]["issues"], 1)
+        self.assertTrue(any(entry["unsafe_path"] for entry in preview["entries"]))
 
     def test_mcp_tools_list_and_discover(self):
         process = subprocess.Popen(
