@@ -186,6 +186,16 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package \
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py browser-plan \
   --manifest hub_submission_package/manifests/upload_manifest.json \
   --output hub_submission_package/browser_assist_plan.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py validate-manifest \
+  --manifest hub_submission_package/manifests/upload_manifest.json \
+  --classify-options hub_classify_options.json \
+  --output hub_submission_package/manifests/pre_submit_validation.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-upload-results \
+  --manifest hub_submission_package/manifests/upload_manifest.json \
+  --upload-results hub_upload_results.json \
+  --output hub_submission_package/manifests/upload_manifest.with_uploads.json
 ```
 
 输出目录：
@@ -199,6 +209,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py browser-pl
 - `hub_submission_package/hub_submission_checklist.md`
 
 默认截图槽位固定为 `01-challenge-page.png`、`02-container-running.png`、`03-solve-proof.png`。
+`validate-manifest` 会检查分类 ID、题目内容、题目解答、关键字、上传结果和截图槽位；`apply-upload-results` 只合并显式提供的上传返回 JSON，不读取浏览器 Cookie、token 或 session。
 
 ## `cloversec_ctf_archive.py`
 

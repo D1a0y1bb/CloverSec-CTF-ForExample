@@ -1239,18 +1239,29 @@ def build_query_profile(query: str, *, years: list[int]) -> dict[str, Any]:
         for token in EVENT_TOKEN_RE.findall(lowered)
         if token.lower() not in GENERIC_EVENT_QUERY_TERMS
     }
+    event_phrases = set()
+    event_component_terms = set()
+    for prefix in re.findall(r"\b([a-z0-9][a-z0-9_.-]*)\s+ctf\b", lowered):
+        if prefix.lower() not in GENERIC_EVENT_QUERY_TERMS:
+            cleaned = prefix.strip("._-").lower()
+            event_terms.add(f"{cleaned}ctf")
+            event_phrases.add(f"{cleaned} ctf")
+            event_component_terms.add(cleaned)
     meaningful_terms = {
         token
         for token in tokens
         if len(token) > 1 and token not in GENERIC_EVENT_QUERY_TERMS and token not in year_terms
     }
     categories = {token for token in tokens if token in CATEGORY_TERMS}
+    query_specific_terms = meaningful_terms - event_terms - event_component_terms
     return {
         "query": query,
         "tokens": tokens,
         "event_terms": event_terms,
+        "event_phrases": event_phrases,
         "year_terms": year_terms,
         "meaningful_terms": meaningful_terms,
+        "query_specific_terms": query_specific_terms,
         "categories": categories,
     }
 
@@ -1275,11 +1286,12 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
         return "noise", -100, [], ["search engine, login, or blocked page"]
 
     event_terms: set[str] = set(profile.get("event_terms") or set())
+    event_phrases: set[str] = set(profile.get("event_phrases") or set())
     year_terms: set[str] = set(profile.get("year_terms") or set())
     categories: set[str] = set(profile.get("categories") or set())
 
     if event_terms:
-        if any(term in haystack for term in event_terms):
+        if event_name_matches(haystack, event_terms, event_phrases):
             score += 55
             reasons.append("event name matched")
         else:
@@ -1337,20 +1349,39 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
     if score < 5 or "event name mismatch" in issues:
         layer = "noise"
 
-    if layer == "writeup_candidate" and score >= 85 and event_terms and year_terms and categories:
+    if (
+        layer == "writeup_candidate"
+        and score >= 85
+        and event_terms
+        and year_terms
+        and has_challenge_specific_evidence(haystack, profile)
+    ):
         layer = "confirmed_challenge"
-        reasons.append("strong event/year/category evidence")
+        reasons.append("strong event/year/challenge evidence")
 
     return layer, score, reasons, issues
 
 
+def has_challenge_specific_evidence(haystack: str, profile: dict[str, Any]) -> bool:
+    terms: set[str] = set(profile.get("query_specific_terms") or set())
+    return bool(terms) and all(term in haystack for term in terms)
+
+
+def event_name_matches(haystack: str, event_terms: set[str], event_phrases: set[str]) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "", haystack.lower())
+    if any(term in normalized for term in event_terms):
+        return True
+    return any(phrase in haystack for phrase in event_phrases)
+
+
 def is_same_event_token(token: str, event_terms: set[str]) -> bool:
     normalized = token.strip("._-").lower()
+    condensed = re.sub(r"[^a-z0-9]+", "", normalized)
     for event in event_terms:
         event_name = event.strip("._-").lower()
-        if normalized == event_name:
+        if normalized == event_name or condensed == event_name:
             return True
-        if normalized.startswith(f"{event_name}-") or normalized.startswith(f"{event_name}_") or normalized.startswith(f"{event_name}."):
+        if condensed.startswith(event_name):
             return True
     return False
 

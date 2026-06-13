@@ -38,6 +38,24 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py browser-pl
   --output hub_submission_package/browser_assist_plan.json
 ```
 
+提交前检查分类 ID、必填字段、上传结果和截图槽位：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py validate-manifest \
+  --manifest hub_submission_package/manifests/upload_manifest.json \
+  --classify-options hub_classify_options.json \
+  --output hub_submission_package/manifests/pre_submit_validation.json
+```
+
+页面上传完成后，把上传接口返回结果写回 manifest：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-upload-results \
+  --manifest hub_submission_package/manifests/upload_manifest.json \
+  --upload-results hub_upload_results.json \
+  --output hub_submission_package/manifests/upload_manifest.with_uploads.json
+```
+
 目录结构：
 
 ```text
@@ -65,15 +83,18 @@ hub_submission_package/
 
 1. 检查 Hub 必填字段。
 2. 生成表单字段预览。
-3. 整理上传文件和截图。
-4. 生成上传顺序和核对清单。
-5. 标记需要用户手动确认的字段。
+3. 根据 `/ctf/classify/?type=1` 结果把 `题目分类` 匹配成分类 ID。
+4. 整理上传文件和截图。
+5. 页面上传后记录返回的文件 URL、文件 ID、状态和错误。
+6. 生成上传顺序和核对清单。
+7. 标记需要用户手动确认的字段。
 
 ## 安全边界
 
 - 不读取或保存密码、验证码、Cookie、token、CSRF、localStorage、sessionStorage。
 - 不保存浏览器 session 文件。
 - 不自动提交表单。
+- 不自动上传未知文件；上传结果必须来自用户确认的浏览器页面或显式提供的上传返回 JSON。
 - 浏览器辅助填表只生成步骤和字段计划；使用用户当前登录态前必须确认，不读取或保存登录凭据。
 - `hub_fields.json` 的 `题目Flag` 保留完整 Flag。
 
@@ -110,6 +131,9 @@ Hub 新增 CTF 题目页面包含这些字段和入口：
 
 - 上传清单中的文件必须存在。
 - 文件名、大小、hash 必须记录。
+- 提交前 `classify` 需要有页面分类 ID，不能只保留 `Web` / `Misc` 等文本。
+- 已上传附件需要记录页面返回的 URL、文件 ID、状态或错误。
+- 必填字段、关键字、题目解答和截图槽位缺失时，validation 必须写入 `needs_input`。
 - Hub 字段和手册内容一致。
 
 ## 停止条件

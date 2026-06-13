@@ -206,11 +206,56 @@ class SearchEngineTests(unittest.TestCase):
         )
 
         layers_by_title = {item["title"]: item["layer"] for item in payload["results"]}
-        self.assertEqual(layers_by_title["IrisCTF 2025 web writeup"], "confirmed_challenge")
+        self.assertEqual(layers_by_title["IrisCTF 2025 web writeup"], "writeup_candidate")
         self.assertEqual(layers_by_title["NepCTF 2025 web writeup"], "noise")
         self.assertEqual(layers_by_title["DuckDuckGo"], "noise")
         self.assertEqual(payload["results"][0]["provider"], "agent-web-search")
         self.assertEqual(payload["results"][0]["source_url"], "https://example.com/irisctf-2025-web-writeup")
+
+    def test_specific_challenge_query_can_be_confirmed(self):
+        payload = search.import_agent_search_results(
+            [
+                {
+                    "rank": 1,
+                    "title": "IrisCTF 2025 kittycrypt writeup",
+                    "url": "https://example.com/irisctf-2025-kittycrypt",
+                    "snippet": "IrisCTF 2025 crypto kittycrypt challenge writeup",
+                }
+            ],
+            query="IrisCTF 2025 kittycrypt crypto writeup",
+        )
+
+        self.assertEqual(payload["results"][0]["layer"], "confirmed_challenge")
+
+    def test_spaced_event_name_filters_other_ctfs(self):
+        payload = search.import_agent_search_results(
+            [
+                {
+                    "rank": 1,
+                    "title": "LA CTF 2024 purell web writeup",
+                    "url": "https://example.com/lactf-2024-purell",
+                    "snippet": "LA CTF 2024 purell web challenge writeup",
+                },
+                {
+                    "rank": 2,
+                    "title": "HKCERT 2024 web writeup",
+                    "url": "https://example.com/hkcert-2024-web",
+                    "snippet": "HKCERT 2024 web writeup",
+                },
+                {
+                    "rank": 3,
+                    "title": "NewStarCTF 2024 week one writeup",
+                    "url": "https://example.com/newstarctf",
+                    "snippet": "NewStarCTF writeup",
+                },
+            ],
+            query="LA CTF 2024 purell web writeup",
+        )
+
+        layers_by_title = {item["title"]: item["layer"] for item in payload["results"]}
+        self.assertEqual(layers_by_title["LA CTF 2024 purell web writeup"], "confirmed_challenge")
+        self.assertEqual(layers_by_title["HKCERT 2024 web writeup"], "noise")
+        self.assertEqual(layers_by_title["NewStarCTF 2024 week one writeup"], "noise")
 
     def test_markdown_writeup_is_not_attachment_candidate(self):
         result = search.normalize_result(
@@ -361,7 +406,7 @@ class SearchEngineTests(unittest.TestCase):
             engine="google",
         )
         layers_by_title = {item["title"]: item["layer"] for item in payload["results"]}
-        self.assertEqual(layers_by_title["IrisCTF 2025 web writeup"], "confirmed_challenge")
+        self.assertEqual(layers_by_title["IrisCTF 2025 web writeup"], "writeup_candidate")
         self.assertEqual(layers_by_title["Compfest CTF 2025 writeup"], "noise")
 
     def test_browser_search_blocked_result_is_structured(self):
@@ -469,7 +514,7 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(init["result"]["serverInfo"]["name"], "cloversec-ctf-browser-search")
         self.assertTrue(any(item["name"] == "cloversec_ctf_browser_search_plan" for item in tools["result"]["tools"]))
         self.assertIn("browser-google", call["result"]["content"][0]["text"])
-        self.assertIn("confirmed_challenge", call["result"]["content"][0]["text"])
+        self.assertIn("writeup_candidate", call["result"]["content"][0]["text"])
 
 
 class LocalServer:

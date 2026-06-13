@@ -57,6 +57,10 @@ HUB_FORM_FIELDS = [
 ]
 
 
+CLASSIFY_TEXT_KEYS = ["题目分类", "classify_label", "classify_name", "name", "label", "title"]
+CLASSIFY_ID_KEYS = ["题目分类ID", "classify_id", "id", "value", "key"]
+
+
 def default_screenshot_plan() -> list[dict[str, str]]:
     return [
         {"filename": "01-challenge-page.png", "description": "题目页面或题目信息截图"},
@@ -118,6 +122,7 @@ def create_submission_package(
         "case_id": case.get("case_id", ""),
         "hub_fields": hub_fields,
         "upload_files": upload_files,
+        "upload_results": [],
         "screenshots": screenshot_records,
         "issues": issues,
         "summary": {
@@ -166,18 +171,20 @@ def create_browser_assist_plan(
     manifest: dict[str, Any],
     *,
     hub_url: str = "https://hub.yunyansec.com/#/resource/ctf",
+    classify_options: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     fields = manifest.get("hub_fields", {}) if isinstance(manifest.get("hub_fields"), dict) else {}
     upload_files = manifest.get("upload_files", []) if isinstance(manifest.get("upload_files"), list) else []
     screenshots = manifest.get("screenshots", []) if isinstance(manifest.get("screenshots"), list) else []
-    form_payload = create_hub_form_payload(fields, manifest=manifest)
+    form_payload = create_hub_form_payload(fields, manifest=manifest, classify_options=classify_options)
+    validation = validate_hub_form_payload(form_payload, manifest=manifest)
     return {
         "hub_url": hub_url,
         "mode": "browser-assisted",
         "site_observation": HUB_SITE_OBSERVATION,
         "form_fields": HUB_FORM_FIELDS,
         "form_payload": form_payload,
-        "validation": validate_hub_form_payload(form_payload),
+        "validation": validation,
         "security_boundaries": [
             "只使用用户已经登录的浏览器会话。",
             "不读取或保存 Cookie、token、CSRF、localStorage、sessionStorage、密码或验证码。",
@@ -201,27 +208,41 @@ def create_browser_assist_plan(
         "fields": fields,
         "upload_files": upload_files,
         "screenshots": screenshots,
+        "upload_results": manifest.get("upload_results", []) if isinstance(manifest.get("upload_results"), list) else [],
     }
 
 
-def create_hub_form_payload(hub_fields: dict[str, Any], *, manifest: dict[str, Any] | None = None) -> dict[str, Any]:
+def create_hub_form_payload(
+    hub_fields: dict[str, Any],
+    *,
+    manifest: dict[str, Any] | None = None,
+    classify_options: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     manifest = manifest or {}
     upload_files = manifest.get("upload_files", []) if isinstance(manifest.get("upload_files"), list) else []
     attached = next((item for item in upload_files if item.get("role") == "attachment"), {})
     image_tar = next((item for item in upload_files if item.get("role") == "image_tar"), {})
+    upload_results = manifest.get("upload_results", []) if isinstance(manifest.get("upload_results"), list) else []
+    attached_upload = find_upload_result(upload_results, attached)
+    image_upload = find_upload_result(upload_results, image_tar)
     answer = _string(hub_fields.get("题目解答") or hub_fields.get("manual_markdown") or "")
+    classify_resolution = resolve_hub_classify(hub_fields, classify_options=classify_options)
     payload = {
         "name": _string(hub_fields.get("题目标题")),
         "desc": _string(hub_fields.get("题目内容")),
         "flag": _string(hub_fields.get("题目Flag")),
         "source": _string(hub_fields.get("题目来源")),
-        "classify": _string(hub_fields.get("题目分类")),
+        "classify": classify_resolution.get("id") or _string(hub_fields.get("题目分类")),
+        "classify_label": classify_resolution.get("label") or _string(hub_fields.get("题目分类")),
+        "classify_resolution": classify_resolution,
         "answer": answer,
         "keyword": _list_value(hub_fields.get("添加关键字")),
-        "attached": _string(attached.get("relative_path")),
+        "attached": _string(attached_upload.get("url") or attached_upload.get("path") or attached.get("relative_path")),
         "attached_name": Path(_string(attached.get("relative_path"))).name if attached else "",
-        "other_attached": _string(image_tar.get("relative_path")),
+        "attached_upload_result": attached_upload,
+        "other_attached": _string(image_upload.get("url") or image_upload.get("path") or image_tar.get("relative_path")),
         "other_attached_name": Path(_string(image_tar.get("relative_path"))).name if image_tar else "",
+        "other_attached_upload_result": image_upload,
         "flag_type": _hub_flag_type(_string(hub_fields.get("Flag类型"))),
         "flag_script": _string(hub_fields.get("Flag脚本")),
         "test_type": _hub_test_type(_string(hub_fields.get("题目类型"))),
@@ -233,7 +254,8 @@ def create_hub_form_payload(hub_fields: dict[str, Any], *, manifest: dict[str, A
     return payload
 
 
-def validate_hub_form_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def validate_hub_form_payload(payload: dict[str, Any], *, manifest: dict[str, Any] | None = None) -> dict[str, Any]:
+    manifest = manifest or {}
     required = ["name", "desc", "flag", "source", "classify", "answer", "keyword", "flag_type", "test_type", "score", "level", "resource_level"]
     missing = []
     for key in required:
@@ -244,15 +266,131 @@ def validate_hub_form_payload(payload: dict[str, Any]) -> dict[str, Any]:
             empty = not _string(value).strip()
         if empty:
             missing.append(key)
+    classify_resolution = payload.get("classify_resolution") if isinstance(payload.get("classify_resolution"), dict) else {}
+    upload_files = manifest.get("upload_files", []) if isinstance(manifest.get("upload_files"), list) else []
+    upload_results = manifest.get("upload_results", []) if isinstance(manifest.get("upload_results"), list) else []
+    screenshots = manifest.get("screenshots", []) if isinstance(manifest.get("screenshots"), list) else []
+    pending_uploads = []
+    for item in upload_files:
+        if not isinstance(item, dict):
+            continue
+        result = find_upload_result(upload_results, item)
+        if not _string(result.get("url") or result.get("path") or result.get("file_id")).strip():
+            pending_uploads.append(item.get("relative_path", ""))
+    missing_screenshots = [
+        item.get("filename", "")
+        for item in screenshots
+        if isinstance(item, dict) and not _string(item.get("relative_path") or item.get("path")).strip()
+    ]
+    blockers = list(missing)
+    if not classify_resolution.get("id"):
+        blockers.append("classify_id")
+    if pending_uploads:
+        blockers.append("upload_results")
     return {
-        "status": "ready" if not missing else "needs_input",
+        "status": "ready" if not blockers else "needs_input",
         "missing": missing,
+        "blockers": blockers,
+        "classify_resolution": classify_resolution,
+        "pending_uploads": pending_uploads,
+        "missing_screenshots": missing_screenshots,
         "notes": [
             "classify 在页面中需要匹配为分类 ID，不能只依赖中文分类文本。",
             "answer 需要写入富文本编辑器；Markdown 到 HTML 的转换由 Agent 在浏览器步骤执行或人工确认。",
             "attached/other_attached 需要先通过页面上传控件上传，返回 URL 后才能提交。",
         ],
     }
+
+
+def resolve_hub_classify(hub_fields: dict[str, Any], *, classify_options: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    explicit_id = first_nonempty(hub_fields, CLASSIFY_ID_KEYS)
+    label = first_nonempty(hub_fields, CLASSIFY_TEXT_KEYS)
+    if explicit_id:
+        return {"status": "resolved", "id": explicit_id, "label": label, "source": "hub_fields"}
+    if not label:
+        return {"status": "missing", "id": "", "label": "", "source": ""}
+    wanted = normalize_classify_label(label)
+    for option in classify_options or []:
+        if not isinstance(option, dict):
+            continue
+        option_label = first_nonempty(option, CLASSIFY_TEXT_KEYS)
+        option_id = first_nonempty(option, CLASSIFY_ID_KEYS)
+        if option_id and normalize_classify_label(option_label) == wanted:
+            return {"status": "resolved", "id": option_id, "label": option_label, "source": "classify_options"}
+    return {"status": "needs_mapping", "id": "", "label": label, "source": "hub_fields"}
+
+
+def apply_upload_results(manifest: dict[str, Any], upload_results: list[dict[str, Any]]) -> dict[str, Any]:
+    updated = dict(manifest)
+    normalized = []
+    for item in upload_results:
+        if not isinstance(item, dict):
+            continue
+        normalized.append(
+            {
+                "role": _string(item.get("role")),
+                "relative_path": _string(item.get("relative_path") or item.get("local_path")),
+                "name": _string(item.get("name") or Path(_string(item.get("relative_path") or item.get("local_path"))).name),
+                "url": _string(item.get("url") or item.get("path") or item.get("file_url") or item.get("filePath")),
+                "file_id": _string(item.get("file_id") or item.get("id") or item.get("uid")),
+                "status": _string(item.get("status") or ("uploaded" if item.get("url") or item.get("path") or item.get("file_url") else "")),
+                "error": _string(item.get("error")),
+            }
+        )
+    updated["upload_results"] = normalized
+    fields = updated.get("hub_fields", {}) if isinstance(updated.get("hub_fields"), dict) else {}
+    updated["form_payload"] = create_hub_form_payload(fields, manifest=updated)
+    updated["validation"] = validate_hub_form_payload(updated["form_payload"], manifest=updated)
+    return updated
+
+
+def find_upload_result(upload_results: list[dict[str, Any]], upload_file: dict[str, Any]) -> dict[str, Any]:
+    if not upload_file:
+        return {}
+    role = _string(upload_file.get("role"))
+    relative_path = _string(upload_file.get("relative_path"))
+    name = Path(relative_path).name if relative_path else ""
+    for result in upload_results:
+        if not isinstance(result, dict):
+            continue
+        result_path = _string(result.get("relative_path") or result.get("local_path"))
+        result_name = _string(result.get("name") or Path(result_path).name)
+        if role and _string(result.get("role")) and role != _string(result.get("role")):
+            continue
+        if relative_path and result_path == relative_path:
+            return result
+        if name and result_name == name:
+            return result
+    return {}
+
+
+def normalize_classify_label(value: str) -> str:
+    aliases = {
+        "web": "web",
+        "pwn": "pwn",
+        "misc": "misc",
+        "crypto": "crypto",
+        "reverse": "reverse",
+        "rev": "reverse",
+        "forensics": "forensics",
+        "forensic": "forensics",
+        "ai": "ai",
+        "osint": "osint",
+        "mobile": "mobile",
+        "iot": "iot",
+        "区块链": "blockchain",
+        "blockchain": "blockchain",
+    }
+    lowered = _string(value).strip().lower()
+    return aliases.get(lowered, lowered)
+
+
+def first_nonempty(mapping: dict[str, Any], keys: list[str]) -> str:
+    for key in keys:
+        value = _string(mapping.get(key)).strip()
+        if value:
+            return value
+    return ""
 
 
 def render_browser_assist_plan(plan: dict[str, Any]) -> str:
@@ -346,6 +484,25 @@ def _string(value: Any) -> str:
     return "" if value is None else str(value)
 
 
+def load_classify_options(path: str | Path) -> list[dict[str, Any]]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ["data", "results", "items", "classify", "classifies"]:
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    nested = payload.get("data")
+    if isinstance(nested, dict):
+        for key in ["results", "items", "classify", "classifies"]:
+            value = nested.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    return []
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="CloverSec CTF Hub submission package utilities")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -361,6 +518,17 @@ def main(argv: list[str] | None = None) -> int:
     browser_parser.add_argument("--output", required=True)
     browser_parser.add_argument("--report")
     browser_parser.add_argument("--hub-url", default="https://hub.yunyansec.com/#/resource/ctf")
+    browser_parser.add_argument("--classify-options", help="JSON file from /ctf/classify/?type=1 or a normalized options list")
+
+    upload_parser = subparsers.add_parser("apply-upload-results", help="merge Hub upload results back into an upload manifest")
+    upload_parser.add_argument("--manifest", required=True)
+    upload_parser.add_argument("--upload-results", required=True)
+    upload_parser.add_argument("--output", required=True)
+
+    validate_parser = subparsers.add_parser("validate-manifest", help="validate Hub submission readiness before final submit")
+    validate_parser.add_argument("--manifest", required=True)
+    validate_parser.add_argument("--classify-options", help="JSON file from /ctf/classify/?type=1 or a normalized options list")
+    validate_parser.add_argument("--output", required=True)
 
     args = parser.parse_args(argv)
     if args.command == "package":
@@ -372,12 +540,37 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "browser-plan":
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
-        plan = create_browser_assist_plan(manifest, hub_url=args.hub_url)
+        classify_options = load_classify_options(args.classify_options) if args.classify_options else None
+        plan = create_browser_assist_plan(manifest, hub_url=args.hub_url, classify_options=classify_options)
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         report = Path(args.report) if args.report else output.with_suffix(".md")
         report.write_text(render_browser_assist_plan(plan), encoding="utf-8")
+        print(f"wrote {output}")
+        return 0
+    if args.command == "apply-upload-results":
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        upload_results = json.loads(Path(args.upload_results).read_text(encoding="utf-8"))
+        if isinstance(upload_results, dict):
+            upload_results = upload_results.get("results", upload_results.get("upload_results", []))
+        if not isinstance(upload_results, list):
+            raise ValueError("upload results must be a list or an object containing results/upload_results")
+        updated = apply_upload_results(manifest, upload_results)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {output}")
+        return 0
+    if args.command == "validate-manifest":
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        fields = manifest.get("hub_fields", {}) if isinstance(manifest.get("hub_fields"), dict) else {}
+        classify_options = load_classify_options(args.classify_options) if args.classify_options else None
+        payload = create_hub_form_payload(fields, manifest=manifest, classify_options=classify_options)
+        validation = validate_hub_form_payload(payload, manifest=manifest)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps({"form_payload": payload, "validation": validation}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"wrote {output}")
         return 0
     parser.error("unknown command")

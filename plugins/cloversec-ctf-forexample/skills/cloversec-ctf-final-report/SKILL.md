@@ -1,6 +1,6 @@
 ---
 name: cloversec-ctf-final-report
-description: CloverSec CTF 最终报告和 xlsx 归档输出 skill。用于在全流程结束后汇总题目位置、手册、附件、镜像 tar、HUB 编号、审核状态、Flag、语雀粘贴表和后续处理事项。
+description: CloverSec CTF 最终报告和 xlsx 归档输出 skill。用于在全流程结束后汇总题目位置、手册、附件、镜像 tar、HUB 编号、审核状态、完整 Flag、语雀粘贴表和后续处理事项；内部 xlsx 和语雀归档输出必须保留完整 Flag。
 ---
 
 # CloverSec CTF Final Report

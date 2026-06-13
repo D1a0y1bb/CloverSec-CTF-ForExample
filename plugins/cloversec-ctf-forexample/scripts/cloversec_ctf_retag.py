@@ -17,6 +17,7 @@ from typing import Any
 
 
 TARGET_PLATFORM = "linux/amd64"
+AGENT_DECISION_BOOL_FIELDS = ["can_execute", "requires_user_confirmation", "execute_docker"]
 
 
 def create_retag_plan(
@@ -173,6 +174,29 @@ def render_retag_report(plan: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def validate_agent_decision(payload: dict[str, Any]) -> dict[str, Any]:
+    issues = []
+    for field in AGENT_DECISION_BOOL_FIELDS:
+        if field not in payload:
+            issues.append(f"{field} missing")
+        elif not isinstance(payload.get(field), bool):
+            issues.append(f"{field} must be boolean true/false")
+    next_action = str(payload.get("next_action") or "")
+    if next_action not in {"ask_user", "create_plan", "stop"}:
+        issues.append("next_action must be ask_user, create_plan, or stop")
+    if payload.get("can_execute") is True:
+        if not str(payload.get("hub_id") or "").strip():
+            issues.append("hub_id required when can_execute is true")
+        if payload.get("requires_user_confirmation") is not False:
+            issues.append("requires_user_confirmation must be false when execution is already authorized")
+    if payload.get("can_execute") is False and payload.get("execute_docker") is True:
+        issues.append("execute_docker cannot be true when can_execute is false")
+    return {
+        "status": "valid" if not issues else "invalid",
+        "issues": issues,
+    }
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -273,6 +297,10 @@ def main(argv: list[str] | None = None) -> int:
     plan_parser.add_argument("--execute", action="store_true", help="run docker tag/save/load/inspect and record evidence")
     plan_parser.add_argument("--command-timeout", type=int, default=60)
 
+    decision_parser = subparsers.add_parser("validate-agent-decision", help="validate strict JSON decision for retag Agent output")
+    decision_parser.add_argument("--input", required=True)
+    decision_parser.add_argument("--output", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "plan":
         case = json.loads(Path(args.case_json).read_text(encoding="utf-8"))
@@ -295,6 +323,14 @@ def main(argv: list[str] | None = None) -> int:
             Path(args.output_case).write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"wrote {output}")
         return 0
+    if args.command == "validate-agent-decision":
+        payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
+        result = validate_agent_decision(payload)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {output}")
+        return 0 if result["status"] == "valid" else 1
 
     parser.error("unknown command")
     return 2

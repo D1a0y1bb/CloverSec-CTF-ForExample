@@ -32,6 +32,38 @@ description: CloverSec CTF Hub 审核后编号回填与镜像 tag skill。用于
 4. 写入 `retag_plan.json` 和 `retag_report.md`。
 5. 用户执行或明确授权后，再把真实执行结果写回。
 
+## Agent 决策 JSON
+
+在判断是否可以继续前，先输出严格 JSON。布尔字段只能是 `true` 或 `false`，不能是 `null`。
+
+停止时：
+
+```json
+{
+  "can_execute": false,
+  "requires_user_confirmation": true,
+  "execute_docker": false,
+  "next_action": "ask_user",
+  "hub_id": "",
+  "reason": "缺少 HUB 编号或用户未授权执行"
+}
+```
+
+已满足条件但只生成计划时：
+
+```json
+{
+  "can_execute": true,
+  "requires_user_confirmation": false,
+  "execute_docker": false,
+  "next_action": "create_plan",
+  "hub_id": "CTF-2026060001",
+  "reason": "HUB 编号、镜像来源和 tag 规则已确认"
+}
+```
+
+只有用户明确授权真实 Docker 执行时，`execute_docker` 才能为 `true`。
+
 ## 脚本入口
 
 ```bash
@@ -61,6 +93,14 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan \
 ```
 
 该模式会执行 Docker tag、save、load、inspect，并记录 tar SHA256、平台和每条命令的退出码。
+
+校验 Agent 决策 JSON：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py validate-agent-decision \
+  --input retag_decision.json \
+  --output retag_decision.validation.json
+```
 
 ## 验证
 

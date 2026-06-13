@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 from pathlib import Path
 
@@ -97,6 +98,9 @@ class ArchiveReviewFinalTests(unittest.TestCase):
         self.assertIn("fixture-hub-numbered", by_id)
         self.assertEqual(by_id["fixture-hub-numbered"]["metadata"]["HUB编号"], "CTF-2026060001")
         self.assertFalse(by_id["fixture-missing-screenshot"]["archive"]["screenshots"])
+        attachment_path = ROOT / by_id["fixture-attachment-ok"]["attachments"][0]["path"]
+        with zipfile.ZipFile(attachment_path) as archive_file:
+            self.assertIn("README.txt", archive_file.namelist())
         for case in cases:
             self.assertEqual(data.validate_case(case), [])
 
@@ -154,6 +158,32 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertIn("docker tag", plan["commands"]["tag"])
             self.assertEqual(updated["metadata"]["HUB编号"], "CTF-2026060001")
             self.assertEqual(updated["docker_artifacts"]["image_name"], "registry.local/cloversec/ctf-2026060001")
+
+    def test_retag_agent_decision_rejects_null_boolean(self):
+        invalid = retag.validate_agent_decision(
+            {
+                "can_execute": None,
+                "requires_user_confirmation": True,
+                "execute_docker": False,
+                "next_action": "ask_user",
+                "hub_id": "",
+                "reason": "missing Hub id",
+            }
+        )
+        valid = retag.validate_agent_decision(
+            {
+                "can_execute": False,
+                "requires_user_confirmation": True,
+                "execute_docker": False,
+                "next_action": "ask_user",
+                "hub_id": "",
+                "reason": "missing Hub id",
+            }
+        )
+
+        self.assertEqual(invalid["status"], "invalid")
+        self.assertIn("can_execute must be boolean true/false", invalid["issues"])
+        self.assertEqual(valid["status"], "valid")
 
     def test_final_outputs_write_xlsx_and_yuque_table_with_full_flag(self):
         with tempfile.TemporaryDirectory() as tmp:

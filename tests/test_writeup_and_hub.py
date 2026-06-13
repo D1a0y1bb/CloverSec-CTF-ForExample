@@ -141,10 +141,75 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertEqual(plan["form_payload"]["test_type"], 1)
             self.assertEqual(plan["form_payload"]["level"], "3")
             self.assertIn("answer", plan["validation"]["missing"])
+            self.assertIn("classify_id", plan["validation"]["blockers"])
+            self.assertIn("upload_results", plan["validation"]["blockers"])
+            self.assertIn("02-container-running.png", plan["validation"]["missing_screenshots"])
             self.assertTrue(any("不读取或保存 Cookie" in item for item in plan["security_boundaries"]))
             self.assertTrue(any(step["id"] == "manual-submit" for step in plan["steps"]))
             self.assertIn("Hub 浏览器辅助填表方案", report)
             self.assertIn("POST /ctf/add/", json.dumps(plan, ensure_ascii=False))
+
+    def test_hub_classify_options_and_upload_results_update_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            fields = writeup.build_hub_fields(case)
+            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manifest = hub.create_submission_package(
+                case=case,
+                hub_fields=fields["hub_fields"],
+                manual_markdown=manual,
+                output_dir=tmp_path / "hub_submission_package",
+            )
+            options = [{"id": 101, "name": "Web"}, {"id": 102, "name": "Misc"}]
+            upload_results = [
+                {"role": "attachment", "relative_path": "attachments/challenge.zip", "url": "/media/ctf/challenge.zip", "status": "uploaded"},
+                {"role": "image_tar", "relative_path": "images/web.tar", "url": "/media/ctf/web.tar", "status": "uploaded"},
+            ]
+
+            updated = hub.apply_upload_results(manifest, upload_results)
+            payload = hub.create_hub_form_payload(fields["hub_fields"], manifest=updated, classify_options=options)
+            validation = hub.validate_hub_form_payload(payload, manifest=updated)
+
+        self.assertEqual(payload["classify"], "101")
+        self.assertEqual(payload["classify_resolution"]["source"], "classify_options")
+        self.assertEqual(payload["attached"], "/media/ctf/challenge.zip")
+        self.assertEqual(payload["other_attached"], "/media/ctf/web.tar")
+        self.assertNotIn("upload_results", validation["blockers"])
+        self.assertIn("answer", validation["missing"])
+
+    def test_hub_cli_validate_manifest_accepts_classify_options(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            fields = writeup.build_hub_fields(case)
+            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manifest = hub.create_submission_package(
+                case=case,
+                hub_fields=fields["hub_fields"],
+                manual_markdown=manual,
+                output_dir=tmp_path / "hub_submission_package",
+            )
+            manifest_path = tmp_path / "manifest.json"
+            classify_path = tmp_path / "classify.json"
+            output = tmp_path / "validation.json"
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+            classify_path.write_text(json.dumps({"data": [{"id": 101, "name": "Web"}]}, ensure_ascii=False), encoding="utf-8")
+
+            code = hub.main([
+                "validate-manifest",
+                "--manifest",
+                str(manifest_path),
+                "--classify-options",
+                str(classify_path),
+                "--output",
+                str(output),
+            ])
+            payload = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["form_payload"]["classify"], "101")
+        self.assertIn("upload_results", payload["validation"]["blockers"])
 
     def test_cli_writeup_outputs_json_and_manual(self):
         with tempfile.TemporaryDirectory() as tmp:

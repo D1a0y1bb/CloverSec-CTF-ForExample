@@ -1,6 +1,6 @@
 ---
 name: cloversec-ctf-writeup-scaffold
-description: 四叶草安全-创研中心竞赛专用题目手册构建 Skills，面向题目源码、WP、构建产物与零散人工草稿的标准化整理：自动提取考点、部署信息、Flag线索、HUB录题字段与题解模板，并生成符合内部规范的 manual_template.md / manual_filled_draft.md 草稿。
+description: 四叶草安全-创研中心竞赛专用题目手册构建 Skills，面向题目源码、WP、构建产物与零散人工草稿的标准化整理：自动提取考点、部署信息、完整 Flag、HUB录题字段与题解模板，并生成符合内部规范的 manual_template.md / manual_filled_draft.md 草稿；hub_fields.json 和 xlsx_fields.json 必须保留完整 Flag。
 ---
 
 # CloverSec-CTF-Writeup-Scaffold

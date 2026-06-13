@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Hub Submission"
   short_description: "生成 Hub 表单字段、上传清单和提交材料包"
-  default_prompt: "使用 $cloversec-ctf-hub-submission 根据手册、附件、截图和 hub_fields.json 生成 Hub 提交材料包。"
+  default_prompt: "使用 $cloversec-ctf-hub-submission 根据手册、附件、截图和 hub_fields.json 生成 Hub 提交材料包。只做材料和浏览器辅助计划；不读取 Cookie/token/session，不自动提交。提交前检查分类 ID、上传结果、题目内容、题目解答、关键字和截图。"

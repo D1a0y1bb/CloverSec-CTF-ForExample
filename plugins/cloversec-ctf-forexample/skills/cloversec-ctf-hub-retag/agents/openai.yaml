@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Hub Retag"
   short_description: "按 HUB 编号生成镜像 tag、导出 tar 与字段回填计划"
-  default_prompt: "使用 $cloversec-ctf-hub-retag 根据审核通过的 HUB 编号生成镜像 retag 和 amd64 tar 导出计划。"
+  default_prompt: "使用 $cloversec-ctf-hub-retag 根据审核通过的 HUB 编号生成镜像 retag 和 amd64 tar 导出计划。先输出严格 JSON 决策：can_execute、requires_user_confirmation、execute_docker 必须是 true 或 false，不能是 null。"
