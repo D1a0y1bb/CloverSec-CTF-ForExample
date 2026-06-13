@@ -17,9 +17,28 @@
 
 - 每个阶段产生结构化结果，写入 `ctf_case.json` 或批量 `ctf_cases.jsonl`。
 - 不确定字段保留为空，并记录需要用户确认的原因。
+- 公网收集优先使用免费源；用户提供 key 后启用增强 provider。
+- 搜索、抓取、下载必须写入来源 URL、访问时间、hash、HTTP 状态和失败原因。
 - Hub 自动化第一版不提交，只生成材料。
 - 涉及镜像导出时必须检查 `linux/amd64`。
 - 阶段结束前更新 `TODO.md`。
+
+## 搜索与采集能力
+
+脚本入口：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discover --query "<赛事/题目/年份/分类>" --year 2025 --output search_results.json --cases-jsonl ctf_cases.jsonl
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-from-manifest --manifest search_results.json --output-dir downloads --output asset_downloads.json
+```
+
+MCP 入口：
+
+- `cloversec_ctf_discover`
+- `cloversec_ctf_ctftime_events`
+- `cloversec_ctf_fetch_url`
+
+没有 API key 时，仍可用 GitHub repository search、CTFTime、DuckDuckGo HTML 和公开 archive seeds。`GITHUB_TOKEN`、`BRAVE_SEARCH_API_KEY`、`BING_SEARCH_API_KEY` 存在时，自动启用对应 provider。
 
 ## 阶段 6 命令顺序
 

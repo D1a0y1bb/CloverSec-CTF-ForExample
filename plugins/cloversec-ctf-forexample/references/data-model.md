@@ -102,6 +102,37 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py valida
 
 旧表迁移会读取多个业务工作表，并跳过名称包含“标准”或“说明”的工作表。
 
+公网搜索与下载脚本：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discover --query "LA CTF 2024 web challenge writeup" --year 2024 --output search_results.json --cases-jsonl ctf_cases.jsonl
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py fetch-url <URL> --output fetched_url.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-url <URL> --output-dir downloads --output downloaded_asset.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-from-manifest --manifest search_results.json --output-dir downloads --output asset_downloads.json
+```
+
+`search_results.json` 字段：
+
+- `query`
+- `years`
+- `sources`
+- `results[]`
+- `errors[]`
+- `summary`
+
+`results[]` 字段：
+
+- `provider`：`github`、`github-code`、`ctftime`、`duckduckgo`、`brave`、`bing`、`seed`
+- `kind`：`event`、`writeup`、`repository`、`code`、`web`、`challenge_archive`
+- `title`
+- `url`
+- `summary`
+- `source_type`
+- `confidence`
+- `metadata`
+
+`asset_downloads.json` 必须记录 `local_path`、`size`、`sha256`、`content_type`、`source_url` 或 `url`。
+
 容器和附件阶段脚本：
 
 ```bash

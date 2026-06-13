@@ -26,6 +26,43 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py valida
 
 `migrate-xlsx` 用于迁移旧表到中间 JSONL，会读取多个业务工作表，并跳过名称包含“标准”或“说明”的工作表。真实内部 xlsx 不应提交进公开仓库。
 
+## `cloversec_ctf_search.py`
+
+公网搜索、抓取和下载工具。免费源默认包括 GitHub repository search、CTFTime events/writeups、DuckDuckGo HTML 和内置公开 CTF 归档 seeds；可选 key 会增强搜索面。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discover \
+  --query "LA CTF 2024 web challenge writeup" \
+  --year 2024 \
+  --source github \
+  --source ctftime \
+  --source duckduckgo \
+  --source seeds \
+  --limit 20 \
+  --output search_results.json \
+  --cases-jsonl ctf_cases.jsonl
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py fetch-url https://example.com/writeup --output fetched_url.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-url https://example.com/challenge.zip --output-dir downloads --output downloaded_asset.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-from-manifest --manifest search_results.json --output-dir downloads --output asset_downloads.json
+```
+
+可选环境变量：
+
+- `GITHUB_TOKEN` 或 `GH_TOKEN`
+- `BRAVE_SEARCH_API_KEY` 或 `CLOVERSEC_BRAVE_API_KEY`
+- `BING_SEARCH_API_KEY` 或 `CLOVERSEC_BING_API_KEY`
+
+没有 key 时，GitHub code search、Brave、Bing 会在 `errors` 中标记 skipped，其他免费源继续执行。
+
+## MCP server
+
+插件带有 `cloversec-ctf-search` MCP server，配置文件为 `.mcp.json`。工具：
+
+- `cloversec_ctf_discover`
+- `cloversec_ctf_ctftime_events`
+- `cloversec_ctf_fetch_url`
+
 ## `cloversec_ctf_build.py`
 
 容器题目构建与归档元数据工具。当前命令生成 Docker 执行计划和校验 artifacts，不会自动运行 Docker。

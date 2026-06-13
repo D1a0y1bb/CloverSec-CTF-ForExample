@@ -1,11 +1,12 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.1.0+codex.20260613131124",
+  "version": "0.1.0+codex.20260613132516",
   "description": "CloverSec CTF collection, conversion, writeup, archive, review, and Hub submission workflows for Codex.",
   "author": {
     "name": "CloverSec"
   },
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "CloverSec CTF ForExample",
     "shortDescription": "CTF 收集、构建、手册、归档和 Hub 提交流程",

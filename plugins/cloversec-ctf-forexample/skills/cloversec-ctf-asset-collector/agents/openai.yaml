@@ -1,4 +1,4 @@
 interface:
-  display_name: "cloversec-ctf-asset-collector"
-  short_description: "CloverSec CTF workflow skill"
-  default_prompt: "Use this CloverSec CTF skill."
+  display_name: "CloverSec CTF Asset Collector"
+  short_description: "下载和整理 CTF 源码、附件、WP、截图与来源证据"
+  default_prompt: "使用 $cloversec-ctf-asset-collector 根据赛题清单或搜索结果下载和整理源码、附件、WP、截图与证据。"

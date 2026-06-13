@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "cloversec-ctf-search": {
+      "cwd": ".",
+      "command": "python3",
+      "args": [
+        "./scripts/cloversec_ctf_search_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
 interface:
-  display_name: "cloversec-ctf-research-intake"
-  short_description: "CloverSec CTF workflow skill"
-  default_prompt: "Use this CloverSec CTF skill."
+  display_name: "CloverSec CTF Research Intake"
+  short_description: "搜索 CTF 赛事、赛题、writeup 与公开归档来源"
+  default_prompt: "使用 $cloversec-ctf-research-intake 按年份、赛事、关键词搜索 CTF 赛题、writeup、公开归档和来源证据。"
