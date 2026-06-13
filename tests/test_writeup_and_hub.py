@@ -136,9 +136,15 @@ class WriteupAndHubTests(unittest.TestCase):
             report = hub.render_browser_assist_plan(plan)
 
             self.assertEqual(plan["mode"], "browser-assisted")
+            self.assertEqual(plan["site_observation"]["routes"]["ctf_create"], "https://hub.yunyansec.com/#/activity/submitctf/0/0/0")
+            self.assertEqual(plan["form_payload"]["flag_type"], 2)
+            self.assertEqual(plan["form_payload"]["test_type"], 1)
+            self.assertEqual(plan["form_payload"]["level"], "3")
+            self.assertIn("answer", plan["validation"]["missing"])
             self.assertTrue(any("不读取或保存 Cookie" in item for item in plan["security_boundaries"]))
             self.assertTrue(any(step["id"] == "manual-submit" for step in plan["steps"]))
             self.assertIn("Hub 浏览器辅助填表方案", report)
+            self.assertIn("POST /ctf/add/", json.dumps(plan, ensure_ascii=False))
 
     def test_cli_writeup_outputs_json_and_manual(self):
         with tempfile.TemporaryDirectory() as tmp:

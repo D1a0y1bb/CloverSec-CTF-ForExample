@@ -78,6 +78,9 @@
 - [x] 增加批量归档命令，支持 `ctf_cases.jsonl` 一次性生成所有题目的归档目录和最终报告。
 - [x] 增加真实样例 fixture，覆盖容器题、附件题、缺手册、缺截图、Hub 已编号等场景。
 - [x] 对 8 个非自研验证 skill 做真实链路质量验收，修复 GitHub Release 限流异常输出和 Hub retag 大写 Docker tag 问题。
+- [x] 使用临时浏览器登录 Hub，验证 CTF 列表、提交页路由、表单字段、上传入口和提交接口；不保存 Cookie/token/session，不执行最终提交。
+- [x] 扩展收集源：增加 `ctf-platforms` seeds，以及 CSDN、博客园、语雀 `site:` 定向搜索。
+- [ ] 研究 Google/Baidu 直连搜索可行性；若直连受验证码/反爬影响，改为浏览器辅助或独立 MCP，不把它作为默认稳定来源。
 
 ## 需要用户配合的验收项
 
@@ -87,6 +90,7 @@
 ## MCP / App 后续规划
 
 - [ ] MCP：`cloversec-ctf-search-plus`，统一 GitHub、Brave、Bing、CTFTime、公开归档站、writeup 站点和直接附件 URL 的搜索、证据记录、下载预览与来源评分。
+- [ ] MCP：`cloversec-ctf-browser-search`，用用户授权的浏览器执行 Google/Baidu/CSDN 等容易反爬的检索，只记录结果链接和证据摘要，不保存账号、Cookie 或搜索登录态。
 - [ ] MCP：`cloversec-ctf-docker`，受控执行 `docker build/load/inspect/run/logs/stop/save`，记录 amd64 校验、端口、启动日志、hash 和失败证据。
 - [ ] MCP：`cloversec-ctf-archive`，批量读取 `ctf_cases.jsonl`，生成归档目录、资源索引、manifest、最终 xlsx、语雀表和缺失项报告。
 - [ ] MCP：`cloversec-ctf-hub-assistant`，使用用户当前浏览器登录态辅助填写 Hub 表单、上传截图和资源清单；禁止读取或保存 Cookie、token、localStorage、sessionStorage。

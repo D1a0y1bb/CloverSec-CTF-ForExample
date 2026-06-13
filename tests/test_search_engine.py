@@ -40,6 +40,32 @@ class SearchEngineTests(unittest.TestCase):
         self.assertIn("https://github.com/google/google-ctf", urls)
         self.assertEqual(payload["summary"]["errors"], 0)
 
+    def test_platform_seed_discover_returns_ctf_platforms(self):
+        payload = search.discover("ctf platform", sources=["ctf-platforms"], limit=10)
+
+        urls = [item["url"] for item in payload["results"]]
+
+        self.assertIn("https://ctftime.org/", urls)
+        self.assertTrue(any(item["provider"] == "ctf-platforms" for item in payload["results"]))
+
+    def test_site_profile_search_marks_profile_and_query(self):
+        result = search.normalize_result(
+            provider="duckduckgo",
+            kind="web",
+            title="CSDN writeup",
+            url="https://blog.csdn.net/example/article/details/1",
+            summary="DuckDuckGo HTML result",
+            source_type="public_web",
+            confidence="low",
+        )
+        with mock.patch.object(search, "search_duckduckgo", return_value=[result]) as ddg:
+            payload = search.discover("IrisCTF 2025", sources=["csdn"], limit=5)
+
+        self.assertEqual(payload["results"][0]["provider"], "csdn")
+        self.assertEqual(payload["results"][0]["metadata"]["search_provider"], "duckduckgo")
+        self.assertIn("site:blog.csdn.net", payload["results"][0]["metadata"]["profile_query"])
+        ddg.assert_called()
+
     def test_results_to_cases_preserves_evidence_url(self):
         manifest = {
             "query": "LA CTF archive",

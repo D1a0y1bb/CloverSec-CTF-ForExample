@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.1.7 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.1.8 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -90,6 +90,108 @@ ARCHIVE_SEEDS = [
         "source_type": "github",
         "confidence": "medium",
     },
+]
+
+CTF_PLATFORM_SEEDS = [
+    {
+        "provider": "ctf-platforms",
+        "kind": "ctf_platform",
+        "title": "CTFTime",
+        "url": "https://ctftime.org/",
+        "summary": "Global CTF event calendar, team rankings, writeups, and event metadata.",
+        "source_type": "ctf_platform",
+        "confidence": "high",
+    },
+    {
+        "provider": "ctf-platforms",
+        "kind": "ctf_platform",
+        "title": "NSSCTF",
+        "url": "https://www.nssctf.cn/",
+        "summary": "Chinese CTF training and contest platform.",
+        "source_type": "ctf_platform",
+        "confidence": "medium",
+    },
+    {
+        "provider": "ctf-platforms",
+        "kind": "ctf_platform",
+        "title": "CTFHub",
+        "url": "https://www.ctfhub.com/",
+        "summary": "Chinese CTF training platform and challenge environment.",
+        "source_type": "ctf_platform",
+        "confidence": "medium",
+    },
+    {
+        "provider": "ctf-platforms",
+        "kind": "ctf_platform",
+        "title": "攻防世界 XCTF",
+        "url": "https://adworld.xctf.org.cn/",
+        "summary": "XCTF training and challenge platform.",
+        "source_type": "ctf_platform",
+        "confidence": "medium",
+    },
+    {
+        "provider": "ctf-platforms",
+        "kind": "ctf_platform",
+        "title": "BUUOJ",
+        "url": "https://buuoj.cn/",
+        "summary": "CTF challenge training platform.",
+        "source_type": "ctf_platform",
+        "confidence": "medium",
+    },
+    {
+        "provider": "ctf-platforms",
+        "kind": "ctf_platform",
+        "title": "picoCTF",
+        "url": "https://picoctf.org/",
+        "summary": "Public CTF competition and learning platform.",
+        "source_type": "ctf_platform",
+        "confidence": "medium",
+    },
+    {
+        "provider": "ctf-platforms",
+        "kind": "ctf_platform",
+        "title": "pwn.college",
+        "url": "https://pwn.college/",
+        "summary": "Security education platform with public challenge modules.",
+        "source_type": "ctf_platform",
+        "confidence": "medium",
+    },
+    {
+        "provider": "ctf-platforms",
+        "kind": "ctf_platform",
+        "title": "Root-Me",
+        "url": "https://www.root-me.org/",
+        "summary": "Security challenge and training platform.",
+        "source_type": "ctf_platform",
+        "confidence": "medium",
+    },
+]
+
+SITE_SEARCH_PROFILES = {
+    "csdn": [
+        "site:blog.csdn.net {query}",
+        "site:csdn.net {query} CTF writeup",
+    ],
+    "cnblogs": [
+        "site:cnblogs.com {query} CTF writeup",
+    ],
+    "yuque": [
+        "site:yuque.com {query} CTF writeup",
+    ],
+}
+
+SEARCH_SOURCES = [
+    "github",
+    "github-code",
+    "ctftime",
+    "duckduckgo",
+    "brave",
+    "bing",
+    "seeds",
+    "ctf-platforms",
+    "csdn",
+    "cnblogs",
+    "yuque",
 ]
 
 DIRECT_ASSET_EXTENSIONS = {
@@ -390,6 +492,10 @@ def discover(
                 results.extend(search_bing(query, limit=limit))
             elif source == "seeds":
                 results.extend(seed_results(query))
+            elif source == "ctf-platforms":
+                results.extend(platform_seed_results(query))
+            elif source in SITE_SEARCH_PROFILES:
+                results.extend(search_site_profile(source, query, limit=limit))
             else:
                 errors.append({"provider": source, "error": "unsupported source"})
         except SearchSkipped as exc:
@@ -635,6 +741,40 @@ def seed_results(query: str = "") -> list[dict[str, Any]]:
         if not terms or any(term in haystack for term in terms) or "ctf" in terms:
             results.append(normalize_result(**item))
     return results
+
+
+def platform_seed_results(query: str = "") -> list[dict[str, Any]]:
+    terms = [term.lower() for term in re.findall(r"[\w.-]+", query) if len(term) > 1]
+    has_ctf = "ctf" in query.lower()
+    results = []
+    for item in CTF_PLATFORM_SEEDS:
+        haystack = f"{item['title']} {item['summary']} {item['url']}".lower()
+        if not terms or has_ctf or any(term in haystack for term in terms):
+            results.append(normalize_result(**item))
+    return results
+
+
+def search_site_profile(profile: str, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    templates = SITE_SEARCH_PROFILES.get(profile)
+    if not templates:
+        raise ValueError(f"unsupported site search profile: {profile}")
+    results: list[dict[str, Any]] = []
+    per_query = max(3, min(limit, 10))
+    for template in templates:
+        profile_query = template.format(query=query)
+        for item in search_duckduckgo(profile_query, limit=per_query):
+            enriched = dict(item)
+            enriched["provider"] = profile
+            enriched["kind"] = "site_search"
+            enriched["confidence"] = "medium" if profile in {"csdn", "cnblogs", "yuque"} else item.get("confidence", "low")
+            metadata = dict(enriched.get("metadata") or {})
+            metadata["search_provider"] = "duckduckgo"
+            metadata["profile_query"] = profile_query
+            enriched["metadata"] = metadata
+            results.append(enriched)
+            if len(results) >= limit:
+                return dedupe_results(results)
+    return dedupe_results(results)
 
 
 def fetch_url(url: str, *, max_bytes: int = DEFAULT_MAX_BYTES, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
@@ -1064,7 +1204,7 @@ def main(argv: list[str] | None = None) -> int:
     discover_parser.add_argument(
         "--source",
         action="append",
-        choices=["github", "github-code", "ctftime", "duckduckgo", "brave", "bing", "seeds"],
+        choices=SEARCH_SOURCES,
     )
     discover_parser.add_argument("--limit", type=int, default=20)
     discover_parser.add_argument("--output", required=True)

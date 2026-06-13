@@ -24,7 +24,7 @@ TOOLS = [
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "enum": ["github", "github-code", "ctftime", "duckduckgo", "brave", "bing", "seeds"],
+                        "enum": search.SEARCH_SOURCES,
                     },
                 },
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50},
@@ -82,7 +82,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-search", "version": "0.1.7"},
+                    "serverInfo": {"name": "cloversec-ctf-search", "version": "0.1.8"},
                 },
             )
         if method == "tools/list":
