@@ -38,6 +38,9 @@
 - [x] 生成 Hub 提交材料目录和上传核对表。
 - [x] 明确截图命名和附件清单格式。
 - [x] 定义 `hub_fields.json` 和上传目录结构。
+- [x] 将已有 `CloverSec-CTF-Build-Dockerizer` 源项目完整同步到 plugin skill。
+- [x] 将已有 `CloverSec-CTF-Writeup-Scaffold` 源项目完整同步到 plugin skill。
+- [x] 在源项目增强后再迁移，不使用简化替代版 skill。
 
 ## 阶段 6：归档、审核、最终报告
 

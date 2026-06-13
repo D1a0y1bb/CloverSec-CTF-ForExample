@@ -1,0 +1,11 @@
+challenge:
+  name: web-calc-pro
+  stack: web
+  expose_ports: ["8080"]
+  flag:
+    path: /flag
+    permission: 400
+  platform:
+    entrypoint: /start.sh
+  start:
+    cmd: python3 app.py

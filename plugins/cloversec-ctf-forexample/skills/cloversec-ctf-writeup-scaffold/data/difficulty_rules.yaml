@@ -1,0 +1,50 @@
+difficulty:
+  aliases:
+    easy: 简单
+    medium: 中等
+    hard: 困难
+    简单: 简单
+    中等: 中等
+    困难: 困难
+    低: 简单
+    中: 中等
+    高: 困难
+  keywords:
+    简单: [入门, 基础, 简单, easy]
+    中等: [中等, medium, 常规, 标准]
+    困难: [困难, hard, 绕过, 复杂, 链式]
+  stars:
+    简单: ★
+    中等: ★★★
+    困难: ★★★★★
+  levels:
+    "1":
+      label: "超简单（Basic）"
+      stars: ★
+    "2":
+      label: "简单（Easy）"
+      stars: ★
+    "3":
+      label: "中下（Easy-Medium）"
+      stars: ★★
+    "4":
+      label: "中等偏下（Lower-Medium）"
+      stars: ★★★
+    "5":
+      label: "中等（Medium）"
+      stars: ★★★
+    "6":
+      label: "中等偏上（Upper-Medium）"
+      stars: ★★★★
+    "7":
+      label: "中上（Medium-Hard）"
+      stars: ★★★★
+    "8":
+      label: "低难（Hard-Easy）"
+      stars: ★★★★
+    "9":
+      label: "较难（Hard）"
+      stars: ★★★★★
+    "10":
+      label: "破天（Insane）"
+      stars: ★★★★★★

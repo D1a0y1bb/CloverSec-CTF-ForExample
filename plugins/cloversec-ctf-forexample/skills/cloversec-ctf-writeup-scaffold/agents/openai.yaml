@@ -1,4 +1,8 @@
 interface:
-  display_name: "cloversec-ctf-writeup-scaffold"
-  short_description: "CloverSec CTF workflow skill"
-  default_prompt: "Use this CloverSec CTF skill."
+  display_name: "CloverSec CTF Writeup Scaffold"
+  short_description: "标准化题目手册、录题字段与题解草稿生成"
+  brand_color: "#2563EB"
+  default_prompt: "Use $cloversec-ctf-writeup-scaffold to先输出当前题目目录的文档提案摘要，再整理 WP、源码与构建产物，生成 manual_template.md、manual_filled_draft.md 与录题草稿。"
+
+policy:
+  allow_implicit_invocation: true

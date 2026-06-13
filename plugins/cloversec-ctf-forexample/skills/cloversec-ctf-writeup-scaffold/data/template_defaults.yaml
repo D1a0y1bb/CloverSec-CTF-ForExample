@@ -1,0 +1,20 @@
+placeholders:
+  title: "[题目名称]"
+  description: "[题目描述待补充]"
+  difficulty: "[简单/中等/困难]"
+  category: "[Web/Pwn/Crypto/Misc/Reverse/Mobile/IoT]"
+  flag_type: "[静态Flag/动态Flag]"
+  flag_value: "[题目Flag待补充]"
+  source: "[原创/搬运]"
+  score: "[题目分值待补充]"
+  question_type: "[环境型/附件型]"
+  resource_level: "[8/4]"
+  note: "[请结合部署方式、端口、附件或平台注意事项补充题目备注]"
+  goal: "[请补充题目目标，例如希望选手完成的信息收集、漏洞利用或协议分析目标]"
+notes:
+  environment: "Web 容器 / 默认 `{entrypoint}` 启动 / 容器内监听 `{port}` 端口 / 建议映射 `{port}` 端口对外访问"
+  attachment: "附件型题目 / 无独立容器启动要求 / 请结合附件使用方式补充说明"
+manual:
+  step_info: "访问题目页面"
+  step_placeholder: "（请结合实际解题路径补写详细步骤，附关键代码、关键命令和截图说明）"
+  unexpected_placeholder: "- [请补充非预期利用点、误报点或额外测试结论]"

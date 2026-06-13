@@ -1,0 +1,57 @@
+categories:
+  Web:
+    aliases: [web, web题, php, node, flask, django, fastapi, spring, apache, nginx]
+    goal_hint: "梳理 Web 入口、关键参数、漏洞利用链路并获取最终 Flag。"
+    step_outline:
+      - "信息收集：识别入口页面、目录、接口与可疑参数。"
+      - "漏洞定位：结合源码或 WP 确认利用点与触发条件。"
+      - "利用链构造：记录关键请求、关键脚本与回显点。"
+      - "Flag 获取：说明最终读取或计算 Flag 的路径。"
+  Pwn:
+    aliases: [pwn, heap, rop, fmt, uaf, ret2libc, xinetd, socat]
+    goal_hint: "完成二进制保护分析、漏洞利用链构造并拿到 Flag。"
+    step_outline:
+      - "保护检查：确认 NX、PIE、Canary、RELRO 等状态。"
+      - "漏洞定位：说明越界、格式化、UAF 或逻辑缺陷位置。"
+      - "利用脚本：保留关键 payload、偏移和地址计算。"
+      - "Flag 获取：记录触发 shell 或读取 Flag 的过程。"
+  Crypto:
+    aliases: [crypto, rsa, aes, ecc, hash, lattice, padding, 签名]
+    goal_hint: "说明密码学前提、推导思路、关键脚本与最终 Flag 计算过程。"
+    step_outline:
+      - "题目建模：抽象协议、加密流程或数学条件。"
+      - "漏洞或弱点：解释可利用的参数缺陷或实现问题。"
+      - "推导与脚本：保留关键公式、脚本和中间结果。"
+      - "Flag 获取：展示最终解密或还原结果。"
+  Misc:
+    aliases: [misc, stego, forensics, traffic, pcap, ai, osint]
+    goal_hint: "说明题目材料分析路径、关键工具与最终 Flag 提取过程。"
+    step_outline:
+      - "材料识别：确认文件类型、流量、图像或其他载体。"
+      - "分析过程：记录工具使用与关键中间发现。"
+      - "关键脚本：保留必要命令或处理脚本。"
+      - "Flag 获取：说明最终提取路径。"
+  Reverse:
+    aliases: [reverse, rev, ida, ghidra, apk, 逆向]
+    goal_hint: "完成程序逻辑还原、关键校验点定位并恢复 Flag。"
+    step_outline:
+      - "静态分析：定位关键函数、字符串和控制流。"
+      - "动态验证：说明调试、断点或补丁策略。"
+      - "逻辑还原：记录关键算法、校验逻辑或解密过程。"
+      - "Flag 获取：给出还原出的结果。"
+  Mobile:
+    aliases: [mobile, android, ios, apk, ipa, frida, xposed]
+    goal_hint: "说明移动端分析流程、关键逻辑定位与 Flag 恢复过程。"
+    step_outline:
+      - "环境准备：模拟器、真机或调试环境说明。"
+      - "静态与动态分析：代码、资源、抓包或 Hook 路径。"
+      - "关键逻辑：定位校验、加密或接口交互。"
+      - "Flag 获取：给出最终还原方法。"
+  IoT:
+    aliases: [iot, firmware, mips, arm, 路由器, 固件]
+    goal_hint: "说明固件或设备分析流程、服务入口与 Flag 获取过程。"
+    step_outline:
+      - "固件拆解：文件系统、服务与配置项识别。"
+      - "漏洞分析：说明网络服务或固件逻辑问题。"
+      - "利用过程：保留脚本、命令与关键交互。"
+      - "Flag 获取：说明设备内或模拟环境中的读取路径。"

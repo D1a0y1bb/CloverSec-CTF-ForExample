@@ -1,0 +1,15 @@
+collection:
+  max_depth: 4
+  excluded_dirs: [.git, .hg, .svn, .idea, .vscode, node_modules, dist, build, vendor, venv, .venv, __pycache__]
+  preferred_files:
+    - challenge.yaml
+    - challenge.yml
+    - Dockerfile
+    - start.sh
+    - changeflag.sh
+    - check.sh
+    - writeup.md
+    - wp.md
+    - README.md
+  markdown_priority_keywords: [writeup, wp, 手册, 题目, README]
+  allowed_extensions: [.md, .txt, .yml, .yaml, .sh, .py, .php, .js, .ts, .java, .xml, .html, .conf, .ini, .cfg, .go, .rb, .pl, .c, .cpp, .h, .hpp]
