@@ -1,6 +1,6 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "CloverSec CTF collection, conversion, writeup, archive, review, and Hub submission workflows for Codex.",
   "author": {
     "name": "CloverSec",
@@ -26,7 +26,9 @@
     "developerName": "CloverSec",
     "category": "Developer Tools",
     "websiteURL": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample",
-    "brandColor": "#2563EB",
+    "logo": "./assets/app-icon.png",
+    "composerIcon": "./assets/app-icon.png",
+    "brandColor": "#F59E0B",
     "capabilities": [
       "Read",
       "Write",
