@@ -203,6 +203,23 @@ def write_rows_xlsx(rows: list[dict[str, Any]], path: str | Path) -> None:
 
 def read_xlsx(path: str | Path) -> list[dict[str, str]]:
     matrix = _read_xlsx_matrix(Path(path))
+    return matrix_to_rows(matrix)
+
+
+def read_xlsx_sheets(path: str | Path) -> dict[str, list[dict[str, str]]]:
+    source = Path(path)
+    with zipfile.ZipFile(source) as archive:
+        shared_strings = _read_shared_strings(archive)
+        sheet_paths = _sheet_paths(archive)
+        sheets = {}
+        for sheet_name, sheet_path in sheet_paths:
+            root = ET.fromstring(archive.read(sheet_path))
+            matrix = _worksheet_matrix(root, shared_strings)
+            sheets[sheet_name] = matrix_to_rows(matrix)
+        return sheets
+
+
+def matrix_to_rows(matrix: list[list[str]]) -> list[dict[str, str]]:
     if not matrix:
         return []
     headers = [cell.strip() for cell in matrix[0]]
@@ -243,6 +260,10 @@ def _read_xlsx_matrix(path: Path) -> list[list[str]]:
         sheet_name = _first_sheet_path(archive)
         root = ET.fromstring(archive.read(sheet_name))
 
+    return _worksheet_matrix(root, shared_strings)
+
+
+def _worksheet_matrix(root: ET.Element, shared_strings: list[str]) -> list[list[str]]:
     rows: list[list[str]] = []
     for row_node in root.findall(f".//{{{NS_MAIN}}}sheetData/{{{NS_MAIN}}}row"):
         values: dict[int, str] = {}
@@ -270,17 +291,27 @@ def _read_shared_strings(archive: zipfile.ZipFile) -> list[str]:
 
 
 def _first_sheet_path(archive: zipfile.ZipFile) -> str:
-    workbook = ET.fromstring(archive.read("xl/workbook.xml"))
-    first_sheet = workbook.find(f".//{{{NS_MAIN}}}sheet")
-    if first_sheet is None:
+    sheet_paths = _sheet_paths(archive)
+    if not sheet_paths:
         raise ValueError("workbook has no sheets")
-    rel_id = first_sheet.attrib.get(f"{{{NS_REL}}}id")
+    return sheet_paths[0][1]
+
+
+def _sheet_paths(archive: zipfile.ZipFile) -> list[tuple[str, str]]:
+    workbook = ET.fromstring(archive.read("xl/workbook.xml"))
     rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
-    for rel in rels.findall(f"{{{NS_PACKAGE_REL}}}Relationship"):
-        if rel.attrib.get("Id") == rel_id:
-            target = rel.attrib["Target"]
-            return "xl/" + target.lstrip("/")
-    return "xl/worksheets/sheet1.xml"
+    targets = {
+        rel.attrib.get("Id"): rel.attrib.get("Target", "")
+        for rel in rels.findall(f"{{{NS_PACKAGE_REL}}}Relationship")
+    }
+    sheet_paths: list[tuple[str, str]] = []
+    for sheet in workbook.findall(f".//{{{NS_MAIN}}}sheet"):
+        rel_id = sheet.attrib.get(f"{{{NS_REL}}}id")
+        target = targets.get(rel_id, "")
+        if not target:
+            continue
+        sheet_paths.append((sheet.attrib.get("name", ""), "xl/" + target.lstrip("/")))
+    return sheet_paths
 
 
 def _cell_value(cell: ET.Element, shared_strings: list[str]) -> str:

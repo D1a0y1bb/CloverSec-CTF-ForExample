@@ -76,6 +76,32 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py summary c
 
 脚本只使用 Python 标准库，方便随 plugin 分发。
 
+收集与资料整理脚本：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py migrate-xlsx 竞赛题目收集.xlsx ctf_cases.jsonl
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py asset-inventory challenge-dir asset_inventory.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py research-report ctf_cases.jsonl research_report.md
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py validate-collection ctf_cases.jsonl
+```
+
+## 证据字段
+
+`evidence[]` 用于记录公开来源、用户提供来源和本地材料证据：
+
+- `source_url`：公开网页、仓库、公告、WP 链接。没有 URL 时可留空，但必须提供 `local_path`。
+- `local_path`：本地材料路径。
+- `source_type`：`public_web`、`user_provided`、`local_file`、`github`、`ctftime`、`writeup`、`unknown`。
+- `title`：来源标题。
+- `accessed_at`：访问日期，建议 `YYYY-MM-DD`。
+- `summary`：证据摘要。
+- `confidence`：`high`、`medium`、`low`。
+- `status`：`found`、`missing`、`inaccessible`、`unverified`。
+
+收集阶段不强制要求完整 `Flag`，但进入最终 xlsx 前必须存在完整 `Flag`。
+
+旧表迁移会读取多个业务工作表，并跳过名称包含“标准”或“说明”的工作表。
+
 ## 状态值
 
 - `材料状态`：`未开始`、`收集中`、`已收集`、`缺材料`、`无法确认`

@@ -31,6 +31,16 @@ description: CloverSec CTF 题目附件、源码、WP、复现资料收集 skill
 4. 对失败下载、失效链接、疑似错题材料标记问题。
 5. 输出材料清单给下游 skill 使用。
 
+## 脚本入口
+
+本地材料目录扫描：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py asset-inventory <题目材料目录> asset_inventory.json
+```
+
+生成结果包含文件名、相对路径、材料类型、大小、SHA256 和状态。
+
 ## 验证
 
 - 本地存在的附件必须能读取并计算 hash。
@@ -40,4 +50,3 @@ description: CloverSec CTF 题目附件、源码、WP、复现资料收集 skill
 ## 停止条件
 
 需要账号、验证码、网盘提取码、版权授权或大批量下载许可时，停止并给用户选择。
-
