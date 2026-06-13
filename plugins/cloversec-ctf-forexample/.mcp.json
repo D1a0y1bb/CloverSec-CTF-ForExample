@@ -19,6 +19,16 @@
       "env": {
         "PYTHONUNBUFFERED": "1"
       }
+    },
+    "cloversec-ctf-hub-assistant": {
+      "cwd": ".",
+      "command": "python3",
+      "args": [
+        "./scripts/cloversec_ctf_hub_assistant_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
     }
   }
 }

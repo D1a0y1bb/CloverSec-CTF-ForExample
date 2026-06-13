@@ -62,13 +62,13 @@
 
 ## 下一阶段计划
 
-- [x] 为收集阶段实现 C 方案：免费源优先，可选 key 增强，增加搜索脚本和 MCP server。
+- [x] 为收集阶段实现 C 方案：免费源优先，GitHub `gh auth` 增强，增加搜索脚本和 MCP server。
 - [x] 完成真实公网烟测：CTFTime 2025 events、GitHub/公开 seeds 搜索、DuckDuckGo lite writeup 搜索、GitHub 页面抓取。
 - [x] 审计搜索与下载边界：限制 fetch/download URL scheme、修正 `--max-bytes` 实际读取上限、HTTP 4xx/5xx 不再写成成功附件、GitHub code search 跳过信息独立为 `github-code`。
 - [x] 修正 skill UI 占位介绍，完善 plugin 对外元数据、repo marketplace 名称和 GitHub 安装说明。
 - [x] 配置 GitHub Release 工作流，增加发布前校验和插件包生成脚本。
 - [x] 对 `cloversec-ctf-research-intake` 做更多真实公网样例验收：CTFTime、GitHub archive、具体赛事 writeup、直接附件 URL。
-- [x] 可选 key 质量验收第一版：本机 `gh auth` 可用，GitHub code search 真实返回正常；Brave/Bing key 当前环境缺失，不作为默认要求。
+- [x] GitHub 增强搜索验收第一版：本机 `gh auth` 可用，GitHub code search 真实返回正常；不再要求付费搜索 API key。
 - [x] 插件重新安装后，在新的 Codex 会话确认 `cloversec-ctf-search` MCP 工具可通过 `tool_search` 发现并调用。
 - [x] 对 `cloversec-ctf-asset-collector` 增加 GitHub release asset、raw 文件、目录树下载和压缩包内容预览。
 - [x] 对 GitHub release asset、raw 文件、目录树下载和 zip 预览做真实公网烟测。
@@ -85,22 +85,22 @@
 - [x] 新开独立 Codex 会话验收 `cloversec-ctf-search` MCP 可发现并可调用：线程 `019ec18b-a5c2-7cd0-987a-929467d11dae`，通过 `tool_search` 加载后出现 `mcp__cloversec_ctf_search`，调用 `cloversec_ctf_ctftime_events(year=2026, limit=1)` 成功返回 `Scarlet CTF 2026`。
 - [x] 使用 CloudRouter 真实 LLM 调用测试当前插件效果，主测 `gpt-5.4-mini`，抽样复测 `gpt-5.4` / `gpt-5.5`；记录搜索质量、Hub、retag、附件 fixture、prompt 体积等问题。
 - [x] Google/Baidu 直连不作为默认稳定来源；已改为浏览器辅助 MCP 第一版。
-- [ ] 验收更严格的 MCP 可见性标准：不调用 `tool_search`，新会话初始工具列表里是否直接出现 `cloversec-ctf-search`；当前线程不能证明，需要用户明确允许创建独立新线程。
+- [x] 验收更严格的 MCP 可见性标准：线程 `019ec1be-b48d-7452-a4aa-f057339bd952` 未调用 `tool_search`，新会话初始工具列表没有直接出现 `cloversec-ctf-search`；结果已记录为当前限制。
 - [x] 搜索质量第一版改进：赛事名精确匹配、标题 token 评分、无关赛事降级、搜索引擎首页剔除，避免 `IrisCTF 2025 web writeup` 混入 NepCTF、Compfest 或 DuckDuckGo 首页。
-- [x] 搜索质量扩大样本第一版：已验证 IrisCTF、LA CTF、DownUnderCTF、picoCTF 查询；修复 `LA CTF` 空格赛事名识别和 `LA-CTF-2024` 同赛事误报。
+- [x] 搜索质量扩大样本第二版：已验证 IrisCTF、LA CTF、强网杯、祥云杯、Google CTF、SUCTF、NSSCTF、picoCTF 查询；修复中文赛事名、届数前缀、年份前缀、slug 后缀和泛教程噪声问题。
 - [x] 调整 `ctf-platforms` 数据层语义：平台首页默认标记为 `lead_only`，不和真实 writeup、附件、题目归档结果放在同一可信等级。
 - [x] 修复附件测试 fixture：`tests/fixtures/resources/attachment/challenge.zip` 已替换为真实 zip，并增加回归测试。
 - [x] 增强 Hub 提交自动化前置能力：已支持分类选项映射、上传结果回写、必填字段/关键字/题目解答/截图槽位检查。
-- [x] 明确 Hub 当前能力边界：插件能生成提交包、字段 payload、浏览器填表计划、提交前检查和上传结果回写；仍不自动登录、不读取凭证、不自动点击提交。
+- [x] 明确 Hub 当前能力边界：插件能生成提交包、字段 payload、浏览器/Chrome 填表计划、提交前检查和上传结果回写；仍不读取凭证、不自动点击最终提交。
 - [x] 强化 `cloversec-ctf-hub-retag` 小模型输出约束：停止条件下 `can_execute` 必须返回布尔 `false`，不能返回 `null`；已增加严格 JSON 示例和校验脚本。
-- [ ] 降低真实 LLM 调用 prompt 体积：把 skill 的 Agent 可读摘要、严格 JSON 模板、深层参考文档分层，避免单次 6k-9k tokens 和 100 秒以上延迟。
+- [x] 降低真实 LLM 调用 prompt 体积：已把 `research-intake`、`asset-collector`、`hub-submission` 的 Agent 入口和深层 reference 分层；`build-dockerizer`、`writeup-scaffold` 按用户要求不做瘦身改造。
 - [x] 把“内部 xlsx 必须写入完整 Flag”放到更浅层：已写入插件 manifest、workflow 参考、writeup/final-report skill description。
 
 ## 需要用户配合的验收项
 
-- [x] GitHub code search 已通过本机 `gh auth` 验收；Brave/Bing key 当前环境缺失，后续如已有 key 再测。
+- [x] GitHub code search 已通过本机 `gh auth` 验收；付费搜索 API key 路线已取消。
 - [x] 在新 Codex 会话中确认 `cloversec-ctf-search` MCP 工具可通过 `tool_search` 发现并调用，线程 `019ec18b-a5c2-7cd0-987a-929467d11dae`。
-- [ ] 如需更严格验收，需要用户明确允许创建独立新线程，确认初始工具列表是否无需 `tool_search` 就直接包含 `cloversec-ctf-search`。
+- [x] 已获用户允许并创建独立新线程验收：线程 `019ec1be-b48d-7452-a4aa-f057339bd952` 证明新会话初始工具列表不直接包含 `cloversec-ctf-search`。
 
 ## 真实验收记录与问题台账
 
@@ -108,7 +108,7 @@
 
 - [x] Docker 真实执行不是 mock：已用临时官方 `busybox:1.36` amd64 镜像验证 `quality-review` 与 `hub-retag` 的受控 Docker 路径，覆盖 `run`、`probe`、`tag`、`save`、`load`、`inspect`。
 - [x] Docker 验收没有执行未知题目镜像：只使用官方临时镜像，不对来源不明镜像做 `run`。
-- [x] 搜索 key 输入方式已明确：不要在聊天里发送 key；推荐使用本机 `gh auth login` 或终端环境变量 `GITHUB_TOKEN` / `GH_TOKEN`，Brave/Bing key 只作为可选增强。
+- [x] 搜索 key 输入方式已明确：不要在聊天里发送 key；推荐使用本机 `gh auth login` 或终端环境变量 `GITHUB_TOKEN` / `GH_TOKEN`；默认不要求付费搜索 API key。
 - [x] 无 key 情况下的免费源已具备：CTFTime、GitHub public、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀 `site:` 定向搜索。
 - [x] 本机 Codex 插件安装版本已确认：`cloversec-ctf-forexample@cloversec-ctf` 为 `0.1.8`，`mcpServers` 配置存在。
 - [x] 新会话 MCP 可发现性已验收：线程 `019ec18b-a5c2-7cd0-987a-929467d11dae` 中通过 `tool_search` 发现 `mcp__cloversec_ctf_search`，并成功调用 `cloversec_ctf_ctftime_events` 返回 `Scarlet CTF 2026`。
@@ -117,7 +117,7 @@
 - [x] Google/Baidu 直连搜索已判断为不适合默认稳定源，后续走浏览器辅助或独立 MCP 方案。
 - [x] CloudRouter 真实 LLM 调用已完成：`/v1/models` 和 `/v1/chat/completions` 可用；主测 `gpt-5.4-mini`，抽样复测 `gpt-5.4`、`gpt-5.5`。
 - [x] 真实 LLM 测试暴露的问题已记录到本台账：搜索质量、平台首页语义、附件 fixture、Hub 自动化、retag JSON 严格性、prompt 体积、Flag 规则可见性。
-- [x] 默认搜索源改为免费源：GitHub、CTFTime、DuckDuckGo、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀；Brave/Bing 不再作为默认要求。
+- [x] 默认搜索源改为免费源：GitHub、CTFTime、DuckDuckGo、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀；付费搜索 API key 路线已取消。
 - [x] GitHub code search 改为优先使用 `GITHUB_TOKEN` / `GH_TOKEN`，没有环境变量时读取本机 `gh auth token`；可用 `CLOVERSEC_DISABLE_GH_AUTH_TOKEN=1` 禁用。
 - [x] 已增加 Agent 联网搜索结果导入：`cloversec_ctf_import_agent_web_results` / `import-agent-search`，字段包含 `source_url`、`title`、`snippet`、`provider`、`confidence`、`evidence`、`layer`、`score`。
 - [x] 已增加结果评分分层：`confirmed_challenge`、`writeup_candidate`、`attachment_candidate`、`platform_lead`、`noise`。
@@ -127,27 +127,29 @@
 
 ### 待处理问题
 
-- [ ] Key-backed 搜索质量未完全验收：GitHub code search 已通过本机 `gh auth` 真实验收；Brave/Bing key 当前环境缺失，后续有 key 再测返回质量、限额、失败原因和排序效果。
-- [ ] 更严格 MCP 可见性未验收：已验证 `tool_search` 可发现并加载 MCP；还没验证“新会话初始工具列表无需搜索就直接出现”。当前线程不能证明，需要用户明确允许创建独立新线程。
-- [ ] 搜索质量仍需真实世界扩大验证：已实现 query 评分、赛事名强匹配、无关赛事降权和首页剔除；还需要用多个赛事、多分类、多中文站点抽样确认误报率。
+- [x] Key-backed 搜索质量问题关闭：GitHub code search 已通过本机 `gh auth` 真实验收；付费搜索 API key 路线已取消。
+- [x] 更严格 MCP 可见性已验收：线程 `019ec1be-b48d-7452-a4aa-f057339bd952` 不调用 `tool_search` 时初始工具列表没有直接暴露 `cloversec-ctf-search`。
+- [x] 搜索质量扩大验证第二版已完成：抽样覆盖英文赛事、中文赛事、中文站点和平台入口；修复中文赛事名、年份前缀、slug 后缀和泛教程噪声。
+- [ ] 搜索召回仍需后续增强：`祥云杯 2024 pwn writeup` 在默认免费源里召回不足，分类没有误报，但需要 Agent 联网搜索或浏览器辅助搜索补充。
 - [x] `confirmed_challenge` 语义已收紧：event-level writeup 不再升为 confirmed；需要查询中包含明确题目名或特定线索。
 - [x] 附件 fixture 与名称不一致已修复：`fixture-attachment-ok` 的 `challenge.zip` 现在是合法 zip。
-- [ ] Hub 提交还不是全自动：当前插件能生成提交包、字段 payload、浏览器填表计划；没有自动填表、没有自动上传、没有自动点击提交。
+- [x] Hub assistant MCP 第一版已加入：`cloversec-ctf-hub-assistant` 可生成 browser/Chrome 计划、校验 manifest、回写上传结果；Chrome 计划停止在最终提交前。
+- [ ] Hub Chrome 真实页面自动填写/上传还未验收：需要用户当前浏览器登录态和真实待提交资源，验收范围到最终提交前停止。
 - [x] Hub 分类映射前置能力已加入：`validate-manifest --classify-options` 可把分类文本映射为 Hub 分类 ID。
 - [x] Hub 附件上传结果回写已加入：`apply-upload-results` 可记录上传返回 URL、文件 ID、状态和错误。
 - [x] Hub 提交前字段完整性检查已加入：题目内容、题目解答、关键字、分类 ID、上传结果和截图槽位会进入 validation。
 - [x] `hub-retag` 小模型输出约束已加强：布尔字段为 `null` 会判 invalid。
-- [ ] Prompt 体积偏大：已审计大小，最大为 build-dockerizer 11.6KB、research-intake 7.8KB、writeup-scaffold 6.1KB；build-dockerizer 是已验证源 skill，本次不直接删内容。后续适合分离 Agent 摘要与深层参考。
+- [x] Prompt 体积偏大问题按本阶段范围处理：`research-intake` 约 2.8KB、`asset-collector` 约 2.1KB、`hub-submission` 约 2.6KB；`build-dockerizer` 和 `writeup-scaffold` 是用户自研验证 skill，本阶段不改。
 - [x] 完整 Flag 写入 xlsx 的规则可见性已增强：插件级说明、workflow、writeup/final-report description 都可见。
 
 ## MCP / App 后续规划
 
-- [ ] MCP：`cloversec-ctf-search-plus`，统一 GitHub、Brave、Bing、CTFTime、公开归档站、writeup 站点和直接附件 URL 的搜索、证据记录、下载预览与来源评分。
+- [ ] MCP：`cloversec-ctf-search-plus`，统一 GitHub、CTFTime、公开归档站、writeup 站点、浏览器可见结果和直接附件 URL 的搜索、证据记录、下载预览与来源评分。
 - [x] MCP：`cloversec-ctf-browser-search` 第一版，生成 Google/Baidu/CSDN/博客园/语雀搜索计划，导入页面可见结果，只记录标题、URL、摘要、排名和 blocked 状态，不保存账号、Cookie 或搜索登录态。
 - [ ] MCP：`cloversec-ctf-browser-search` 后续增强，接入 Codex/Chrome 浏览器可见 DOM 读取，把用户确认后的页面结果自动转成 `visible_results.json`。
 - [ ] MCP：`cloversec-ctf-docker`，受控执行 `docker build/load/inspect/run/logs/stop/save`，记录 amd64 校验、端口、启动日志、hash 和失败证据。
 - [ ] MCP：`cloversec-ctf-archive`，批量读取 `ctf_cases.jsonl`，生成归档目录、资源索引、manifest、最终 xlsx、语雀表和缺失项报告。
-- [ ] MCP：`cloversec-ctf-hub-assistant`，使用用户当前浏览器登录态辅助填写 Hub 表单、上传截图和资源清单；禁止读取或保存 Cookie、token、localStorage、sessionStorage。
+- [x] MCP：`cloversec-ctf-hub-assistant` 第一版，生成 Hub browser/Chrome 填表计划、manifest 校验和上传结果回写；禁止读取或保存 Cookie、token、localStorage、sessionStorage，最终提交前停止。
 - [ ] MCP：`cloversec-ctf-quality-runner`，把题目资源、Docker 验证、手册解题步骤、Flag 字段和归档状态汇总成可复核的质量检查证据。
 - [ ] App：`CloverSec CTF Workbench`，展示赛事、题目、资源、手册、镜像、Hub 审核和归档进度，支持从表格进入单题工作流。
 - [ ] App：`CloverSec CTF Hub Uploader`，浏览器辅助提交界面，所有字段和上传动作都需要人工确认，保留提交前截图和字段差异。
@@ -161,7 +163,7 @@
 - [ ] 来源可信度：对每个题目记录多来源证据、置信度、原始页面快照、下载 URL、hash、抓取时间和缺失原因。
 - [ ] 去重合并：按赛事名、题目名、分类、附件 hash、writeup 标题和 URL 聚合重复题目，人工确认后合并字段。
 - [ ] 搜索策略库：为 Web/Pwn/Reverse/Crypto/Misc/Forensics/AI 等分类生成专用 query 组合，提高公开资料命中率。
-- [ ] Key 配置向导：检测 GitHub、Brave、Bing 等可选 key，执行小样本查询，展示限额、失败原因和当前可用搜索源。
+- [ ] GitHub 配置向导：检测 `gh auth login`、`GITHUB_TOKEN` / `GH_TOKEN`，执行小样本查询，展示限额、失败原因和当前可用搜索源。
 - [ ] 下载沙箱：所有外部附件先进入隔离目录，限制协议、大小、重定向、文件名和解压路径，生成安全预览后再进入题目目录。
 - [ ] 附件智能识别：自动判断源码包、附件题、Docker 项目、compose 项目、writeup、截图、pcap、binary、数据库 dump 等资源类型。
 - [ ] 容器题识别：从 Dockerfile、compose、README、端口、启动脚本中推断服务类型、端口、环境变量、构建命令和运行命令。

@@ -19,7 +19,7 @@
 - 不确定字段保留为空，并记录需要用户确认的原因。
 - 公网收集优先使用免费源：GitHub、CTFTime、DuckDuckGo、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀。
 - 当前 Agent 有联网搜索工具时，优先使用 Agent 搜索 Google/Baidu/全网结果，再导入插件数据模型。
-- GitHub 增强优先使用本机 `gh auth login` 或 `GITHUB_TOKEN` / `GH_TOKEN`；Brave/Bing 只作为可选 provider。
+- GitHub code search 优先使用本机 `gh auth login` 或 `GITHUB_TOKEN` / `GH_TOKEN`；默认不要求付费搜索 API key。
 - 搜索、抓取、下载必须写入来源 URL、访问时间、hash、HTTP 状态和失败原因。
 - Hub 自动化第一版不提交，只生成材料。
 - 涉及镜像导出时必须检查 `linux/amd64`。
@@ -44,6 +44,8 @@ MCP 入口：
 - `cloversec_ctf_import_agent_web_results`
 - `cloversec_ctf_browser_search_plan`
 - `cloversec_ctf_browser_search_import_visible`
+- `cloversec_ctf_hub_chrome_plan`
+- `cloversec_ctf_hub_validate_manifest`
 
 没有付费 API key 时，仍可用 GitHub repository search、CTFTime、DuckDuckGo HTML、公开 archive seeds、CTF 平台入口、CSDN、博客园和语雀。平台入口标记为 `platform_lead` / `lead_only`，不能直接当成确认题目。
 

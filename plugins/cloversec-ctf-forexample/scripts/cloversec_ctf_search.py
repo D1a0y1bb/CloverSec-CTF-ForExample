@@ -185,8 +185,6 @@ SEARCH_SOURCES = [
     "github-code",
     "ctftime",
     "duckduckgo",
-    "brave",
-    "bing",
     "seeds",
     "ctf-platforms",
     "csdn",
@@ -240,9 +238,28 @@ LOGIN_OR_BLOCK_DOMAINS = {
 }
 
 EVENT_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_.-]*ctf[a-z0-9_.-]*", re.I)
+CJK_EVENT_RE = re.compile(r"(?:[\u4e00-\u9fff]{1,12}(?:杯|赛)|[\u4e00-\u9fffA-Za-z0-9_.-]{1,30}(?:CTF|ctf))")
+GENERIC_CJK_EVENT_TERMS = {
+    "比赛",
+    "大赛",
+    "竞赛",
+    "初赛",
+    "复赛",
+    "决赛",
+    "总决赛",
+    "线上赛",
+    "线下赛",
+    "资格赛",
+    "网络安全大赛",
+    "网络安全竞赛",
+    "秋季招新赛",
+    "秋季新生赛",
+    "校外赛",
+}
 CATEGORY_TERMS = {"web", "pwn", "misc", "crypto", "reverse", "rev", "forensics", "osint", "mobile", "iot", "ai"}
 WRITEUP_TERMS = {"writeup", "write-up", "wp", "题解", "复现"}
 ATTACHMENT_TERMS = {"attachment", "attachments", "source", "源码", "附件", "release", "download", "challenge.zip"}
+TUTORIAL_NOISE_TERMS = {"从零基础", "入门到竞赛", "学习路线", "保姆级", "看这一篇", "基础入门"}
 ATTACHMENT_CANDIDATE_EXTENSIONS = {".zip", ".7z", ".rar", ".tar", ".tgz", ".gz", ".xz", ".bz2"}
 
 DIRECT_ASSET_EXTENSIONS = {
@@ -537,10 +554,6 @@ def discover(
                 results.extend(search_ctftime_writeups(query=query, limit=limit))
             elif source == "duckduckgo":
                 results.extend(search_duckduckgo(query, limit=limit))
-            elif source == "brave":
-                results.extend(search_brave(query, limit=limit))
-            elif source == "bing":
-                results.extend(search_bing(query, limit=limit))
             elif source == "seeds":
                 results.extend(seed_results(query))
             elif source == "ctf-platforms":
@@ -739,50 +752,6 @@ def normalize_duckduckgo_href(href: str) -> str:
         target = parse_qs(parsed.query).get("uddg", [""])[0]
         return target or href
     return href
-
-
-def search_brave(query: str, *, limit: int = 20) -> list[dict[str, Any]]:
-    key = os.environ.get("BRAVE_SEARCH_API_KEY") or os.environ.get("CLOVERSEC_BRAVE_API_KEY")
-    if not key:
-        raise SearchSkipped("BRAVE_SEARCH_API_KEY/CLOVERSEC_BRAVE_API_KEY not set")
-    url = "https://api.search.brave.com/res/v1/web/search?" + urlencode({"q": query, "count": min(max(limit, 1), 20)})
-    payload = http_json(url, headers={"X-Subscription-Token": key, "Accept": "application/json"})
-    items = payload.get("web", {}).get("results", []) if isinstance(payload, dict) else []
-    return [
-        normalize_result(
-            provider="brave",
-            kind="web",
-            title=item.get("title", ""),
-            url=item.get("url", ""),
-            summary=clean_html(item.get("description", "")),
-            source_type="public_web",
-            confidence="medium",
-        )
-        for item in items
-        if isinstance(item, dict)
-    ]
-
-
-def search_bing(query: str, *, limit: int = 20) -> list[dict[str, Any]]:
-    key = os.environ.get("BING_SEARCH_API_KEY") or os.environ.get("CLOVERSEC_BING_API_KEY")
-    if not key:
-        raise SearchSkipped("BING_SEARCH_API_KEY/CLOVERSEC_BING_API_KEY not set")
-    url = "https://api.bing.microsoft.com/v7.0/search?" + urlencode({"q": query, "count": min(max(limit, 1), 50)})
-    payload = http_json(url, headers={"Ocp-Apim-Subscription-Key": key})
-    items = payload.get("webPages", {}).get("value", []) if isinstance(payload, dict) else []
-    return [
-        normalize_result(
-            provider="bing",
-            kind="web",
-            title=item.get("name", ""),
-            url=item.get("url", ""),
-            summary=item.get("snippet", ""),
-            source_type="public_web",
-            confidence="medium",
-        )
-        for item in items
-        if isinstance(item, dict)
-    ]
 
 
 def seed_results(query: str = "") -> list[dict[str, Any]]:
@@ -1236,7 +1205,7 @@ def build_query_profile(query: str, *, years: list[int]) -> dict[str, Any]:
     year_terms.update(token for token in tokens if re.fullmatch(r"20\d{2}", token))
     event_terms = {
         token.strip("._-")
-        for token in EVENT_TOKEN_RE.findall(lowered)
+        for token in extract_event_tokens(lowered)
         if token.lower() not in GENERIC_EVENT_QUERY_TERMS
     }
     event_phrases = set()
@@ -1285,6 +1254,10 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
     if is_search_or_login_noise(url):
         return "noise", -100, [], ["search engine, login, or blocked page"]
 
+    if any(term in haystack for term in TUTORIAL_NOISE_TERMS):
+        score -= 55
+        issues.append("broad tutorial page")
+
     event_terms: set[str] = set(profile.get("event_terms") or set())
     event_phrases: set[str] = set(profile.get("event_phrases") or set())
     year_terms: set[str] = set(profile.get("year_terms") or set())
@@ -1298,11 +1271,7 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
             score -= 70
             issues.append("event name mismatch")
 
-        foreign_events = {
-            token.lower()
-            for token in EVENT_TOKEN_RE.findall(haystack)
-            if not is_same_event_token(token.lower(), event_terms)
-        }
+        foreign_events = {token.lower() for token in extract_event_tokens(haystack) if not is_same_event_token(token.lower(), event_terms)}
         if foreign_events:
             score -= 45
             issues.append(f"other event names found: {', '.join(sorted(foreign_events)[:5])}")
@@ -1368,22 +1337,89 @@ def has_challenge_specific_evidence(haystack: str, profile: dict[str, Any]) -> b
 
 
 def event_name_matches(haystack: str, event_terms: set[str], event_phrases: set[str]) -> bool:
-    normalized = re.sub(r"[^a-z0-9]+", "", haystack.lower())
-    if any(term in normalized for term in event_terms):
+    normalized = normalize_event_text(haystack)
+    if any(normalize_event_text(term) in normalized for term in event_terms if normalize_event_text(term)):
         return True
     return any(phrase in haystack for phrase in event_phrases)
 
 
 def is_same_event_token(token: str, event_terms: set[str]) -> bool:
     normalized = token.strip("._-").lower()
-    condensed = re.sub(r"[^a-z0-9]+", "", normalized)
+    condensed = normalize_event_text(normalized)
     for event in event_terms:
         event_name = event.strip("._-").lower()
-        if normalized == event_name or condensed == event_name:
+        event_condensed = normalize_event_text(event_name)
+        if normalized == event_name or condensed == event_condensed:
             return True
-        if condensed.startswith(event_name):
+        if event_condensed and condensed.startswith(event_condensed):
+            return True
+        if event_condensed and condensed.endswith(event_condensed):
+            prefix = condensed[: -len(event_condensed)]
+            if re.fullmatch(r"(?:20\d{2}|wp|writeup|复现|题解|年)+", prefix):
+                return True
+            if contains_cjk(prefix) and len(prefix) <= 4:
+                return True
+        if event_condensed and event_condensed in condensed:
+            prefix, suffix = condensed.split(event_condensed, 1)
+            if is_generic_event_affix(prefix) and is_generic_event_affix(suffix):
+                return True
+        if event_condensed and contains_cjk(event_condensed) and event_condensed in condensed:
             return True
     return False
+
+
+def extract_event_tokens(text: str) -> list[str]:
+    tokens = EVENT_TOKEN_RE.findall(text)
+    tokens.extend(CJK_EVENT_RE.findall(text))
+    output = []
+    seen = set()
+    for token in tokens:
+        cleaned = token.strip("._-").lower()
+        if cleaned in GENERIC_CJK_EVENT_TERMS:
+            continue
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        output.append(cleaned)
+    return output
+
+
+def normalize_event_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", text.lower())
+
+
+def contains_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
+
+
+def is_generic_event_affix(text: str) -> bool:
+    if not text:
+        return True
+    stripped = text
+    stripped = re.sub(r"20\d{2}", "", stripped)
+    for term in [
+        "official",
+        "writeup",
+        "writeups",
+        "docker",
+        "wp",
+        "challenge",
+        "challenges",
+        "qual",
+        "quals",
+        "final",
+        "复现",
+        "题解",
+        "个人",
+        "官方",
+        "上",
+        "下",
+        "年",
+    ]:
+        stripped = stripped.replace(term, "")
+    if not stripped:
+        return True
+    return contains_cjk(stripped) and len(stripped) <= 4
 
 
 def looks_attachment_candidate_url(url: str) -> bool:

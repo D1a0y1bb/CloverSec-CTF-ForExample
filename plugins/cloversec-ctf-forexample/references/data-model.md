@@ -122,7 +122,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py downloa
 
 `results[]` 字段：
 
-- `provider`：`github`、`github-code`、`ctftime`、`duckduckgo`、`brave`、`bing`、`seed`
+- `provider`：`github`、`github-code`、`ctftime`、`duckduckgo`、`seed`、`ctf-platforms`、`csdn`、`cnblogs`、`yuque`、`agent-web-search`、`browser-google`、`browser-baidu`
 - `kind`：`event`、`writeup`、`repository`、`code`、`web`、`challenge_archive`
 - `title`
 - `url`

@@ -14,7 +14,7 @@ import cloversec_ctf_search as search
 TOOLS = [
     {
         "name": "cloversec_ctf_discover",
-        "description": "Search public CTF sources using free providers and optional API-key providers.",
+        "description": "Search public CTF sources using free providers and optional GitHub code search.",
         "inputSchema": {
             "type": "object",
             "properties": {

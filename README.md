@@ -105,22 +105,26 @@ Core data is carried through `ctf_case.json` or `ctf_cases.jsonl`. The final xls
 
 ## MCP Search
 
-The plugin includes two local stdio MCP servers:
+The plugin includes three local stdio MCP servers:
 
 - `cloversec-ctf-search` for CTF public-source search, URL fetch, GitHub Release listing, and Agent web-search result import.
 - `cloversec-ctf-browser-search` for browser-assisted Google/Baidu/CSDN/Cnblogs/Yuque search planning and visible-result import.
+- `cloversec-ctf-hub-assistant` for safe Hub browser/Chrome filling plans, upload-result merge, and pre-submit validation.
 
 Available tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `cloversec_ctf_discover` | Search free public sources and optional API-key providers. |
+| `cloversec_ctf_discover` | Search free public sources plus GitHub code search through token or local `gh auth`. |
 | `cloversec_ctf_ctftime_events` | Fetch CTFTime events for a target year and optional query. |
 | `cloversec_ctf_fetch_url` | Fetch URL metadata, title, text, hash, and status. |
 | `cloversec_ctf_github_release_assets` | List downloadable GitHub Release assets. |
 | `cloversec_ctf_import_agent_web_results` | Import web search results gathered by the current Agent and score them into CloverSec layers. |
 | `cloversec_ctf_browser_search_plan` | Create a browser-assisted Google/Baidu/CSDN/Cnblogs/Yuque search plan, optionally opening the search page. |
 | `cloversec_ctf_browser_search_import_visible` | Import visible browser search results without reading cookies, tokens, localStorage, sessionStorage, passwords, or captcha data. |
+| `cloversec_ctf_hub_chrome_plan` | Create a Chrome-assisted Hub filling plan that stops before final submit. |
+| `cloversec_ctf_hub_validate_manifest` | Validate Hub classify ID, required fields, upload results, and screenshot slots. |
+| `cloversec_ctf_hub_apply_upload_results` | Merge visible Hub upload results back into the manifest. |
 
 Free sources:
 
@@ -132,12 +136,10 @@ Free sources:
 - CTF platform seeds as `platform_lead` / `lead_only`
 - CSDN, Cnblogs, and Yuque `site:` search through DuckDuckGo
 
-Optional key-backed sources:
+Optional GitHub search:
 
 - `GITHUB_TOKEN` or `GH_TOKEN` for GitHub code search
 - `CLOVERSEC_DISABLE_GH_AUTH_TOKEN=1` to disable reading local `gh auth token`
-- `BRAVE_SEARCH_API_KEY` or `CLOVERSEC_BRAVE_API_KEY`
-- `BING_SEARCH_API_KEY` or `CLOVERSEC_BING_API_KEY`
 
 Search results are scored into:
 
@@ -216,8 +218,8 @@ scripts/
 
 ## Boundaries
 
-- Hub automation currently prepares fields, upload packages, screenshots, and checklists. It does not log in, save credentials, read cookies, or submit forms unattended.
-- Hub browser assistance should use a user's active browser session only after explicit confirmation.
+- Hub automation currently prepares fields, upload packages, screenshots, Chrome/browser plans, upload-result merge, and pre-submit validation. It does not save credentials, read cookies, or click final submit.
+- Hub browser assistance uses the user's active browser session only after explicit confirmation and stops before the final submit action.
 - Full Flag values are intentionally written into internal xlsx/Yuque outputs.
 - Public repository content must not include private challenge assets, internal xlsx files, Hub credentials, cookies, tokens, or private writeups.
 - Docker execution is opt-in. `cloversec_ctf_review.py --execute-docker` runs controlled load/inspect/run/probe/logs/stop/rm, and `cloversec_ctf_retag.py --execute` runs controlled tag/save/load/inspect.

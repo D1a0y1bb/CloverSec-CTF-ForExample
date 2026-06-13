@@ -28,7 +28,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py valida
 
 ## `cloversec_ctf_search.py`
 
-公网搜索、抓取和下载工具。免费源默认包括 GitHub repository search、GitHub code search（有 `gh auth login` 或 token 时）、CTFTime events/writeups、DuckDuckGo HTML、内置公开 CTF 归档 seeds、CTF 平台 seeds、CSDN/博客园/语雀 `site:` 定向搜索；可选 key 会增强搜索面。
+公网搜索、抓取和下载工具。免费源默认包括 GitHub repository search、GitHub code search（有 `gh auth login` 或 token 时）、CTFTime events/writeups、DuckDuckGo HTML、内置公开 CTF 归档 seeds、CTF 平台 seeds、CSDN/博客园/语雀 `site:` 定向搜索。
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discover \
@@ -54,10 +54,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py preview
 - `GITHUB_TOKEN` 或 `GH_TOKEN`
 - 本机已执行 `gh auth login` 时，脚本默认尝试读取 `gh auth token`
 - `CLOVERSEC_DISABLE_GH_AUTH_TOKEN=1`，禁止读取本机 `gh auth token`
-- `BRAVE_SEARCH_API_KEY` 或 `CLOVERSEC_BRAVE_API_KEY`
-- `BING_SEARCH_API_KEY` 或 `CLOVERSEC_BING_API_KEY`
 
-没有 GitHub token 时，GitHub code search 会在 `errors` 中标记 skipped，其他免费源继续执行。Brave、Bing 只在显式传 `--source brave` / `--source bing` 时使用。
+没有 GitHub token 时，GitHub code search 会在 `errors` 中标记 skipped，其他免费源继续执行。
 `--source github` 会先做无需 key 的 GitHub repository search；没有 `GITHUB_TOKEN` 时，只会把增强项 `github-code` 记录为 skipped。
 也可以单独传 `--source github-code`，用于只跑 GitHub code search。
 抓取和下载只支持 `http://`、`https://` URL；HTTP 4xx/5xx 响应不会作为成功附件写入下载目录。
@@ -115,7 +113,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 
 ## MCP server
 
-插件带有 `cloversec-ctf-search` 和 `cloversec-ctf-browser-search` MCP server，配置文件为 `.mcp.json`。工具：
+插件带有 `cloversec-ctf-search`、`cloversec-ctf-browser-search` 和 `cloversec-ctf-hub-assistant` MCP server，配置文件为 `.mcp.json`。工具：
 
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
@@ -124,6 +122,10 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 - `cloversec_ctf_import_agent_web_results`
 - `cloversec_ctf_browser_search_plan`
 - `cloversec_ctf_browser_search_import_visible`
+- `cloversec_ctf_hub_browser_plan`
+- `cloversec_ctf_hub_chrome_plan`
+- `cloversec_ctf_hub_validate_manifest`
+- `cloversec_ctf_hub_apply_upload_results`
 
 ## `cloversec_ctf_build.py`
 
@@ -174,7 +176,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_writeup.py render
 
 ## `cloversec_ctf_hub.py`
 
-Hub 提交材料整理工具。第一版只生成材料包，不登录 Hub、不读取凭证、不自动提交。
+Hub 提交材料整理工具。生成材料包、浏览器计划、Chrome 计划、提交前检查和上传结果回写；不读取凭证，不点击最终提交。
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package \
@@ -186,6 +188,11 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package \
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py browser-plan \
   --manifest hub_submission_package/manifests/upload_manifest.json \
   --output hub_submission_package/browser_assist_plan.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py chrome-plan \
+  --manifest hub_submission_package/manifests/upload_manifest.json \
+  --output hub_submission_package/chrome_assist_plan.json \
+  --report hub_submission_package/chrome_assist_plan.md
 
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py validate-manifest \
   --manifest hub_submission_package/manifests/upload_manifest.json \
@@ -209,7 +216,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-uplo
 - `hub_submission_package/hub_submission_checklist.md`
 
 默认截图槽位固定为 `01-challenge-page.png`、`02-container-running.png`、`03-solve-proof.png`。
-`validate-manifest` 会检查分类 ID、题目内容、题目解答、关键字、上传结果和截图槽位；`apply-upload-results` 只合并显式提供的上传返回 JSON，不读取浏览器 Cookie、token 或 session。
+`validate-manifest` 会检查分类 ID、题目内容、题目解答、关键字、上传结果和截图槽位；`apply-upload-results` 只合并显式提供的上传返回 JSON，不读取浏览器 Cookie、token 或 session。`chrome-plan` 约束 Agent 只能使用用户当前浏览器可见状态，最终提交前停止。
 
 ## `cloversec_ctf_archive.py`
 

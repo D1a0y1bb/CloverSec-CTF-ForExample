@@ -179,6 +179,8 @@ class SearchEngineTests(unittest.TestCase):
         self.assertIn("yuque", search.DEFAULT_DISCOVER_SOURCES)
         self.assertNotIn("brave", search.DEFAULT_DISCOVER_SOURCES)
         self.assertNotIn("bing", search.DEFAULT_DISCOVER_SOURCES)
+        self.assertNotIn("brave", search.SEARCH_SOURCES)
+        self.assertNotIn("bing", search.SEARCH_SOURCES)
 
     def test_agent_search_import_scores_and_filters_wrong_event(self):
         payload = search.import_agent_search_results(
@@ -256,6 +258,77 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(layers_by_title["LA CTF 2024 purell web writeup"], "confirmed_challenge")
         self.assertEqual(layers_by_title["HKCERT 2024 web writeup"], "noise")
         self.assertEqual(layers_by_title["NewStarCTF 2024 week one writeup"], "noise")
+
+    def test_chinese_event_name_filters_other_contests(self):
+        payload = search.import_agent_search_results(
+            [
+                {
+                    "rank": 1,
+                    "title": "第九届强网杯 2025 babyweb writeup",
+                    "url": "https://example.com/qwb-2025-babyweb",
+                    "snippet": "强网杯 2025 线上赛 Web babyweb 题解",
+                },
+                {
+                    "rank": 2,
+                    "title": "蓝桥杯 2025 web writeup",
+                    "url": "https://example.com/lanqiao-2025-web",
+                    "snippet": "蓝桥杯 2025 web 题解",
+                },
+            ],
+            query="强网杯 2025 babyweb web writeup",
+        )
+
+        layers_by_title = {item["title"]: item["layer"] for item in payload["results"]}
+        self.assertEqual(layers_by_title["第九届强网杯 2025 babyweb writeup"], "confirmed_challenge")
+        self.assertEqual(layers_by_title["蓝桥杯 2025 web writeup"], "noise")
+        issues_by_title = {item["title"]: item["quality_issues"] for item in payload["results"]}
+        self.assertFalse(issues_by_title["第九届强网杯 2025 babyweb writeup"])
+
+    def test_year_prefixed_event_token_is_same_event(self):
+        payload = search.import_agent_search_results(
+            [
+                {
+                    "rank": 1,
+                    "title": "SUCTF2025 Writeup",
+                    "url": "https://example.com/suctf2025",
+                    "snippet": "SUCTF 2025 web writeup",
+                },
+                {
+                    "rank": 2,
+                    "title": "2025-SUCTF个人wp",
+                    "url": "https://example.com/2025-suctf",
+                    "snippet": "2025 SUCTF web wp",
+                },
+                {
+                    "rank": 3,
+                    "title": "2025 SUCTF 官方WriteUp&Docker",
+                    "url": "https://example.com/2025-suctf-official-writeup-docker",
+                    "snippet": "SUCTF official writeup and docker files",
+                },
+            ],
+            query="SUCTF 2025 web writeup",
+        )
+
+        issues_by_title = {item["title"]: item["quality_issues"] for item in payload["results"]}
+        self.assertFalse(issues_by_title["SUCTF2025 Writeup"])
+        self.assertFalse(issues_by_title["2025-SUCTF个人wp"])
+        self.assertFalse(issues_by_title["2025 SUCTF 官方WriteUp&Docker"])
+
+    def test_broad_tutorial_pages_are_noise(self):
+        payload = search.import_agent_search_results(
+            [
+                {
+                    "rank": 1,
+                    "title": "2025年全国CTF夺旗赛-从零基础入门到竞赛_suctf 2025 writeup",
+                    "url": "https://blog.csdn.net/example",
+                    "snippet": "从零基础入门到竞赛，看这一篇",
+                }
+            ],
+            query="SUCTF 2025 web writeup",
+        )
+
+        self.assertEqual(payload["results"][0]["layer"], "noise")
+        self.assertIn("broad tutorial page", payload["results"][0]["quality_issues"])
 
     def test_markdown_writeup_is_not_attachment_candidate(self):
         result = search.normalize_result(

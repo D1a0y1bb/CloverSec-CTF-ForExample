@@ -181,6 +181,8 @@ def create_browser_assist_plan(
     return {
         "hub_url": hub_url,
         "mode": "browser-assisted",
+        "auto_submit": False,
+        "stop_before_submit": True,
         "site_observation": HUB_SITE_OBSERVATION,
         "form_fields": HUB_FORM_FIELDS,
         "form_payload": form_payload,
@@ -189,7 +191,7 @@ def create_browser_assist_plan(
             "只使用用户已经登录的浏览器会话。",
             "不读取或保存 Cookie、token、CSRF、localStorage、sessionStorage、密码或验证码。",
             "提交前必须让用户确认字段、上传文件和截图。",
-            "默认不自动点击最终提交按钮。",
+            "不自动点击最终提交按钮。",
         ],
         "steps": [
             {"id": "open-hub", "action": "打开 Hub CTF 资源页面", "target": hub_url, "requires_user_confirmation": False},
@@ -200,7 +202,7 @@ def create_browser_assist_plan(
             {"id": "upload-files", "action": "上传附件、镜像 tar 和手册材料", "target": "upload", "requires_user_confirmation": True},
             {"id": "upload-screenshots", "action": "上传截图并核对截图用途", "target": "screenshots", "requires_user_confirmation": True},
             {"id": "pre-submit-review", "action": "生成提交前字段差异和缺失项", "target": "preview", "requires_user_confirmation": True},
-            {"id": "manual-submit", "action": "用户确认后手动提交或明确授权自动提交", "target": "submit", "requires_user_confirmation": True},
+            {"id": "manual-submit", "action": "停止在最终提交前，由用户检查后手动提交", "target": "submit", "requires_user_confirmation": True},
         ],
         "field_count": len(fields),
         "upload_file_count": len(upload_files),
@@ -210,6 +212,67 @@ def create_browser_assist_plan(
         "screenshots": screenshots,
         "upload_results": manifest.get("upload_results", []) if isinstance(manifest.get("upload_results"), list) else [],
     }
+
+
+def create_chrome_assist_plan(
+    manifest: dict[str, Any],
+    *,
+    hub_url: str = "https://hub.yunyansec.com/#/resource/ctf",
+    classify_options: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    base_plan = create_browser_assist_plan(manifest, hub_url=hub_url, classify_options=classify_options)
+    plan = dict(base_plan)
+    plan.update(
+        {
+            "mode": "chrome-assisted",
+            "requires_chrome_plugin": True,
+            "auto_submit": False,
+            "stop_before_submit": True,
+            "chrome_execution_contract": {
+                "browser": "Chrome plugin or Codex browser-control equivalent",
+                "entry_url": hub_url,
+                "create_url": HUB_SITE_OBSERVATION["routes"]["ctf_create"],
+                "allowed_actions": [
+                    "open_page",
+                    "wait_for_user_login",
+                    "fill_visible_form_fields",
+                    "select_visible_classify_option",
+                    "set_visible_file_inputs",
+                    "record_visible_upload_results",
+                    "take_pre_submit_screenshot",
+                ],
+                "forbidden_actions": [
+                    "read_cookie",
+                    "read_token",
+                    "read_csrf_secret",
+                    "read_localStorage",
+                    "read_sessionStorage",
+                    "save_password",
+                    "solve_captcha",
+                    "click_final_submit",
+                ],
+                "stop_points": [
+                    {"id": "login-required", "condition": "页面要求登录、验证码或二次确认", "action": "等待用户处理"},
+                    {"id": "upload-result-required", "condition": "页面上传控件未返回可见结果", "action": "等待用户确认上传状态"},
+                    {"id": "pre-submit-review", "condition": "最终提交按钮可见前", "action": "停止并展示字段差异、上传结果和截图"},
+                ],
+                "field_payload": plan.get("form_payload", {}),
+                "field_selectors": HUB_FORM_FIELDS,
+                "upload_files": plan.get("upload_files", []),
+                "screenshots": plan.get("screenshots", []),
+            },
+            "steps": [
+                {"id": "open-chrome", "action": "用用户当前 Chrome 会话打开 Hub CTF 页面", "target": hub_url, "requires_user_confirmation": False},
+                {"id": "wait-login", "action": "如果出现登录、验证码或权限页，等待用户在浏览器里处理", "target": "chrome", "requires_user_confirmation": True},
+                {"id": "open-create-form", "action": "打开新增 CTF 题目路由 #/activity/submitctf/0/0/0", "target": "chrome", "requires_user_confirmation": False},
+                {"id": "fill-visible-fields", "action": "只填写页面可见字段；富文本解答由页面可见编辑器写入", "target": "form", "requires_user_confirmation": False},
+                {"id": "upload-visible-files", "action": "通过页面文件控件上传 manifest 中的附件、镜像 tar 和截图", "target": "upload", "requires_user_confirmation": True},
+                {"id": "record-upload-results", "action": "只记录页面可见的上传结果 URL、文件名、状态和错误", "target": "upload", "requires_user_confirmation": False},
+                {"id": "pre-submit-review", "action": "最终提交前停止，输出字段差异、缺失项、上传结果和预览截图", "target": "preview", "requires_user_confirmation": True},
+            ],
+        }
+    )
+    return plan
 
 
 def create_hub_form_payload(
@@ -403,6 +466,8 @@ def render_browser_assist_plan(plan: dict[str, Any]) -> str:
         f"- 上传文件数：{plan.get('upload_file_count', 0)}",
         f"- 截图数：{plan.get('screenshot_count', 0)}",
         f"- 表单状态：{plan.get('validation', {}).get('status', '')}",
+        f"- 自动提交：{'是' if plan.get('auto_submit') else '否'}",
+        f"- 提交前停止：{'是' if plan.get('stop_before_submit') else '否'}",
         "",
         "## 安全边界",
         "",
@@ -412,6 +477,12 @@ def render_browser_assist_plan(plan: dict[str, Any]) -> str:
     for step in plan.get("steps", []):
         confirm = "需要确认" if step.get("requires_user_confirmation") else "无需确认"
         lines.append(f"- {step.get('id', '')}：{step.get('action', '')}（{confirm}）")
+    contract = plan.get("chrome_execution_contract") if isinstance(plan.get("chrome_execution_contract"), dict) else {}
+    if contract:
+        lines.extend(["", "## Chrome 执行约束", ""])
+        lines.append(f"- 入口页面：{contract.get('entry_url', '')}")
+        lines.append(f"- 新增页面：{contract.get('create_url', '')}")
+        lines.append("- 禁止动作：" + "、".join(contract.get("forbidden_actions", [])))
     lines.extend(["", "## Hub 字段映射", ""])
     for field in plan.get("form_fields", []):
         required = "必填" if field.get("required") else "可选"
@@ -520,6 +591,13 @@ def main(argv: list[str] | None = None) -> int:
     browser_parser.add_argument("--hub-url", default="https://hub.yunyansec.com/#/resource/ctf")
     browser_parser.add_argument("--classify-options", help="JSON file from /ctf/classify/?type=1 or a normalized options list")
 
+    chrome_parser = subparsers.add_parser("chrome-plan", help="create Chrome-assisted Hub filling plan")
+    chrome_parser.add_argument("--manifest", required=True)
+    chrome_parser.add_argument("--output", required=True)
+    chrome_parser.add_argument("--report")
+    chrome_parser.add_argument("--hub-url", default="https://hub.yunyansec.com/#/resource/ctf")
+    chrome_parser.add_argument("--classify-options", help="JSON file from /ctf/classify/?type=1 or a normalized options list")
+
     upload_parser = subparsers.add_parser("apply-upload-results", help="merge Hub upload results back into an upload manifest")
     upload_parser.add_argument("--manifest", required=True)
     upload_parser.add_argument("--upload-results", required=True)
@@ -542,6 +620,17 @@ def main(argv: list[str] | None = None) -> int:
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
         classify_options = load_classify_options(args.classify_options) if args.classify_options else None
         plan = create_browser_assist_plan(manifest, hub_url=args.hub_url, classify_options=classify_options)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        report = Path(args.report) if args.report else output.with_suffix(".md")
+        report.write_text(render_browser_assist_plan(plan), encoding="utf-8")
+        print(f"wrote {output}")
+        return 0
+    if args.command == "chrome-plan":
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        classify_options = load_classify_options(args.classify_options) if args.classify_options else None
+        plan = create_chrome_assist_plan(manifest, hub_url=args.hub_url, classify_options=classify_options)
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

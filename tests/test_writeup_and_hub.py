@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -136,6 +137,8 @@ class WriteupAndHubTests(unittest.TestCase):
             report = hub.render_browser_assist_plan(plan)
 
             self.assertEqual(plan["mode"], "browser-assisted")
+            self.assertFalse(plan["auto_submit"])
+            self.assertTrue(plan["stop_before_submit"])
             self.assertEqual(plan["site_observation"]["routes"]["ctf_create"], "https://hub.yunyansec.com/#/activity/submitctf/0/0/0")
             self.assertEqual(plan["form_payload"]["flag_type"], 2)
             self.assertEqual(plan["form_payload"]["test_type"], 1)
@@ -146,8 +149,34 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertIn("02-container-running.png", plan["validation"]["missing_screenshots"])
             self.assertTrue(any("不读取或保存 Cookie" in item for item in plan["security_boundaries"]))
             self.assertTrue(any(step["id"] == "manual-submit" for step in plan["steps"]))
+            self.assertTrue(any("手动提交" in step["action"] for step in plan["steps"] if step["id"] == "manual-submit"))
             self.assertIn("Hub 浏览器辅助填表方案", report)
             self.assertIn("POST /ctf/add/", json.dumps(plan, ensure_ascii=False))
+
+    def test_chrome_assist_plan_stops_before_submit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            fields = writeup.build_hub_fields(case)
+            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manifest = hub.create_submission_package(
+                case=case,
+                hub_fields=fields["hub_fields"],
+                manual_markdown=manual,
+                output_dir=tmp_path / "hub_submission_package",
+            )
+
+            plan = hub.create_chrome_assist_plan(manifest)
+
+        self.assertEqual(plan["mode"], "chrome-assisted")
+        self.assertTrue(plan["requires_chrome_plugin"])
+        self.assertFalse(plan["auto_submit"])
+        self.assertTrue(plan["stop_before_submit"])
+        contract = plan["chrome_execution_contract"]
+        self.assertIn("click_final_submit", contract["forbidden_actions"])
+        self.assertIn("read_cookie", contract["forbidden_actions"])
+        self.assertIn("read_localStorage", contract["forbidden_actions"])
+        self.assertTrue(any(step["id"] == "pre-submit-review" for step in plan["steps"]))
 
     def test_hub_classify_options_and_upload_results_update_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -210,6 +239,103 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(payload["form_payload"]["classify"], "101")
         self.assertIn("upload_results", payload["validation"]["blockers"])
+
+    def test_hub_cli_chrome_plan_writes_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            fields = writeup.build_hub_fields(case)
+            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manifest = hub.create_submission_package(
+                case=case,
+                hub_fields=fields["hub_fields"],
+                manual_markdown=manual,
+                output_dir=tmp_path / "hub_submission_package",
+            )
+            manifest_path = tmp_path / "manifest.json"
+            output = tmp_path / "chrome_plan.json"
+            report = tmp_path / "chrome_plan.md"
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+            code = hub.main([
+                "chrome-plan",
+                "--manifest",
+                str(manifest_path),
+                "--output",
+                str(output),
+                "--report",
+                str(report),
+            ])
+            payload = json.loads(output.read_text(encoding="utf-8"))
+            report_text = report.read_text(encoding="utf-8")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["mode"], "chrome-assisted")
+        self.assertIn("click_final_submit", payload["chrome_execution_contract"]["forbidden_actions"])
+        self.assertIn("提交前停止：是", report_text)
+
+    def test_hub_assistant_mcp_tools_list_and_chrome_plan(self):
+        manifest = {
+            "hub_fields": {
+                "题目标题": "Demo",
+                "题目内容": "Demo desc",
+                "题目Flag": "flag{demo}",
+                "题目来源": "Demo CTF",
+                "题目分类": "Web",
+                "题目分值": "100",
+                "题目等级": "3级",
+                "题目类型": "环境型",
+                "资源等级": "4",
+                "添加关键字": ["web"],
+                "Flag类型": "静态Flag",
+            },
+            "upload_files": [],
+            "screenshots": [],
+        }
+        process = subprocess.Popen(
+            [sys.executable, str(SCRIPTS / "cloversec_ctf_hub_assistant_mcp.py")],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            assert process.stdin is not None
+            assert process.stdout is not None
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}) + "\n")
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}) + "\n")
+            process.stdin.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 3,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "cloversec_ctf_hub_chrome_plan",
+                            "arguments": {
+                                "manifest": manifest,
+                                "classify_options": [{"id": 101, "name": "Web"}],
+                            },
+                        },
+                    }
+                )
+                + "\n"
+            )
+            process.stdin.flush()
+            init = json.loads(process.stdout.readline())
+            tools = json.loads(process.stdout.readline())
+            call = json.loads(process.stdout.readline())
+        finally:
+            if process.stdin:
+                process.stdin.close()
+            if process.stdout:
+                process.stdout.close()
+            process.terminate()
+            process.wait(timeout=5)
+
+        self.assertEqual(init["result"]["serverInfo"]["name"], "cloversec-ctf-hub-assistant")
+        self.assertTrue(any(item["name"] == "cloversec_ctf_hub_chrome_plan" for item in tools["result"]["tools"]))
+        self.assertIn("chrome-assisted", call["result"]["content"][0]["text"])
+        self.assertIn("click_final_submit", call["result"]["content"][0]["text"])
 
     def test_cli_writeup_outputs_json_and_manual(self):
         with tempfile.TemporaryDirectory() as tmp:
