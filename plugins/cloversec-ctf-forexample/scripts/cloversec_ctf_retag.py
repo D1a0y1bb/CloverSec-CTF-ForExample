@@ -254,7 +254,7 @@ def _truncate(value: Any, limit: int = 4000) -> str:
 def _safe_tag_part(value: str) -> str:
     text = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip())
     text = re.sub(r"-+", "-", text).strip(".-")
-    return text[:96]
+    return text[:96].lower()
 
 
 def main(argv: list[str] | None = None) -> int:

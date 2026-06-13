@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.1.6 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.1.7 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -192,7 +192,12 @@ def download_github_release_assets(
     downloads = []
     issues = []
     matcher = re.compile(pattern, flags=re.I) if pattern else None
-    for item in github_release_assets(repo, limit=max(max_files * 3, max_files)):
+    try:
+        release_items = github_release_assets(repo, limit=max(max_files * 3, max_files))
+    except Exception as exc:  # noqa: BLE001 - keep public collection runs usable under API limits.
+        release_items = []
+        issues.append(provider_issue("github-release", exc))
+    for item in release_items:
         if len(downloads) >= max_files:
             break
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
@@ -210,7 +215,7 @@ def download_github_release_assets(
             issues.append({"url": str(item.get("url") or ""), "error": str(exc), "name": name})
     return {
         "generated_at": utc_now(),
-        "repository": normalize_repo_name(repo),
+        "repository": safe_normalize_repo_name(repo),
         "output_dir": Path(output_dir).as_posix(),
         "downloads": downloads,
         "issues": issues,
@@ -796,6 +801,17 @@ def normalize_repo_name(repo: str) -> str:
     return f"{owner}/{repo_name}"
 
 
+def safe_normalize_repo_name(repo: str) -> str:
+    try:
+        return normalize_repo_name(repo)
+    except Exception:  # noqa: BLE001 - report the original user input in structured errors.
+        return str(repo).strip()
+
+
+def provider_issue(provider: str, exc: Exception, *, status: str = "failed") -> dict[str, str]:
+    return {"provider": provider, "status": status, "error": str(exc)}
+
+
 def github_raw_file_url(owner: str, repo: str, ref: str, path: str) -> str:
     encoded_path = "/".join(quote(part) for part in path.split("/"))
     return f"https://raw.githubusercontent.com/{owner}/{repo}/{quote(ref)}/{encoded_path}"
@@ -1159,12 +1175,19 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "github-release-assets":
+        errors: list[dict[str, str]] = []
+        try:
+            results = github_release_assets(args.repo, limit=args.limit)
+        except Exception as exc:  # noqa: BLE001 - return machine-readable provider failure instead of traceback.
+            results = []
+            errors.append(provider_issue("github-release", exc))
         payload = {
-            "repository": normalize_repo_name(args.repo),
+            "repository": safe_normalize_repo_name(args.repo),
             "generated_at": utc_now(),
-            "results": github_release_assets(args.repo, limit=args.limit),
+            "results": results,
+            "errors": errors,
         }
-        payload["summary"] = {"total_results": len(payload["results"])}
+        payload["summary"] = {"total_results": len(payload["results"]), "errors": len(errors)}
         write_json(args.output, payload)
         print(f"wrote {args.output}")
         return 0

@@ -164,6 +164,35 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(results[0]["metadata"]["asset_name"], "challenge.zip")
         self.assertEqual(results[0]["metadata"]["tag"], "v1.0.0")
 
+    def test_github_release_assets_cli_writes_structured_provider_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "release_assets.json"
+            with mock.patch.object(search, "github_release_assets", side_effect=RuntimeError("rate limited")):
+                code = search.main([
+                    "github-release-assets",
+                    "--repo",
+                    "example/repo",
+                    "--output",
+                    str(output),
+                ])
+
+            payload = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["results"], [])
+        self.assertEqual(payload["summary"]["errors"], 1)
+        self.assertEqual(payload["errors"][0]["provider"], "github-release")
+        self.assertIn("rate limited", payload["errors"][0]["error"])
+
+    def test_download_github_release_assets_records_listing_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(search, "github_release_assets", side_effect=RuntimeError("rate limited")):
+                payload = search.download_github_release_assets("example/repo", Path(tmp) / "downloads")
+
+        self.assertEqual(payload["summary"]["downloaded"], 0)
+        self.assertEqual(payload["summary"]["issues"], 1)
+        self.assertEqual(payload["issues"][0]["provider"], "github-release")
+
     def test_github_blob_to_raw_url(self):
         raw_url = search.github_blob_to_raw_url("https://github.com/example/repo/blob/main/challenges/web/app.py")
 

@@ -149,11 +149,11 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             )
             updated = retag.apply_retag_outputs(case, plan)
 
-            self.assertEqual(plan["new_image"], "registry.local/cloversec/CTF-2026060001")
+            self.assertEqual(plan["new_image"], "registry.local/cloversec/ctf-2026060001")
             self.assertEqual(plan["xlsx_fields"]["HUB编号"], "CTF-2026060001")
             self.assertIn("docker tag", plan["commands"]["tag"])
             self.assertEqual(updated["metadata"]["HUB编号"], "CTF-2026060001")
-            self.assertEqual(updated["docker_artifacts"]["image_name"], "registry.local/cloversec/CTF-2026060001")
+            self.assertEqual(updated["docker_artifacts"]["image_name"], "registry.local/cloversec/ctf-2026060001")
 
     def test_final_outputs_write_xlsx_and_yuque_table_with_full_flag(self):
         with tempfile.TemporaryDirectory() as tmp:

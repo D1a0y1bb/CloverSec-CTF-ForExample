@@ -82,7 +82,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-search", "version": "0.1.6"},
+                    "serverInfo": {"name": "cloversec-ctf-search", "version": "0.1.7"},
                 },
             )
         if method == "tools/list":
@@ -120,9 +120,17 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             ),
         }
     if name == "cloversec_ctf_github_release_assets":
+        errors = []
+        try:
+            results = search.github_release_assets(str(arguments.get("repo", "")), limit=int(arguments.get("limit", 30)))
+        except Exception as exc:  # noqa: BLE001 - MCP callers need structured provider failures.
+            results = []
+            errors.append(search.provider_issue("github-release", exc))
         return {
-            "repository": search.normalize_repo_name(str(arguments.get("repo", ""))),
-            "results": search.github_release_assets(str(arguments.get("repo", "")), limit=int(arguments.get("limit", 30))),
+            "repository": search.safe_normalize_repo_name(str(arguments.get("repo", ""))),
+            "results": results,
+            "errors": errors,
+            "summary": {"total_results": len(results), "errors": len(errors)},
         }
     raise ValueError(f"unknown tool: {name}")
 

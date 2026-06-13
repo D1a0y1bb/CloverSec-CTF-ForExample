@@ -77,6 +77,7 @@
 - [x] 设计 Hub 浏览器辅助填表方案：只使用用户当前登录态，不读取或保存 Cookie、token、localStorage、sessionStorage。
 - [x] 增加批量归档命令，支持 `ctf_cases.jsonl` 一次性生成所有题目的归档目录和最终报告。
 - [x] 增加真实样例 fixture，覆盖容器题、附件题、缺手册、缺截图、Hub 已编号等场景。
+- [x] 对 8 个非自研验证 skill 做真实链路质量验收，修复 GitHub Release 限流异常输出和 Hub retag 大写 Docker tag 问题。
 
 ## 需要用户配合的验收项
 
