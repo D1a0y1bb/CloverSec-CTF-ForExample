@@ -102,6 +102,15 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py valida
 
 旧表迁移会读取多个业务工作表，并跳过名称包含“标准”或“说明”的工作表。
 
+容器和附件阶段脚本：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_build.py plan --project-dir challenge-dir --image-name cloversec/example:local --tar-path archive/example.tar --port 18080:80 --output docker_plan.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_package.py inspect challenge.zip --output attachment_manifest.json
+```
+
+`docker_artifacts.platform` 必须为 `linux/amd64`。附件 manifest 必须记录 `sha256`、目录项和风险状态。
+
 ## 状态值
 
 - `材料状态`：`未开始`、`收集中`、`已收集`、`缺材料`、`无法确认`

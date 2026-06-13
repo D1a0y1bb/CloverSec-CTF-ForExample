@@ -22,19 +22,22 @@
 - [x] 实现来源证据和缺失项检查。
 - [x] 定义公开来源收集记录格式和证据字段。
 - [x] 提供旧 xlsx 到 `ctf_cases.jsonl` 的迁移命令。
-- [ ] 让用户确认旧 xlsx 迁移后的字段映射是否需要继续调整。
+- [x] 让用户确认旧 xlsx 迁移后的字段映射是否需要继续调整。
 
 ## 阶段 4：构建与附件题处理
 
-- [ ] 增强 `cloversec-ctf-build-dockerizer`：docker build/run/export/import 与 amd64 检查。
-- [ ] 输出 `environment`、`docker_artifacts`、`xlsx_fields`。
-- [ ] 实现附件题压缩包检查、hash、目录清单。
+- [x] 增强 `cloversec-ctf-build-dockerizer`：docker build/run/export/import 与 amd64 检查计划。
+- [x] 输出 `environment`、`docker_artifacts`、`xlsx_fields`。
+- [x] 实现附件题压缩包检查、hash、目录清单。
+- [x] 增加路径穿越风险检查。
+- [x] 增加阶段 4 单元测试。
 
 ## 阶段 5：手册与 Hub 提交材料
 
 - [ ] 增强 `cloversec-ctf-writeup-scaffold`：HUB 字段、10 级难度、星级、xlsx 行草稿。
 - [ ] 生成 Hub 提交材料目录和上传核对表。
 - [ ] 明确截图命名和附件清单格式。
+- [ ] 定义 `hub_fields.json` 和上传目录结构。
 
 ## 阶段 6：归档、审核、最终报告
 
