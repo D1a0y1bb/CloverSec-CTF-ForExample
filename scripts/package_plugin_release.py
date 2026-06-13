@@ -39,8 +39,6 @@ def main() -> int:
     notes.write_text(
         "\n".join(
             [
-                f"# {display_name} {version}",
-                "",
                 "Install as a Codex marketplace from GitHub:",
                 "",
                 "```bash",
