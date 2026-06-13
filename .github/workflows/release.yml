@@ -44,9 +44,9 @@ jobs:
               --title "$TITLE" \
               --notes-file dist/release-notes.md \
               --verify-tag
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+            gh release upload "$GITHUB_REF_NAME" dist/cloversec-ctf-forexample-* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* \
+            gh release create "$GITHUB_REF_NAME" dist/cloversec-ctf-forexample-* \
               --title "$TITLE" \
               --notes-file dist/release-notes.md \
               --verify-tag
