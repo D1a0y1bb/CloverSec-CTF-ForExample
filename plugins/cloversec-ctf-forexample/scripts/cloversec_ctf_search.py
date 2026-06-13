@@ -633,7 +633,17 @@ def create_recall_recovery_plan(
 
 
 def candidate_count(results: list[dict[str, Any]]) -> int:
-    return sum(1 for item in results if item.get("layer") in {"confirmed_challenge", "writeup_candidate", "attachment_candidate"})
+    return sum(
+        1
+        for item in results
+        if item.get("layer") in {"confirmed_challenge", "writeup_candidate", "attachment_candidate"}
+        and not has_blocking_candidate_issue(item)
+    )
+
+
+def has_blocking_candidate_issue(item: dict[str, Any]) -> bool:
+    issues = [str(issue) for issue in item.get("quality_issues", [])]
+    return any(issue == "year missing" or issue.startswith("year mismatch") for issue in issues)
 
 
 def run_recovery_query(query: str, sources: list[str], *, limit: int) -> list[dict[str, Any]]:
@@ -1397,9 +1407,17 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
             issues.append(f"other event names found: {', '.join(sorted(foreign_events)[:5])}")
 
     if year_terms:
-        if any(year in haystack for year in year_terms):
+        found_years = set(re.findall(r"(?<!\d)20\d{2}(?!\d)", haystack))
+        wrong_years = sorted(found_years - year_terms)
+        if found_years & year_terms:
             score += 12
             reasons.append("year matched")
+            if wrong_years:
+                score -= 8
+                issues.append(f"other years found: {', '.join(wrong_years[:5])}")
+        elif wrong_years:
+            score -= 55
+            issues.append(f"year mismatch: {', '.join(wrong_years[:5])}")
         else:
             score -= 12
             issues.append("year missing")
@@ -1435,7 +1453,7 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
         score += 4
         reasons.append("targeted site profile")
 
-    if score < 5 or "event name mismatch" in issues:
+    if score < 5 or "event name mismatch" in issues or any(issue.startswith("year mismatch") for issue in issues):
         layer = "noise"
 
     if (

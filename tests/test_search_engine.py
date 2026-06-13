@@ -230,6 +230,23 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(payload["results"][0]["layer"], "confirmed_challenge")
 
+    def test_wrong_year_result_is_not_counted_as_candidate(self):
+        result = search.normalize_result(
+            provider="duckduckgo",
+            kind="web",
+            title="2021 祥云杯 pwn PassWordBox_ProVersion - CSDN博客",
+            url="https://example.com/xiangyunbei-2021-pwn",
+            summary="祥云杯 pwn writeup",
+            source_type="public_web",
+            confidence="low",
+        )
+
+        enriched = search.enrich_results([result], query="祥云杯 2024 pwn writeup", years=[2024])
+
+        self.assertEqual(enriched[0]["layer"], "noise")
+        self.assertTrue(any(issue.startswith("year mismatch") for issue in enriched[0]["quality_issues"]))
+        self.assertEqual(search.candidate_count(enriched), 0)
+
     def test_spaced_event_name_filters_other_ctfs(self):
         payload = search.import_agent_search_results(
             [
@@ -357,7 +374,48 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(payload["results"][0]["url"], "https://example.com/xiangyun-pwn-wp")
         self.assertTrue(payload["results"][0]["year_relaxed"])
         self.assertEqual(payload["results"][0]["metadata"]["recovery_reason"], "weak_recall")
-        self.assertIn("year missing", payload["results"][0]["quality_issues"])
+        self.assertEqual(payload["results"][0]["layer"], "noise")
+        self.assertTrue(any(issue.startswith("year mismatch") for issue in payload["results"][0]["quality_issues"]))
+        self.assertEqual(payload["recall_recovery"]["after_recovery"]["candidate_count"], 0)
+
+    def test_search_plus_requires_decision_when_recall_stays_weak(self):
+        wrong_year = search.normalize_result(
+            provider="duckduckgo",
+            kind="web",
+            title="2021 祥云杯 pwn writeup",
+            url="https://example.com/xiangyunbei-2021-pwn",
+            summary="祥云杯 pwn writeup",
+            source_type="public_web",
+            confidence="low",
+        )
+        base_manifest = {
+            "query": "祥云杯 2024 pwn writeup",
+            "years": [2024],
+            "generated_at": search.utc_now(),
+            "sources": ["duckduckgo"],
+            "results": [wrong_year],
+            "recall_recovery": {
+                "status": "will_run",
+                "should_run": True,
+                "minimum_candidates": 3,
+                "agent_web_search_queries": ["祥云杯 pwn writeup"],
+                "browser_search_queries": [{"engine": "google", "query": "祥云杯 pwn writeup"}],
+            },
+            "summary": {"total_results": 1, "errors": 0},
+            "errors": [],
+        }
+
+        with mock.patch.object(search, "discover", return_value=base_manifest):
+            payload = search_plus.search_plus(
+                "祥云杯 2024 pwn writeup",
+                years=[2024],
+                sources=["duckduckgo"],
+                compact=True,
+            )
+
+        self.assertEqual(payload["summary"]["layer_counts"]["noise"], 1)
+        self.assertEqual(payload["decision_required"][0]["type"], "weak_recall")
+        self.assertTrue(any("Agent 联网搜索" in action for action in payload["next_actions"]))
 
     def test_recall_recovery_not_needed_when_enough_candidates(self):
         candidates = [
