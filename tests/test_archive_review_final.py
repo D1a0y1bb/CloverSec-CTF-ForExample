@@ -13,8 +13,11 @@ SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import cloversec_ctf_archive as archive
+import cloversec_ctf_archive_runner as archive_runner
 import cloversec_ctf_data as data
+import cloversec_ctf_docker as docker_runner
 import cloversec_ctf_final as final
+import cloversec_ctf_quality_runner as quality_runner
 import cloversec_ctf_retag as retag
 import cloversec_ctf_review as review
 
@@ -320,6 +323,125 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((tmp_path / "archive" / "_batch" / "batch_archive_report.md").exists())
             self.assertTrue((tmp_path / "ctf_cases.archived.jsonl").exists())
             self.assertTrue((tmp_path / "final" / "archive.xlsx").exists())
+
+    def test_archive_runner_writes_resource_index_missing_report_and_final_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            cases_path = tmp_path / "ctf_cases.jsonl"
+            cases_path.write_text(json.dumps(case, ensure_ascii=False) + "\n", encoding="utf-8")
+
+            payload = archive_runner.run_archive_workflow(
+                cases_path=cases_path,
+                output_root=tmp_path / "archive-workflow",
+            )
+
+            self.assertEqual(payload["summary"]["cases"], 1)
+            self.assertGreater(payload["summary"]["resource_count"], 0)
+            self.assertTrue(Path(payload["paths"]["resource_index"]).exists())
+            self.assertTrue(Path(payload["paths"]["missing_report"]).exists())
+            self.assertTrue(Path(payload["summary"]["final_xlsx"]).exists())
+            self.assertTrue(Path(payload["summary"]["yuque_table"]).exists())
+
+    def test_quality_runner_writes_batch_evidence_and_updated_cases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            manifest = archive.create_archive_package(case, tmp_path / "archive")
+            case = archive.apply_archive_outputs(case, manifest)
+            cases_path = tmp_path / "ctf_cases.jsonl"
+            cases_path.write_text(json.dumps(case, ensure_ascii=False) + "\n", encoding="utf-8")
+
+            payload = quality_runner.run_quality_batch(
+                cases_path=cases_path,
+                output_dir=tmp_path / "quality-batch",
+            )
+
+            self.assertEqual(payload["summary"]["total"], 1)
+            self.assertTrue(Path(payload["paths"]["summary_json"]).exists())
+            self.assertTrue(Path(payload["paths"]["summary_report"]).exists())
+            self.assertTrue(Path(payload["paths"]["output_cases"]).exists())
+            self.assertTrue(Path(payload["entries"][0]["quality_review"]).exists())
+            self.assertIn("solve-proof", "\n".join(payload["entries"][0]["issues"]))
+
+    def test_docker_runner_records_platform_logs_hash_and_probes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            tar_path = tmp_path / "image.tar"
+
+            class Response:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            def fake_run(args, **kwargs):
+                if args[:3] == ["docker", "image", "inspect"]:
+                    stdout = '[{"Os":"linux","Architecture":"amd64"}]'
+                elif args[:2] == ["docker", "logs"]:
+                    stdout = "service ready\n"
+                elif args[:2] == ["docker", "save"]:
+                    Path(args[-1]).write_bytes(b"image-tar")
+                    stdout = "saved\n"
+                elif args[:2] == ["docker", "run"]:
+                    stdout = "container-id\n"
+                else:
+                    stdout = "ok\n"
+                return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+            with mock.patch.object(docker_runner.subprocess, "run", side_effect=fake_run):
+                with mock.patch.object(docker_runner.time, "sleep", return_value=None):
+                    with mock.patch.object(docker_runner, "urlopen", return_value=Response()):
+                        evidence = docker_runner.execute_docker_workflow(
+                            case={"case_id": "docker-001"},
+                            output_dir=tmp_path / "docker",
+                            image_name="busybox:1.36",
+                            tar_path=tar_path,
+                            ports=["18080:80"],
+                            operations=["inspect", "run", "logs", "stop", "save"],
+                            startup_wait=0,
+                        )
+
+            self.assertEqual(evidence["summary"]["status"], "pass")
+            self.assertEqual(evidence["summary"]["platform"], "linux/amd64")
+            self.assertEqual(len(evidence["summary"]["tar_sha256"]), 64)
+            self.assertTrue(Path(evidence["summary"]["logs_path"]).exists())
+            self.assertTrue(Path(evidence["evidence_path"]).exists())
+            self.assertTrue(Path(evidence["report_path"]).exists())
+
+    def test_new_mcp_servers_list_expected_tools(self):
+        servers = [
+            ("cloversec_ctf_docker_mcp.py", ["cloversec_ctf_docker_plan", "cloversec_ctf_docker_execute"]),
+            ("cloversec_ctf_archive_mcp.py", ["cloversec_ctf_archive_batch"]),
+            ("cloversec_ctf_quality_runner_mcp.py", ["cloversec_ctf_quality_run"]),
+        ]
+        for script, expected_tools in servers:
+            process = subprocess.Popen(
+                [sys.executable, str(SCRIPTS / script)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                assert process.stdin is not None
+                assert process.stdout is not None
+                process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}) + "\n")
+                process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}) + "\n")
+                process.stdin.close()
+                init = json.loads(process.stdout.readline())
+                tools = json.loads(process.stdout.readline())
+            finally:
+                if process.stdout is not None:
+                    process.stdout.close()
+                process.wait(timeout=5)
+
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.2.2")
+            names = [item["name"] for item in tools["result"]["tools"]]
+            for expected in expected_tools:
+                self.assertIn(expected, names)
 
 
 if __name__ == "__main__":

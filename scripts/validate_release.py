@@ -129,7 +129,15 @@ def validate_mcp(errors: list[str]) -> None:
     if not isinstance(data, dict):
         return
     servers = data.get("mcpServers") if isinstance(data.get("mcpServers"), dict) else {}
-    for name in ["cloversec-ctf-search", "cloversec-ctf-browser-search", "cloversec-ctf-search-plus"]:
+    for name in [
+        "cloversec-ctf-search",
+        "cloversec-ctf-browser-search",
+        "cloversec-ctf-search-plus",
+        "cloversec-ctf-docker",
+        "cloversec-ctf-archive",
+        "cloversec-ctf-quality-runner",
+        "cloversec-ctf-hub-assistant",
+    ]:
         if name not in servers:
             errors.append(f".mcp.json missing {name}")
 

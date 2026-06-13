@@ -30,6 +30,36 @@
         "PYTHONUNBUFFERED": "1"
       }
     },
+    "cloversec-ctf-docker": {
+      "cwd": ".",
+      "command": "python3",
+      "args": [
+        "./scripts/cloversec_ctf_docker_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "cloversec-ctf-archive": {
+      "cwd": ".",
+      "command": "python3",
+      "args": [
+        "./scripts/cloversec_ctf_archive_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "cloversec-ctf-quality-runner": {
+      "cwd": ".",
+      "command": "python3",
+      "args": [
+        "./scripts/cloversec_ctf_quality_runner_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
     "cloversec-ctf-hub-assistant": {
       "cwd": ".",
       "command": "python3",

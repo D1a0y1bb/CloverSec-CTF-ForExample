@@ -136,7 +136,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 
 ## MCP server
 
-插件带有 `cloversec-ctf-search`、`cloversec-ctf-search-plus`、`cloversec-ctf-browser-search` 和 `cloversec-ctf-hub-assistant` MCP server，配置文件为 `.mcp.json`。工具：
+插件带有 `cloversec-ctf-search`、`cloversec-ctf-search-plus`、`cloversec-ctf-browser-search`、`cloversec-ctf-docker`、`cloversec-ctf-archive`、`cloversec-ctf-quality-runner` 和 `cloversec-ctf-hub-assistant` MCP server，配置文件为 `.mcp.json`。工具：
 
 - `cloversec_ctf_search_plus`
 - `cloversec_ctf_discover`
@@ -147,10 +147,75 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 - `cloversec_ctf_browser_search_plan`
 - `cloversec_ctf_browser_search_import_visible`
 - `cloversec_ctf_browser_search_dom_to_visible`
+- `cloversec_ctf_docker_plan`
+- `cloversec_ctf_docker_execute`
+- `cloversec_ctf_archive_batch`
+- `cloversec_ctf_quality_run`
 - `cloversec_ctf_hub_browser_plan`
 - `cloversec_ctf_hub_chrome_plan`
 - `cloversec_ctf_hub_validate_manifest`
 - `cloversec_ctf_hub_apply_upload_results`
+
+## `cloversec_ctf_docker.py`
+
+受控 Docker 执行工具。按显式 operations 执行 `build/load/inspect/run/logs/stop/save`，记录 amd64 平台、端口探测、启动日志、tar SHA256 和失败证据。要求 build 时显式传 `--project-dir`。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_docker.py execute \
+  --case-json ctf_case.json \
+  --image-name cloversec/example:local \
+  --tar-path archive/example.tar \
+  --operation inspect \
+  --operation run \
+  --operation logs \
+  --operation stop \
+  --operation save \
+  --port 18080:80 \
+  --output-dir docker_evidence
+```
+
+输出文件：
+
+- `docker_evidence/docker_evidence.json`
+- `docker_evidence/docker_evidence.md`
+- `docker_evidence/docker_logs.txt`（执行 logs 时生成）
+
+## `cloversec_ctf_archive_runner.py`
+
+批量归档工作流。读取 `ctf_cases.jsonl`，生成归档目录、资源索引、manifest、最终 xlsx、语雀表和缺失项报告。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive_runner.py \
+  --cases ctf_cases.jsonl \
+  --output-root archive_out \
+  --compact-output archive_out/_batch/archive_compact.json
+```
+
+关键输出：
+
+- `archive_out/_batch/resource_index.json`
+- `archive_out/_batch/missing_report.md`
+- `archive_out/_batch/ctf_cases.archived.jsonl`
+- `archive_out/_final/archive.xlsx`
+- `archive_out/_final/yuque_table.md`
+
+## `cloversec_ctf_quality_runner.py`
+
+批量质量检查工具。把题目资源、Docker 验证、手册解题步骤、Flag 字段和归档状态汇总成可复核证据。默认不执行 Docker；需要 Docker 验证时显式加 `--execute-docker`。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_quality_runner.py \
+  --cases ctf_cases.jsonl \
+  --output-dir quality_out \
+  --compact-output quality_out/quality_compact.json
+```
+
+关键输出：
+
+- `quality_out/quality_summary.json`
+- `quality_out/quality_summary.md`
+- `quality_out/ctf_cases.reviewed.jsonl`
+- `quality_out/<case_id>/quality_review.json`
 
 ## `cloversec_ctf_build.py`
 

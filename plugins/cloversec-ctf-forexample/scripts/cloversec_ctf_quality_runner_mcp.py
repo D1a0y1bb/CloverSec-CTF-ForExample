@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal stdio MCP server for CloverSec CTF search-plus."""
+"""Minimal stdio MCP server for CloverSec CTF quality runner."""
 
 from __future__ import annotations
 
@@ -8,33 +8,29 @@ import sys
 import traceback
 from typing import Any
 
-import cloversec_ctf_search as search
-import cloversec_ctf_search_plus as search_plus
+import cloversec_ctf_quality_runner as quality_runner
 
+
+SERVER_VERSION = "0.2.2"
 
 TOOLS = [
     {
-        "name": "cloversec_ctf_search_plus",
-        "description": (
-            "Unified CTF search across free sources, Agent web results, browser visible results, "
-            "direct attachment URLs, GitHub releases/tree files, evidence scoring, and short JSON output."
-        ),
+        "name": "cloversec_ctf_quality_run",
+        "description": "Run batch quality checks over ctf_cases.jsonl, including resources, Docker evidence, writeup status, Flag, and archive status.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string"},
-                "years": {"type": "array", "items": {"type": "integer"}},
-                "sources": {"type": "array", "items": {"type": "string", "enum": search.SEARCH_SOURCES}},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-                "agent_results": {"description": "Web results from the current Agent search tool."},
-                "browser_visible_results": {"description": "Visible browser results from Chrome/Codex browser helpers."},
-                "direct_urls": {"type": "array", "items": {"type": "string"}},
-                "github_repos": {"type": "array", "items": {}},
-                "output_path": {"type": "string"},
-                "compact": {"type": "boolean"},
-                "compact_results": {"type": "integer", "minimum": 1, "maximum": 20},
+                "cases_path": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "output_cases": {"type": "string"},
+                "execute_docker": {"type": "boolean"},
+                "archive_dir": {"type": "string"},
+                "probe_urls": {"type": "array", "items": {"type": "string"}},
+                "startup_wait": {"type": "number"},
+                "command_timeout": {"type": "integer", "minimum": 1, "maximum": 600},
+                "probe_timeout": {"type": "number"},
             },
-            "required": ["query"],
+            "required": ["cases_path", "output_dir"],
         },
     }
 ]
@@ -50,7 +46,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-search-plus", "version": "0.2.2"},
+                    "serverInfo": {"name": "cloversec-ctf-quality-runner", "version": SERVER_VERSION},
                 },
             )
         if method == "tools/list":
@@ -64,25 +60,24 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
         if request_id is None:
             return None
         return error_response(request_id, -32601, f"unknown method: {method}")
-    except Exception as exc:  # noqa: BLE001 - MCP callers need JSON-RPC errors.
+    except Exception as exc:  # noqa: BLE001
         return error_response(request_id, -32000, str(exc), {"traceback": traceback.format_exc(limit=5)})
 
 
 def call_tool(name: str, arguments: dict[str, Any]) -> Any:
-    if name == "cloversec_ctf_search_plus":
-        return search_plus.search_plus(
-            str(arguments.get("query", "")),
-            years=[int(item) for item in arguments.get("years", [])],
-            sources=arguments.get("sources"),
-            limit=int(arguments.get("limit", 20)),
-            agent_results=arguments.get("agent_results"),
-            browser_visible_results=arguments.get("browser_visible_results"),
-            direct_urls=[str(item) for item in arguments.get("direct_urls", [])],
-            github_repos=arguments.get("github_repos", []),
-            output_path=str(arguments.get("output_path") or "") or None,
-            compact=bool(arguments.get("compact", True)),
-            compact_results=int(arguments.get("compact_results", search_plus.DEFAULT_COMPACT_RESULTS)),
+    if name == "cloversec_ctf_quality_run":
+        payload = quality_runner.run_quality_batch(
+            cases_path=str(arguments.get("cases_path") or ""),
+            output_dir=str(arguments.get("output_dir") or ""),
+            output_cases=str(arguments.get("output_cases") or ""),
+            execute_docker=bool(arguments.get("execute_docker", False)),
+            archive_dir=str(arguments.get("archive_dir") or ""),
+            probe_urls=[str(item) for item in arguments.get("probe_urls", [])],
+            startup_wait=float(arguments.get("startup_wait", 2.0)),
+            command_timeout=int(arguments.get("command_timeout", 30)),
+            probe_timeout=float(arguments.get("probe_timeout", 3.0)),
         )
+        return quality_runner.compact_quality_payload(payload)
     raise ValueError(f"unknown tool: {name}")
 
 

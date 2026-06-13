@@ -5,9 +5,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.2.1"><img alt="Version" src="https://img.shields.io/badge/version-v0.2.1-f59e0b?style=for-the-badge"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.2.2"><img alt="Version" src="https://img.shields.io/badge/version-v0.2.2-f59e0b?style=for-the-badge"></a>
   <img alt="Skills" src="https://img.shields.io/badge/skills-10-16a34a?style=for-the-badge">
-  <img alt="MCP" src="https://img.shields.io/badge/MCP-search%20plus%20%2B%20browser-f59e0b?style=for-the-badge">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-7%20servers-f59e0b?style=for-the-badge">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-plugin-111827?style=for-the-badge">
 </p>
 
@@ -26,7 +26,7 @@ CloverSec CTF For Example is a Codex plugin marketplace for internal CTF product
 
 The repository is designed as a GitHub-installable Codex marketplace. A teammate can add this repository from Codex, install `cloversec-ctf-forexample`, and then use the packaged skills from a fresh Codex thread.
 
-Current version: `v0.2.1`
+Current version: `v0.2.2`
 
 ## Install
 
@@ -34,7 +34,7 @@ In Codex, open **Plugins -> Add plugin marketplace** and fill:
 
 ```text
 Source: D1a0y1bb/CloverSec-CTF-ForExample
-Git reference: v0.2.1
+Git reference: v0.2.2
 Sparse path: empty
 ```
 
@@ -48,7 +48,7 @@ plugins
 CLI install:
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.2.1
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.2.2
 codex plugin list
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
@@ -105,11 +105,14 @@ Core data is carried through `ctf_case.json` or `ctf_cases.jsonl`. The final xls
 
 ## MCP Search
 
-The plugin includes four local stdio MCP servers:
+The plugin includes seven local stdio MCP servers:
 
 - `cloversec-ctf-search` for CTF public-source search, URL fetch, GitHub Release listing, and Agent web-search result import.
 - `cloversec-ctf-search-plus` for unified free-source, Agent web, browser visible, direct URL, GitHub evidence, safe preview, and compact JSON output.
 - `cloversec-ctf-browser-search` for browser-assisted Google/Baidu/CSDN/Cnblogs/Yuque search planning and visible-result import.
+- `cloversec-ctf-docker` for controlled Docker build/load/inspect/run/logs/stop/save evidence.
+- `cloversec-ctf-archive` for batch archive directories, resource indexes, final xlsx, Yuque tables, and missing reports.
+- `cloversec-ctf-quality-runner` for batch quality evidence across resources, Docker, manuals, Flag, and archive state.
 - `cloversec-ctf-hub-assistant` for safe Hub browser/Chrome filling plans, upload-result merge, and pre-submit validation.
 
 Available tools:
@@ -125,6 +128,10 @@ Available tools:
 | `cloversec_ctf_browser_search_plan` | Create a browser-assisted Google/Baidu/CSDN/Cnblogs/Yuque search plan, optionally opening the search page. |
 | `cloversec_ctf_browser_search_import_visible` | Import visible browser search results without reading cookies, tokens, localStorage, sessionStorage, passwords, or captcha data. |
 | `cloversec_ctf_browser_search_dom_to_visible` | Convert user-confirmed Chrome/Codex visible DOM, HTML, text, or links into `visible_results.json` and scored results. |
+| `cloversec_ctf_docker_plan` | Create a Docker execution plan without running Docker. |
+| `cloversec_ctf_docker_execute` | Run controlled Docker operations and write evidence with platform, probes, logs, tar hash, and failures. |
+| `cloversec_ctf_archive_batch` | Generate archive directories, resource index, manifests, final xlsx, Yuque table, and missing report from `ctf_cases.jsonl`. |
+| `cloversec_ctf_quality_run` | Generate batch quality evidence across resources, Docker, manuals, Flag, and archive state. |
 | `cloversec_ctf_hub_chrome_plan` | Create a Chrome-assisted Hub filling plan that stops before final submit. |
 | `cloversec_ctf_hub_validate_manifest` | Validate Hub classify ID, required fields, upload results, and screenshot slots. |
 | `cloversec_ctf_hub_apply_upload_results` | Merge visible Hub upload results back into the manifest. |
@@ -250,7 +257,7 @@ python3 scripts/package_plugin_release.py
 Release tags must match `plugin.json`:
 
 ```text
-plugin version 0.2.1 -> git tag v0.2.1
+plugin version 0.2.2 -> git tag v0.2.2
 ```
 
 The GitHub Release workflow validates metadata, compiles scripts, runs tests, packages release assets, and creates the GitHub Release.

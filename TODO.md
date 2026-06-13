@@ -159,7 +159,7 @@
 
 ## MCP / App 后续规划
 
-## 当前版本大白话总结（v0.2.1）
+## 当前版本大白话总结（v0.2.2）
 
 - [x] 现在这个 plugin 已经不是空骨架了，可以按 CloverSec CTF 流程从“找比赛/找题目/找 writeup 和附件线索”一路走到“生成手册、Hub 提交材料、归档包、质量检查、Hub 编号 retag 计划、最终 xlsx/语雀表”。
 - [x] 你原本的两个核心 skill 已保留并迁移进插件：`CloverSec-CTF-Build-Dockerizer` 和 `CloverSec-CTF-Writeup-Scaffold`，没有用简化替代版覆盖。
@@ -167,21 +167,21 @@
 - [x] 搜索质量比第一版强：会区分 confirmed/writeup/attachment/platform/noise，会把平台首页降为线索，会在默认源召回不足时用 `recall_recovery` 做放宽年份检索，并把历史线索标成 `year_relaxed=true`。
 - [x] Hub 自动化已经过真实页面验收：确认 Chrome 已登录后再填写；字段、关键字、题解富文本、测试 zip 上传都跑到提交前；没有点击最终提交。
 - [x] Docker 不是 mock：已用官方 `busybox:1.36` amd64 镜像做过真实 run/probe/tag/save/load/inspect；没有执行未知题目镜像。
-- [x] 发布方式已正规化：GitHub marketplace 安装可用，`v0.2.1` 发布完成后应更新本机 Codex 插件到 `0.2.1`。
+- [x] 发布方式已正规化：GitHub marketplace 安装可用，`v0.2.2` 发布完成后应更新本机 Codex 插件到 `0.2.2`。
 - [x] 真实 LLM 验证结论：`gpt-5.4-mini` 对搜索弱召回、Hub 登录态门槛、完整流程短 JSON 能按规则回答；`gpt-5.4` 对 Hub 登录态门槛也能按规则回答。
 - [x] 搜索不足已处理成工作流策略：全网搜索不是万能下载器；冷门比赛、中文站点收录差、附件下架、网盘失效时，`search-plus` 会把 Agent 联网搜索、Chrome 浏览器辅助搜索或人工提供入口列为下一步。
 - [x] Hub 自动化边界符合当前要求：仍保持“辅助填写到提交前”，不做无人值守提交；最终提交、分类不确定和未知附件上传必须人确认。
 - [x] 长 JSON 问题已处理第一版：`cloversec-ctf-search-plus` 和浏览器 DOM 导入默认返回短 JSON；完整结果写入文件，必要时再分段读取。
-- [x] 可视化 App 工作台不纳入当前 plugin 目标：本项目先做 Codex plugin、skill、MCP、脚本和文件化证据；以后如果接公开 App 或内部前端，再单独设计。
+- [x] 可视化 App 工作台不纳入当前 plugin 目标：本项目先做 Codex plugin、skill、MCP、脚本和文件化证据；用户已确认 Workbench、Hub Uploader、Review Dashboard、Archive Browser 这四个 App 当前都不考虑。
 
 - [x] MCP：`cloversec-ctf-search-plus`，统一 GitHub、CTFTime、公开归档站、writeup 站点、浏览器可见结果和直接附件 URL 的搜索、证据记录、安全预览与来源评分；默认短 JSON，完整结果可写文件。
 - [x] MCP：`cloversec-ctf-browser-search` 第一版，生成 Google/Baidu/CSDN/博客园/语雀搜索计划，导入页面可见结果，只记录标题、URL、摘要、排名和 blocked 状态，不保存账号、Cookie 或搜索登录态。
 - [x] MCP：`cloversec-ctf-browser-search` 后续增强，支持把用户确认后的 Codex/Chrome 可见 DOM、HTML、visible text 或 links 转成 `visible_results.json`，再进入评分；仍不读取浏览器凭证。
-- [ ] MCP：`cloversec-ctf-docker`，受控执行 `docker build/load/inspect/run/logs/stop/save`，记录 amd64 校验、端口、启动日志、hash 和失败证据。
-- [ ] MCP：`cloversec-ctf-archive`，批量读取 `ctf_cases.jsonl`，生成归档目录、资源索引、manifest、最终 xlsx、语雀表和缺失项报告。
+- [x] MCP：`cloversec-ctf-docker`，受控执行 `docker build/load/inspect/run/logs/stop/save`，记录 amd64 校验、端口、启动日志、tar SHA256 和失败证据；build 需要显式传 project_dir。
+- [x] MCP：`cloversec-ctf-archive`，批量读取 `ctf_cases.jsonl`，生成归档目录、资源索引、manifest、最终 xlsx、语雀表和缺失项报告。
 - [x] MCP：`cloversec-ctf-hub-assistant` 第一版，生成 Hub browser/Chrome 填表计划、manifest 校验和上传结果回写；禁止读取或保存 Cookie、token、localStorage、sessionStorage，最终提交前停止。
-- [ ] MCP：`cloversec-ctf-quality-runner`，把题目资源、Docker 验证、手册解题步骤、Flag 字段和归档状态汇总成可复核的质量检查证据。
-- [ ] App 规划暂缓：当前按用户判断不做可视化 App 工作台。以后如果接公开 App、内部 Web 前端或 Codex app 能力，再重新拆需求。
+- [x] MCP：`cloversec-ctf-quality-runner`，把题目资源、Docker 验证、手册解题步骤、Flag 字段和归档状态汇总成可复核的质量检查证据。
+- [x] App 规划暂缓：当前按用户判断不做可视化 App 工作台，也不做 Hub Uploader、Review Dashboard、Archive Browser。
 
 ## 体验与自动化增强池
 
