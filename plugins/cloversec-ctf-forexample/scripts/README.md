@@ -96,3 +96,72 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package \
 - `hub_submission_package/hub_submission_checklist.md`
 
 默认截图槽位固定为 `01-challenge-page.png`、`02-container-running.png`、`03-solve-proof.png`。
+
+## `cloversec_ctf_archive.py`
+
+归档目录生成工具。复制源码、附件、镜像 tar、手册和截图，写入每题 manifest 与 xlsx 路径字段。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py package \
+  --case-json ctf_case.json \
+  --output-root archive \
+  --output-case ctf_case.archived.json
+```
+
+输出目录：
+
+- `archive/<case_id>-<title>/source/`
+- `archive/<case_id>-<title>/attachments/`
+- `archive/<case_id>-<title>/image/`
+- `archive/<case_id>-<title>/writeup/`
+- `archive/<case_id>-<title>/screenshots/`
+- `archive/<case_id>-<title>/manifests/archive_manifest.json`
+
+## `cloversec_ctf_review.py`
+
+质量检查报告工具。读取 `ctf_case.json`、归档目录和已有验证记录，输出 `quality_review.json` 和 `quality_review_report.md`。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review \
+  --case-json ctf_case.json \
+  --output-dir quality_review \
+  --archive-dir archive/case-001-title \
+  --output-case ctf_case.reviewed.json
+```
+
+脚本不会自动执行未知 Docker 命令。没有 `docker_artifacts.run_verified=true` 或 `writeup.solve_verified=true` 时，相关检查写为 `skip`。
+
+## `cloversec_ctf_retag.py`
+
+Hub 审核通过后的编号和镜像 tag 计划工具。它只生成命令计划，不自动运行 Docker。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan \
+  --case-json ctf_case.json \
+  --hub-id CTF-2026060001 \
+  --output-dir archive/retagged-images \
+  --registry-prefix registry.example.com/cloversec \
+  --tag-template "{hub_id}" \
+  --output retag_plan.json \
+  --report retag_report.md \
+  --output-case ctf_case.retagged.json
+```
+
+## `cloversec_ctf_final.py`
+
+最终归档输出工具。生成 xlsx、语雀粘贴表、Markdown 报告和 JSON 报告。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate \
+  --cases ctf_cases.jsonl \
+  --output-dir final_out
+```
+
+输出文件：
+
+- `final_out/archive.xlsx`
+- `final_out/yuque_table.md`
+- `final_out/final_report.md`
+- `final_out/final_report.json`
+
+`archive.xlsx` 和 `yuque_table.md` 均按内部归档字段写入完整 `Flag`，不要放到公开渠道。

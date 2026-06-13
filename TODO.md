@@ -47,15 +47,23 @@
 
 ## 阶段 6：归档、审核、最终报告
 
-- [ ] 优先扩展 `cloversec-ctf-archive-packager`，生成统一归档目录、manifest、手册、附件包和 amd64 镜像 tar 索引。
-- [ ] 优先扩展 `cloversec-ctf-quality-review`，检查题目、资源、镜像启动、手册步骤和 Flag 可验证性。
-- [ ] 优先扩展 `cloversec-ctf-hub-retag`，按审核后的 HUB 编号更新镜像 tag 并重新导出 tar。
-- [ ] 优先扩展 `cloversec-ctf-final-report`，生成最终归档 xlsx 和语雀粘贴表。
-- [ ] 实现归档目录生成。
-- [ ] 实现质量检查报告。
-- [ ] 实现审核通过后的 HUB 编号回填和镜像 tag 处理。
-- [ ] 实现最终 xlsx 和语雀粘贴表。
-- [ ] 扩展 `cloversec-ctf-archive-packager`：统一输出手册、附件包、amd64 镜像 tar、manifest 和归档索引。
-- [ ] 扩展 `cloversec-ctf-quality-review`：检查题目、资源、镜像启动、手册步骤和 Flag 可验证性。
-- [ ] 扩展 `cloversec-ctf-hub-retag`：按审核后的 HUB 编号更新镜像 tag 并重新导出 tar。
-- [ ] 扩展 `cloversec-ctf-final-report`：生成最终归档 xlsx 和语雀粘贴表。
+- [x] 优先扩展 `cloversec-ctf-archive-packager`，生成统一归档目录、manifest、手册、附件包和 amd64 镜像 tar 索引。
+- [x] 优先扩展 `cloversec-ctf-quality-review`，检查题目、资源、镜像启动、手册步骤和 Flag 可验证性。
+- [x] 优先扩展 `cloversec-ctf-hub-retag`，按审核后的 HUB 编号生成镜像 tag 与导出 tar 命令计划。
+- [x] 优先扩展 `cloversec-ctf-final-report`，生成最终归档 xlsx 和语雀粘贴表。
+- [x] 实现归档目录生成。
+- [x] 实现质量检查报告。
+- [x] 实现审核通过后的 HUB 编号回填和镜像 tag 处理计划。
+- [x] 实现最终 xlsx 和语雀粘贴表。
+- [x] 扩展 `cloversec-ctf-archive-packager`：统一输出手册、附件包、amd64 镜像 tar、manifest 和归档索引。
+- [x] 扩展 `cloversec-ctf-quality-review`：检查题目、资源、镜像启动、手册步骤和 Flag 可验证性。
+- [x] 扩展 `cloversec-ctf-hub-retag`：按审核后的 HUB 编号生成镜像 tag 与导出 tar 命令计划。
+- [x] 扩展 `cloversec-ctf-final-report`：生成最终归档 xlsx 和语雀粘贴表。
+
+## 下一阶段计划
+
+- [ ] 为 `cloversec-ctf-quality-review` 增加受控 Docker 执行模式：load、inspect、run、端口探测、停止容器、记录执行证据。
+- [ ] 为 `cloversec-ctf-hub-retag` 增加受控执行模式：tag、save、load、inspect、amd64 校验、hash 记录。
+- [ ] 设计 Hub 浏览器辅助填表方案：只使用用户当前登录态，不读取或保存 Cookie、token、localStorage、sessionStorage。
+- [ ] 增加批量归档命令，支持 `ctf_cases.jsonl` 一次性生成所有题目的归档目录和最终报告。
+- [ ] 增加真实样例 fixture，覆盖容器题、附件题、缺手册、缺截图、Hub 已编号等场景。

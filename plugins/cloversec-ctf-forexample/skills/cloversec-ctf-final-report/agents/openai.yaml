@@ -1,4 +1,4 @@
 interface:
-  display_name: "cloversec-ctf-final-report"
-  short_description: "CloverSec CTF workflow skill"
-  default_prompt: "Use this CloverSec CTF skill."
+  display_name: "CloverSec CTF Final Report"
+  short_description: "生成最终归档 xlsx、语雀表、报告和待处理事项清单"
+  default_prompt: "使用 $cloversec-ctf-final-report 汇总 ctf_cases.jsonl，生成最终 archive.xlsx、语雀粘贴表和报告。"

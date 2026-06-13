@@ -160,6 +160,24 @@ hub_submission_package/
 - `02-container-running.png`
 - `03-solve-proof.png`
 
+归档、质检、Hub 编号回填和最终输出脚本：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py package --case-json ctf_case.json --output-root archive --output-case ctf_case.archived.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review --case-json ctf_case.json --output-dir quality_review --archive-dir archive/case-001-title --output-case ctf_case.reviewed.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan --case-json ctf_case.json --hub-id CTF-2026060001 --output-dir archive/retagged-images --output retag_plan.json --output-case ctf_case.retagged.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate --cases ctf_cases.jsonl --output-dir final_out
+```
+
+阶段 6 写回字段：
+
+- `cloversec_ctf_archive.py`：`是否归档`、`归档目录`、`环境包/附件包路径`
+- `cloversec_ctf_review.py`：`验证状态`、`是否通过`、`问题`、`手册状态`
+- `cloversec_ctf_retag.py`：`HUB编号`、`环境包/附件包路径`
+- `cloversec_ctf_final.py`：生成最终 `archive.xlsx`，其中 `Flag` 必须完整保留
+
+`quality_review.json` 使用 `pass`、`fail`、`skip` 三种状态。没有真实 Docker run 或按手册解题记录时，对应检查必须是 `skip`。
+
 ## 状态值
 
 - `材料状态`：`未开始`、`收集中`、`已收集`、`缺材料`、`无法确认`

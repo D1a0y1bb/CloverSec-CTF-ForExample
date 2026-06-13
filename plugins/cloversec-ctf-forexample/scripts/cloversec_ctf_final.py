@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""Final archive report helpers for CloverSec CTF workflows."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any
+
+import cloversec_ctf_data as data
+
+
+YUQUE_FIELDS = [
+    "HUB编号",
+    "赛事来源",
+    "题目来源",
+    "名称",
+    "分类",
+    "题目类型",
+    "Flag类型",
+    "Flag",
+    "难度编号",
+    "星级",
+    "分值",
+    "资源等级",
+    "开放端口",
+    "是否通过",
+    "验证状态",
+    "归档目录",
+    "环境包/附件包路径",
+    "备注",
+]
+
+
+def create_final_outputs(cases: list[dict[str, Any]], output_dir: str | Path) -> dict[str, Any]:
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    xlsx_path = output / "archive.xlsx"
+    yuque_path = output / "yuque_table.md"
+    report_path = output / "final_report.md"
+    json_path = output / "final_report.json"
+
+    rows = [data.case_to_xlsx_row(case) for case in cases]
+    validation_errors = []
+    for index, case in enumerate(cases, start=1):
+        validation_errors.extend(f"case {index}: {error}" for error in data.validate_case(case))
+    data.write_xlsx(cases, xlsx_path)
+    read_back = data.read_xlsx(xlsx_path)
+
+    entries = [_final_entry(case, row) for case, row in zip(cases, rows)]
+    remaining_actions = []
+    for entry in entries:
+        remaining_actions.extend(entry["remaining_actions"])
+    if validation_errors:
+        remaining_actions.extend(validation_errors)
+
+    summary = {
+        "total": len(cases),
+        "xlsx_path": xlsx_path.as_posix(),
+        "yuque_table_path": yuque_path.as_posix(),
+        "report_path": report_path.as_posix(),
+        "json_path": json_path.as_posix(),
+        "xlsx_readback_rows": len(read_back),
+        "remaining_actions": len(remaining_actions),
+    }
+    payload = {
+        "summary": summary,
+        "entries": entries,
+        "remaining_actions": remaining_actions,
+    }
+    yuque_path.write_text(render_yuque_table(rows), encoding="utf-8")
+    report_path.write_text(render_final_report(payload), encoding="utf-8")
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
+def render_yuque_table(rows: list[dict[str, str]]) -> str:
+    lines = [
+        "| " + " | ".join(YUQUE_FIELDS) + " |",
+        "| " + " | ".join(["---"] * len(YUQUE_FIELDS)) + " |",
+    ]
+    for row in rows:
+        lines.append("| " + " | ".join(_escape_table(row.get(field, "")) for field in YUQUE_FIELDS) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def render_final_report(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary", {})
+    lines = [
+        "# 最终归档报告",
+        "",
+        f"- 题目数量：{summary.get('total', 0)}",
+        f"- xlsx：{summary.get('xlsx_path', '')}",
+        f"- 语雀粘贴表：{summary.get('yuque_table_path', '')}",
+        f"- xlsx 回读行数：{summary.get('xlsx_readback_rows', 0)}",
+        f"- 待处理事项：{summary.get('remaining_actions', 0)}",
+        "",
+        "| 题目 | HUB编号 | 验证状态 | 归档目录 | 环境包/附件包 |",
+        "|---|---|---|---|---|",
+    ]
+    for entry in payload.get("entries", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                _escape_table(value)
+                for value in [
+                    entry.get("name", ""),
+                    entry.get("hub_id", ""),
+                    entry.get("validation_status", ""),
+                    entry.get("archive_dir", ""),
+                    entry.get("resource_path", ""),
+                ]
+            )
+            + " |"
+        )
+    if payload.get("remaining_actions"):
+        lines.extend(["", "## 待处理事项", ""])
+        for item in payload["remaining_actions"]:
+            lines.append(f"- {item}")
+    return "\n".join(lines) + "\n"
+
+
+def _final_entry(case: dict[str, Any], row: dict[str, str]) -> dict[str, Any]:
+    archive_dir = row.get("归档目录", "")
+    resource_path = row.get("环境包/附件包路径", "")
+    actions = []
+    for field in ["名称", "分类", "题目类型", "Flag类型", "Flag", "验证状态"]:
+        if not row.get(field, "").strip():
+            actions.append(f"{row.get('名称') or case.get('case_id') or 'unknown'} 缺少 {field}")
+    if archive_dir and not Path(archive_dir).exists():
+        actions.append(f"{row.get('名称') or case.get('case_id')} 归档目录不存在：{archive_dir}")
+    elif not archive_dir:
+        actions.append(f"{row.get('名称') or case.get('case_id')} 缺少归档目录")
+
+    for path in _split_paths(resource_path):
+        if not _resource_exists(path, archive_dir):
+            actions.append(f"{row.get('名称') or case.get('case_id')} 资源路径不存在：{path}")
+    if not resource_path.strip():
+        actions.append(f"{row.get('名称') or case.get('case_id')} 缺少环境包/附件包路径")
+
+    return {
+        "case_id": str(case.get("case_id") or ""),
+        "name": row.get("名称", ""),
+        "hub_id": row.get("HUB编号", ""),
+        "validation_status": row.get("验证状态", ""),
+        "archive_dir": archive_dir,
+        "resource_path": resource_path,
+        "remaining_actions": actions,
+    }
+
+
+def _split_paths(value: str) -> list[str]:
+    return [item.strip() for item in value.split(";") if item.strip()]
+
+
+def _resource_exists(value: str, archive_dir: str) -> bool:
+    path = Path(value)
+    if path.exists():
+        return True
+    if archive_dir and (Path(archive_dir) / value).exists():
+        return True
+    return False
+
+
+def _escape_table(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="CloverSec CTF final report utilities")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    generate_parser = subparsers.add_parser("generate", help="write final xlsx, Yuque table, and report")
+    generate_parser.add_argument("--cases", required=True)
+    generate_parser.add_argument("--output-dir", required=True)
+
+    args = parser.parse_args(argv)
+    if args.command == "generate":
+        cases = data.load_cases(args.cases)
+        payload = create_final_outputs(cases, args.output_dir)
+        print(f"wrote {payload['summary']['report_path']}")
+        return 0
+
+    parser.error("unknown command")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

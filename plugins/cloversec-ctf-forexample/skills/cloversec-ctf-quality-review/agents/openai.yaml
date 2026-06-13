@@ -1,4 +1,4 @@
 interface:
-  display_name: "cloversec-ctf-quality-review"
-  short_description: "CloverSec CTF workflow skill"
-  default_prompt: "Use this CloverSec CTF skill."
+  display_name: "CloverSec CTF Quality Review"
+  short_description: "检查题目资源、手册内容、Flag 字段和最终验证状态"
+  default_prompt: "使用 $cloversec-ctf-quality-review 检查 ctf_case.json、归档目录、手册、附件、镜像 tar 和验证状态。"

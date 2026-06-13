@@ -20,27 +20,41 @@ description: CloverSec CTF Hub 审核后编号回填与镜像 tag skill。用于
 ## 输出
 
 - 新镜像 tag。
-- 新 amd64 镜像 tar。
+- 新 amd64 镜像 tar 路径计划。
 - `retag_report.md`。
 - 更新后的 `docker_artifacts.json` 和 xlsx 字段。
 
 ## 工作流程
 
 1. 要求用户确认 HUB 编号和 tag 规则。
-2. 检查原镜像存在并能运行。
-3. 执行 docker tag。
-4. 导出 tar。
-5. import 后再次 run。
-6. 更新归档和 xlsx 字段。
+2. 读取 `docker_artifacts.image_name`、`platform`、`tar_path`。
+3. 生成 docker tag、save、load、inspect 命令计划。
+4. 写入 `retag_plan.json` 和 `retag_report.md`。
+5. 用户执行或明确授权后，再把真实执行结果写回。
+
+## 脚本入口
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan \
+  --case-json ctf_case.json \
+  --hub-id CTF-2026060001 \
+  --output-dir archive/retagged-images \
+  --registry-prefix registry.example.com/cloversec \
+  --tag-template "{hub_id}" \
+  --output retag_plan.json \
+  --report retag_report.md \
+  --output-case ctf_case.retagged.json
+```
+
+脚本只生成命令计划，不自动运行 Docker。
 
 ## 验证
 
 - HUB 编号来源明确。
 - 新 tag 符合用户确认规则。
-- 新 tar 为 `linux/amd64`。
-- import 后可运行。
+- 原始 `docker_artifacts.platform` 必须为 `linux/amd64`。
+- Docker 命令执行、导出 tar、import 后运行属于真实执行检查；没有执行记录时不得写成通过。
 
 ## 停止条件
 
 审核状态、HUB 编号、tag 规则、镜像来源或导出方式不确定时，停止并给用户选择。
-

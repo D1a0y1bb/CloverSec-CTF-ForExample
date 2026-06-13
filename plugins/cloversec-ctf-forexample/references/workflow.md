@@ -21,3 +21,30 @@
 - 涉及镜像导出时必须检查 `linux/amd64`。
 - 阶段结束前更新 `TODO.md`。
 
+## 阶段 6 命令顺序
+
+1. 归档资源：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py package --case-json ctf_case.json --output-root archive --output-case ctf_case.archived.json
+```
+
+2. 做质量检查：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_review.py review --case-json ctf_case.archived.json --output-dir quality_review --archive-dir archive/<case_id>-<title> --output-case ctf_case.reviewed.json
+```
+
+3. 审核通过并拿到 HUB 编号后生成 retag 计划：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan --case-json ctf_case.reviewed.json --hub-id <HUB编号> --output-dir archive/retagged-images --output retag_plan.json --report retag_report.md --output-case ctf_case.retagged.json
+```
+
+4. 汇总最终表：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate --cases ctf_cases.jsonl --output-dir final_out
+```
+
+`cloversec_ctf_retag.py` 只生成命令计划。真实 Docker tag/save/load/inspect 执行结果需要用户执行或明确授权后写回。
