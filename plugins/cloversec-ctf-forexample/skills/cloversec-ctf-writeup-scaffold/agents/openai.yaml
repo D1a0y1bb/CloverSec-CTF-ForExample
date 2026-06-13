@@ -2,7 +2,7 @@ interface:
   display_name: "CloverSec CTF Writeup Scaffold"
   short_description: "标准化题目手册、录题字段与题解草稿生成"
   brand_color: "#2563EB"
-  default_prompt: "Use $cloversec-ctf-writeup-scaffold to先输出当前题目目录的文档提案摘要，再整理 WP、源码与构建产物，生成 manual_template.md、manual_filled_draft.md 与录题草稿。"
+  default_prompt: "使用 $cloversec-ctf-writeup-scaffold 处理当前题目目录；可直接给题目目录，也可用 --project-dir path/to/challenge。先输出字段提案，再生成 manual_template.md、manual_filled_draft.md、hub_fields.json 和 xlsx_fields.json。"
 
 policy:
   allow_implicit_invocation: true
