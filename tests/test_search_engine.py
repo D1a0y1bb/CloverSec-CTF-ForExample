@@ -122,6 +122,24 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(payload["errors"][0]["provider"], "github-code")
         self.assertEqual(payload["errors"][0]["status"], "skipped")
 
+    def test_github_token_does_not_read_gh_auth_by_default(self):
+        with mock.patch.dict(search.os.environ, {}, clear=True):
+            with mock.patch.object(search.subprocess, "run") as run:
+                token = search.github_token()
+
+        self.assertEqual(token, "")
+        run.assert_not_called()
+
+    def test_github_token_reads_gh_auth_only_when_enabled(self):
+        result = subprocess.CompletedProcess(["gh", "auth", "token"], 0, stdout="abc123\n", stderr="")
+
+        with mock.patch.dict(search.os.environ, {"CLOVERSEC_USE_GH_AUTH_TOKEN": "1"}, clear=True):
+            with mock.patch.object(search.subprocess, "run", return_value=result) as run:
+                token = search.github_token()
+
+        self.assertEqual(token, "abc123")
+        run.assert_called_once()
+
     def test_github_release_assets_extracts_download_urls(self):
         payload = [
             {

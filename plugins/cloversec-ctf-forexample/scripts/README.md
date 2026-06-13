@@ -54,7 +54,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py preview
 
 可选环境变量：
 
-- `GITHUB_TOKEN` 或 `GH_TOKEN`，未设置时会尝试读取本机 `gh auth token`
+- `GITHUB_TOKEN` 或 `GH_TOKEN`
+- `CLOVERSEC_USE_GH_AUTH_TOKEN=1`，明确允许脚本读取本机 `gh auth token`；默认不读取
 - `BRAVE_SEARCH_API_KEY` 或 `CLOVERSEC_BRAVE_API_KEY`
 - `BING_SEARCH_API_KEY` 或 `CLOVERSEC_BING_API_KEY`
 

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.1.4"><img alt="Version" src="https://img.shields.io/badge/version-v0.1.4-2563eb?style=for-the-badge"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.1.5"><img alt="Version" src="https://img.shields.io/badge/version-v0.1.5-2563eb?style=for-the-badge"></a>
   <img alt="Skills" src="https://img.shields.io/badge/skills-10-16a34a?style=for-the-badge">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-search-f59e0b?style=for-the-badge">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-plugin-111827?style=for-the-badge">
@@ -26,7 +26,7 @@ CloverSec CTF For Example is a Codex plugin marketplace for internal CTF product
 
 The repository is designed as a GitHub-installable Codex marketplace. A teammate can add this repository from Codex, install `cloversec-ctf-forexample`, and then use the packaged skills from a fresh Codex thread.
 
-Current version: `v0.1.4`
+Current version: `v0.1.5`
 
 ## Install
 
@@ -34,7 +34,7 @@ In Codex, open **Plugins -> Add plugin marketplace** and fill:
 
 ```text
 Source: D1a0y1bb/CloverSec-CTF-ForExample
-Git reference: v0.1.4
+Git reference: v0.1.5
 Sparse path: empty
 ```
 
@@ -48,7 +48,7 @@ plugins
 CLI install:
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.1.4
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.1.5
 codex plugin list
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
@@ -125,7 +125,8 @@ Free sources:
 
 Optional key-backed sources:
 
-- `GITHUB_TOKEN` or `GH_TOKEN` for GitHub code search; if unset, scripts try `gh auth token`
+- `GITHUB_TOKEN` or `GH_TOKEN` for GitHub code search
+- `CLOVERSEC_USE_GH_AUTH_TOKEN=1` to explicitly allow reading `gh auth token`
 - `BRAVE_SEARCH_API_KEY` or `CLOVERSEC_BRAVE_API_KEY`
 - `BING_SEARCH_API_KEY` or `CLOVERSEC_BING_API_KEY`
 
@@ -214,7 +215,7 @@ python3 scripts/package_plugin_release.py
 Release tags must match `plugin.json`:
 
 ```text
-plugin version 0.1.4 -> git tag v0.1.4
+plugin version 0.1.5 -> git tag v0.1.5
 ```
 
 The GitHub Release workflow validates metadata, compiles scripts, runs tests, packages release assets, and creates the GitHub Release.

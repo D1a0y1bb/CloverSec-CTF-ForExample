@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.1.4 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.1.5 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -443,7 +443,7 @@ def search_github_repositories(query: str, *, limit: int = 20) -> list[dict[str,
 def search_github_code(query: str, *, limit: int = 10) -> list[dict[str, Any]]:
     token = github_token()
     if not token:
-        raise SearchSkipped("GITHUB_TOKEN/GH_TOKEN or gh auth not available; GitHub code search skipped")
+        raise SearchSkipped("GITHUB_TOKEN/GH_TOKEN not set; GitHub code search skipped")
     params = {
         "q": f"{query} ctf filename:README OR filename:writeup OR filename:wp",
         "per_page": str(min(max(limit, 1), 50)),
@@ -843,7 +843,7 @@ def github_token() -> str:
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
         return token
-    if os.environ.get("CLOVERSEC_NO_GH_AUTH"):
+    if os.environ.get("CLOVERSEC_USE_GH_AUTH_TOKEN") != "1":
         return ""
     try:
         result = subprocess.run(
