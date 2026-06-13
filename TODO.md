@@ -41,9 +41,16 @@
 - [x] 将已有 `CloverSec-CTF-Build-Dockerizer` 源项目完整同步到 plugin skill。
 - [x] 将已有 `CloverSec-CTF-Writeup-Scaffold` 源项目完整同步到 plugin skill。
 - [x] 在源项目增强后再迁移，不使用简化替代版 skill。
+- [x] 发布 `CloverSec-CTF-Build-Dockerizer` `v2.2.0-r7`，并更新本地安装版 Skill。
+- [x] 优化 `CloverSec-CTF-Writeup-Scaffold` 运行入口，改为安装版可直接使用的渐进加载说明。
+- [x] 验证两个源 Skill 与 ForExample 插件副本一致。
 
 ## 阶段 6：归档、审核、最终报告
 
+- [ ] 优先扩展 `cloversec-ctf-archive-packager`，生成统一归档目录、manifest、手册、附件包和 amd64 镜像 tar 索引。
+- [ ] 优先扩展 `cloversec-ctf-quality-review`，检查题目、资源、镜像启动、手册步骤和 Flag 可验证性。
+- [ ] 优先扩展 `cloversec-ctf-hub-retag`，按审核后的 HUB 编号更新镜像 tag 并重新导出 tar。
+- [ ] 优先扩展 `cloversec-ctf-final-report`，生成最终归档 xlsx 和语雀粘贴表。
 - [ ] 实现归档目录生成。
 - [ ] 实现质量检查报告。
 - [ ] 实现审核通过后的 HUB 编号回填和镜像 tag 处理。
