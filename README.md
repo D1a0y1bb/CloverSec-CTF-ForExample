@@ -5,9 +5,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.1.9"><img alt="Version" src="https://img.shields.io/badge/version-v0.1.9-2563eb?style=for-the-badge"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.2.1"><img alt="Version" src="https://img.shields.io/badge/version-v0.2.1-f59e0b?style=for-the-badge"></a>
   <img alt="Skills" src="https://img.shields.io/badge/skills-10-16a34a?style=for-the-badge">
-  <img alt="MCP" src="https://img.shields.io/badge/MCP-search%20%2B%20browser-f59e0b?style=for-the-badge">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-search%20plus%20%2B%20browser-f59e0b?style=for-the-badge">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-plugin-111827?style=for-the-badge">
 </p>
 
@@ -22,11 +22,11 @@
 
 ## Overview
 
-CloverSec CTF For Example is a Codex plugin marketplace for internal CTF production workflows. It packages 10 Codex skills and two MCP servers to help an agent move from public contest research to challenge asset collection, container or attachment conversion, writeup scaffolding, resource archiving, quality review, Hub submission preparation, post-review image retagging, and final xlsx/Yuque reporting.
+CloverSec CTF For Example is a Codex plugin marketplace for internal CTF production workflows. It packages 10 Codex skills and MCP servers to help an agent move from public contest research to challenge asset collection, container or attachment conversion, writeup scaffolding, resource archiving, quality review, Hub submission preparation, post-review image retagging, and final xlsx/Yuque reporting.
 
 The repository is designed as a GitHub-installable Codex marketplace. A teammate can add this repository from Codex, install `cloversec-ctf-forexample`, and then use the packaged skills from a fresh Codex thread.
 
-Current version: `v0.1.9`
+Current version: `v0.2.1`
 
 ## Install
 
@@ -34,7 +34,7 @@ In Codex, open **Plugins -> Add plugin marketplace** and fill:
 
 ```text
 Source: D1a0y1bb/CloverSec-CTF-ForExample
-Git reference: v0.1.9
+Git reference: v0.2.1
 Sparse path: empty
 ```
 
@@ -48,7 +48,7 @@ plugins
 CLI install:
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.1.9
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.2.1
 codex plugin list
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
@@ -105,9 +105,10 @@ Core data is carried through `ctf_case.json` or `ctf_cases.jsonl`. The final xls
 
 ## MCP Search
 
-The plugin includes three local stdio MCP servers:
+The plugin includes four local stdio MCP servers:
 
 - `cloversec-ctf-search` for CTF public-source search, URL fetch, GitHub Release listing, and Agent web-search result import.
+- `cloversec-ctf-search-plus` for unified free-source, Agent web, browser visible, direct URL, GitHub evidence, safe preview, and compact JSON output.
 - `cloversec-ctf-browser-search` for browser-assisted Google/Baidu/CSDN/Cnblogs/Yuque search planning and visible-result import.
 - `cloversec-ctf-hub-assistant` for safe Hub browser/Chrome filling plans, upload-result merge, and pre-submit validation.
 
@@ -115,6 +116,7 @@ Available tools:
 
 | Tool | Purpose |
 | --- | --- |
+| `cloversec_ctf_search_plus` | Merge free sources, Agent web results, browser visible results, direct URLs, explicit GitHub repos, scoring, and short JSON output. |
 | `cloversec_ctf_discover` | Search free public sources plus GitHub code search through token or local `gh auth`. |
 | `cloversec_ctf_ctftime_events` | Fetch CTFTime events for a target year and optional query. |
 | `cloversec_ctf_fetch_url` | Fetch URL metadata, title, text, hash, and status. |
@@ -122,6 +124,7 @@ Available tools:
 | `cloversec_ctf_import_agent_web_results` | Import web search results gathered by the current Agent and score them into CloverSec layers. |
 | `cloversec_ctf_browser_search_plan` | Create a browser-assisted Google/Baidu/CSDN/Cnblogs/Yuque search plan, optionally opening the search page. |
 | `cloversec_ctf_browser_search_import_visible` | Import visible browser search results without reading cookies, tokens, localStorage, sessionStorage, passwords, or captcha data. |
+| `cloversec_ctf_browser_search_dom_to_visible` | Convert user-confirmed Chrome/Codex visible DOM, HTML, text, or links into `visible_results.json` and scored results. |
 | `cloversec_ctf_hub_chrome_plan` | Create a Chrome-assisted Hub filling plan that stops before final submit. |
 | `cloversec_ctf_hub_validate_manifest` | Validate Hub classify ID, required fields, upload results, and screenshot slots. |
 | `cloversec_ctf_hub_apply_upload_results` | Merge visible Hub upload results back into the manifest. |
@@ -149,9 +152,11 @@ Search results are scored into:
 - `platform_lead`
 - `noise`
 
-Google/Baidu HTML direct scraping is not treated as a stable default path. Use the Agent's current web-search capability when it exists, then import results through `cloversec_ctf_import_agent_web_results`. For pages that need a human browser because of captcha, login, or risk control, use `cloversec-ctf-browser-search`; it only records visible titles, URLs, snippets, ranks, and blocked status.
+Google/Baidu HTML direct scraping is not treated as a stable default path. Use the Agent's current web-search capability when it exists, then pass results into `cloversec_ctf_search_plus` or import through `cloversec_ctf_import_agent_web_results`. For pages that need a human browser because of captcha, login, or risk control, use `cloversec-ctf-browser-search`; it only records visible titles, URLs, snippets, ranks, and blocked status.
 
 When default free sources return too few candidates, `cloversec_ctf_discover` adds a `recall_recovery` section and runs relaxed public-web/site-search queries. Recovery results are marked with `year_relaxed=true` and must be treated as leads until evidence confirms the requested year and challenge.
+
+Search is not a universal downloader. If a contest is cold, a Chinese page is poorly indexed, an attachment is removed, or a netdisk link has expired, the next step is Agent web search, Chrome browser-assisted review, or a user-provided entry URL. `search-plus` records that as a decision item instead of pretending the asset was found.
 
 ## Asset Collection Commands
 
@@ -245,7 +250,7 @@ python3 scripts/package_plugin_release.py
 Release tags must match `plugin.json`:
 
 ```text
-plugin version 0.1.9 -> git tag v0.1.9
+plugin version 0.2.1 -> git tag v0.2.1
 ```
 
 The GitHub Release workflow validates metadata, compiles scripts, runs tests, packages release assets, and creates the GitHub Release.

@@ -4,6 +4,12 @@
 
 Search results must keep `source_url`, `title`, `snippet`, `provider`, `confidence`, `evidence`, `layer`, `score`, and `quality_issues`.
 
+Default MCP entrypoint:
+
+- Use `cloversec_ctf_search_plus` first when available.
+- It merges default free sources, Agent web-search results, Chrome/Codex browser visible results, direct attachment URLs, explicit GitHub repositories, evidence scoring, and safe URL preview.
+- It returns short JSON by default. Pass `output_path` to write the full result manifest, or `compact=false` only when the caller can handle long JSON.
+
 Layer meanings:
 
 - `confirmed_challenge`: a specific challenge has event, year, and challenge-name evidence.
@@ -46,15 +52,21 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py import-
   --output search_results.agent.json
 ```
 
+For `search-plus`, pass the same web results as `agent_results`. Do not paste huge raw result dumps into final answers; write full JSON to a file and summarize top results.
+
 ## Browser-Assisted Search
 
 Use `cloversec-ctf-browser-search` for Google/Baidu/CSDN/Cnblogs/Yuque pages that may need a real browser. It only reads visible titles, URLs, snippets, ranks, and blocked status. It must not read Cookie, token, localStorage, sessionStorage, passwords, or captcha data.
+
+When Codex/Chrome browser tooling can read the visible DOM, pass the user-confirmed visible DOM or visible links to `cloversec_ctf_browser_search_dom_to_visible`. This creates `visible_results.json`, then imports it into scored results. If the page shows captcha, login, SSO, or risk-control text, mark it blocked and stop.
 
 ## Weak Recall Recovery
 
 When the default free sources return fewer than three candidate results, `discover` creates a `recall_recovery` plan and runs relaxed public-web/site-search queries. Recovery queries remove strict year pressure and mark imported hits with `year_relaxed=true`, `metadata.recovery_reason=weak_recall`, and `metadata.recovery_query`.
 
 Recovery hits are leads, not confirmations. They can improve recall for queries such as `祥云杯 2024 pwn writeup`, but the Agent must still use evidence before claiming the requested year, exact challenge, attachment, or writeup exists. If recovery is still weak, use Agent web search or browser-assisted Google/Baidu search and import visible results.
+
+Search is not a universal downloader. Cold contests, removed attachments, expired netdisk links, and poorly indexed Chinese pages still require Agent web search, Chrome browser-assisted review, or user-provided entry URLs.
 
 ## Commands
 

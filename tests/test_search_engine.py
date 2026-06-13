@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import cloversec_ctf_search as search
 import cloversec_ctf_browser_search as browser_search
+import cloversec_ctf_search_plus as search_plus
 
 
 class SearchEngineTests(unittest.TestCase):
@@ -541,6 +542,90 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(payload["errors"][0]["status"], "blocked_by_captcha")
         self.assertEqual(payload["results"], [])
 
+    def test_browser_dom_to_visible_writes_visible_results_and_scores(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "visible_results.json"
+            payload = browser_search.dom_to_visible_bundle(
+                {
+                    "links": [
+                        {
+                            "text": "IrisCTF 2025 web writeup",
+                            "href": "https://example.com/irisctf-2025-web",
+                            "snippet": "IrisCTF 2025 web challenge writeup source",
+                        },
+                        {
+                            "text": "DuckDuckGo",
+                            "href": "https://duckduckgo.com/?q=IrisCTF+2025",
+                        },
+                    ]
+                },
+                query="IrisCTF 2025 web writeup",
+                engine="google",
+                page_url="https://www.google.com/search?q=IrisCTF+2025+web+writeup",
+                output_path=output,
+            )
+            visible = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(visible["schema_version"], "cloversec.ctf.visible_results.v1")
+        self.assertEqual(len(visible["results"]), 2)
+        self.assertEqual(payload["visible_results_path"], str(output))
+        layers_by_title = {item["title"]: item["layer"] for item in payload["top_results"]}
+        self.assertEqual(layers_by_title["IrisCTF 2025 web writeup"], "writeup_candidate")
+        self.assertEqual(layers_by_title["DuckDuckGo"], "noise")
+
+    def test_search_plus_compact_merges_sources_and_writes_full_output(self):
+        base_result = search.normalize_result(
+            provider="seed",
+            kind="challenge_archive",
+            title="google/google-ctf",
+            url="https://github.com/google/google-ctf",
+            summary="Google CTF challenge archive",
+            source_type="github",
+            confidence="high",
+        )
+        base_manifest = {
+            "query": "IrisCTF 2025 web writeup",
+            "years": [2025],
+            "generated_at": search.utc_now(),
+            "sources": ["seeds"],
+            "results": [base_result],
+            "recall_recovery": {"status": "not_needed", "should_run": False},
+            "summary": {"total_results": 1, "errors": 0},
+            "errors": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "challenge.zip").write_bytes(b"zip bytes")
+            full_output = root / "full_search_plus.json"
+            with LocalServer(root) as server:
+                with mock.patch.object(search, "discover", return_value=base_manifest):
+                    payload = search_plus.search_plus(
+                        "IrisCTF 2025 web writeup",
+                        years=[2025],
+                        sources=["seeds"],
+                        agent_results=[
+                            {
+                                "rank": 1,
+                                "title": "IrisCTF 2025 web writeup",
+                                "url": "https://example.com/irisctf-2025-web",
+                                "snippet": "IrisCTF 2025 web challenge writeup source",
+                            }
+                        ],
+                        direct_urls=[f"{server.url}/challenge.zip"],
+                        output_path=full_output,
+                        compact=True,
+                    )
+
+            full = json.loads(full_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["schema_version"], "cloversec.ctf.search_plus.compact.v1")
+        self.assertEqual(payload["full_output_path"], str(full_output))
+        self.assertEqual(full["schema_version"], "cloversec.ctf.search_plus.v1")
+        self.assertEqual(full["summary"]["direct_urls_previewed"], 1)
+        self.assertTrue(any(item["provider"] == "direct-url" for item in full["results"]))
+        self.assertLessEqual(len(payload["top_results"]), search_plus.DEFAULT_COMPACT_RESULTS)
+
     def test_mcp_tools_list_and_discover(self):
         process = subprocess.Popen(
             [sys.executable, str(SCRIPTS / "cloversec_ctf_search_mcp.py")],
@@ -635,8 +720,62 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(init["result"]["serverInfo"]["name"], "cloversec-ctf-browser-search")
         self.assertTrue(any(item["name"] == "cloversec_ctf_browser_search_plan" for item in tools["result"]["tools"]))
+        self.assertTrue(any(item["name"] == "cloversec_ctf_browser_search_dom_to_visible" for item in tools["result"]["tools"]))
         self.assertIn("browser-google", call["result"]["content"][0]["text"])
         self.assertIn("writeup_candidate", call["result"]["content"][0]["text"])
+
+    def test_search_plus_mcp_tools_list_and_compact_call(self):
+        process = subprocess.Popen(
+            [sys.executable, str(SCRIPTS / "cloversec_ctf_search_plus_mcp.py")],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            assert process.stdin is not None
+            assert process.stdout is not None
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}) + "\n")
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}) + "\n")
+            process.stdin.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 3,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "cloversec_ctf_search_plus",
+                            "arguments": {
+                                "query": "IrisCTF 2025 web writeup",
+                                "sources": ["seeds"],
+                                "agent_results": [
+                                    {
+                                        "rank": 1,
+                                        "title": "IrisCTF 2025 web writeup",
+                                        "url": "https://example.com/irisctf-2025-web",
+                                        "snippet": "IrisCTF 2025 web challenge writeup source",
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                )
+                + "\n"
+            )
+            process.stdin.flush()
+            init = json.loads(process.stdout.readline())
+            tools = json.loads(process.stdout.readline())
+            call = json.loads(process.stdout.readline())
+        finally:
+            if process.stdin:
+                process.stdin.close()
+            if process.stdout:
+                process.stdout.close()
+            process.terminate()
+            process.wait(timeout=5)
+
+        self.assertEqual(init["result"]["serverInfo"]["name"], "cloversec-ctf-search-plus")
+        self.assertTrue(any(item["name"] == "cloversec_ctf_search_plus" for item in tools["result"]["tools"]))
+        self.assertIn("cloversec.ctf.search_plus.compact.v1", call["result"]["content"][0]["text"])
 
 
 class LocalServer:

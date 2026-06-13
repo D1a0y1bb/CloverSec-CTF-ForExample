@@ -129,8 +129,9 @@ def validate_mcp(errors: list[str]) -> None:
     if not isinstance(data, dict):
         return
     servers = data.get("mcpServers") if isinstance(data.get("mcpServers"), dict) else {}
-    if "cloversec-ctf-search" not in servers:
-        errors.append(".mcp.json missing cloversec-ctf-search")
+    for name in ["cloversec-ctf-search", "cloversec-ctf-browser-search", "cloversec-ctf-search-plus"]:
+        if name not in servers:
+            errors.append(f".mcp.json missing {name}")
 
 
 def frontmatter_value(text: str, key: str) -> str:

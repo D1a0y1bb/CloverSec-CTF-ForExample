@@ -40,6 +40,23 @@ TOOLS = [
             "required": ["query", "engine"],
         },
     },
+    {
+        "name": "cloversec_ctf_browser_search_dom_to_visible",
+        "description": "Convert user-confirmed Chrome/Codex visible DOM, HTML, links, or text into visible_results.json and scored results.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "engine": {"type": "string", "enum": sorted(browser_search.BROWSER_SEARCH_ENGINES)},
+                "page_url": {"type": "string"},
+                "dom": {"type": "object"},
+                "output_path": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                "compact": {"type": "boolean"},
+            },
+            "required": ["query", "engine", "dom"],
+        },
+    },
 ]
 
 
@@ -53,7 +70,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-browser-search", "version": "0.1.9"},
+                    "serverInfo": {"name": "cloversec-ctf-browser-search", "version": "0.2.1"},
                 },
             )
         if method == "tools/list":
@@ -63,7 +80,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             name = params.get("name")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
             payload = call_tool(str(name or ""), arguments)
-            return response(request_id, {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}]})
+            return response(request_id, {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}]})
         if request_id is None:
             return None
         return error_response(request_id, -32601, f"unknown method: {method}")
@@ -88,6 +105,16 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             payload,
             query=str(arguments.get("query", "")),
             engine=str(arguments.get("engine", "google")),
+        )
+    if name == "cloversec_ctf_browser_search_dom_to_visible":
+        return browser_search.dom_to_visible_bundle(
+            arguments.get("dom", {}),
+            query=str(arguments.get("query", "")),
+            engine=str(arguments.get("engine", "google")),
+            page_url=str(arguments.get("page_url", "")),
+            limit=int(arguments.get("limit", 50)),
+            output_path=str(arguments.get("output_path") or "") or None,
+            compact=bool(arguments.get("compact", True)),
         )
     raise ValueError(f"unknown tool: {name}")
 

@@ -20,6 +20,16 @@
         "PYTHONUNBUFFERED": "1"
       }
     },
+    "cloversec-ctf-search-plus": {
+      "cwd": ".",
+      "command": "python3",
+      "args": [
+        "./scripts/cloversec_ctf_search_plus_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
     "cloversec-ctf-hub-assistant": {
       "cwd": ".",
       "command": "python3",

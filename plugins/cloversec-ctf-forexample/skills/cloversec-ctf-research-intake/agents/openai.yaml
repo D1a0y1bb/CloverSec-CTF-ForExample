@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Research Intake"
   short_description: "搜索 CTF 赛事、赛题、writeup 与公开归档来源"
-  default_prompt: "使用 $cloversec-ctf-research-intake 按年份、赛事、关键词搜索 CTF 赛题、writeup、公开归档和来源证据。"
+  default_prompt: "使用 $cloversec-ctf-research-intake 调用 search-plus 搜索 CTF 赛题、writeup、公开归档、Chrome 可见结果和直接附件 URL，输出短 JSON 摘要和证据文件。"

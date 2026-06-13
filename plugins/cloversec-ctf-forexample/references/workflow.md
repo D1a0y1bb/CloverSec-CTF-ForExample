@@ -37,6 +37,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py downloa
 
 MCP 入口：
 
+- `cloversec_ctf_search_plus`
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
 - `cloversec_ctf_fetch_url`
@@ -44,6 +45,7 @@ MCP 入口：
 - `cloversec_ctf_import_agent_web_results`
 - `cloversec_ctf_browser_search_plan`
 - `cloversec_ctf_browser_search_import_visible`
+- `cloversec_ctf_browser_search_dom_to_visible`
 - `cloversec_ctf_hub_chrome_plan`
 - `cloversec_ctf_hub_validate_manifest`
 
