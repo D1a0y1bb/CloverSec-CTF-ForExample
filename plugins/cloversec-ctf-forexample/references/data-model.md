@@ -111,6 +111,55 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_package.py inspec
 
 `docker_artifacts.platform` 必须为 `linux/amd64`。附件 manifest 必须记录 `sha256`、目录项和风险状态。
 
+手册和 Hub 提交阶段脚本：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_writeup.py render ctf_case.json --output-dir writeup_out
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package --case-json ctf_case.json --hub-fields writeup_out/hub_fields.json --manual writeup_out/manual_filled_draft.md --output-dir hub_submission_package
+```
+
+`hub_fields.json` 字段：
+
+- `题目标题`
+- `题目内容`
+- `Flag类型`
+- `题目Flag`
+- `题目来源`
+- `题目分类`
+- `题目分值`
+- `题目等级`
+- `题目难度`
+- `题目难度等级`
+- `题目类型`
+- `资源等级`
+- `题目备注`
+- `添加关键字`
+
+`题目Flag` 保存完整 Flag。导出的 `xlsx_fields.json` 也保存完整 `Flag`。
+
+Hub 提交材料目录：
+
+```text
+hub_submission_package/
+├── fields/
+│   ├── hub_fields.json
+│   └── hub_fields_preview.json
+├── manual/
+│   └── manual_filled_draft.md
+├── attachments/
+├── images/
+├── screenshots/
+├── manifests/
+│   └── upload_manifest.json
+└── hub_submission_checklist.md
+```
+
+默认截图命名：
+
+- `01-challenge-page.png`
+- `02-container-running.png`
+- `03-solve-proof.png`
+
 ## 状态值
 
 - `材料状态`：`未开始`、`收集中`、`已收集`、`缺材料`、`无法确认`

@@ -53,3 +53,46 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_package.py manife
 ```
 
 检查项包括压缩包类型、是否可读取、目录项、大小、SHA256 和路径穿越风险。
+
+## `cloversec_ctf_writeup.py`
+
+手册草稿、Hub 字段和 xlsx 行草稿生成工具。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_writeup.py render \
+  ctf_case.json \
+  --output-dir writeup_out
+```
+
+输出文件：
+
+- `writeup_out/hub_fields.json`
+- `writeup_out/xlsx_fields.json`
+- `writeup_out/manual_template.md`
+- `writeup_out/manual_filled_draft.md`
+
+`hub_fields.json` 中的 `题目Flag` 和 `xlsx_fields.json` 中的 `Flag` 都保留完整 Flag。10 级难度会转换为 Hub 可填写的 `题目等级`、`题目难度`、`题目难度等级`。
+
+## `cloversec_ctf_hub.py`
+
+Hub 提交材料整理工具。第一版只生成材料包，不登录 Hub、不读取凭证、不自动提交。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package \
+  --case-json ctf_case.json \
+  --hub-fields writeup_out/hub_fields.json \
+  --manual writeup_out/manual_filled_draft.md \
+  --output-dir hub_submission_package
+```
+
+输出目录：
+
+- `hub_submission_package/fields/`
+- `hub_submission_package/manual/`
+- `hub_submission_package/attachments/`
+- `hub_submission_package/images/`
+- `hub_submission_package/screenshots/`
+- `hub_submission_package/manifests/upload_manifest.json`
+- `hub_submission_package/hub_submission_checklist.md`
+
+默认截图槽位固定为 `01-challenge-page.png`、`02-container-running.png`、`03-solve-proof.png`。

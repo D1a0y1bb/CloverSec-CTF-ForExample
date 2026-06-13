@@ -34,10 +34,10 @@
 
 ## 阶段 5：手册与 Hub 提交材料
 
-- [ ] 增强 `cloversec-ctf-writeup-scaffold`：HUB 字段、10 级难度、星级、xlsx 行草稿。
-- [ ] 生成 Hub 提交材料目录和上传核对表。
-- [ ] 明确截图命名和附件清单格式。
-- [ ] 定义 `hub_fields.json` 和上传目录结构。
+- [x] 增强 `cloversec-ctf-writeup-scaffold`：HUB 字段、10 级难度、星级、xlsx 行草稿。
+- [x] 生成 Hub 提交材料目录和上传核对表。
+- [x] 明确截图命名和附件清单格式。
+- [x] 定义 `hub_fields.json` 和上传目录结构。
 
 ## 阶段 6：归档、审核、最终报告
 
@@ -45,3 +45,7 @@
 - [ ] 实现质量检查报告。
 - [ ] 实现审核通过后的 HUB 编号回填和镜像 tag 处理。
 - [ ] 实现最终 xlsx 和语雀粘贴表。
+- [ ] 扩展 `cloversec-ctf-archive-packager`：统一输出手册、附件包、amd64 镜像 tar、manifest 和归档索引。
+- [ ] 扩展 `cloversec-ctf-quality-review`：检查题目、资源、镜像启动、手册步骤和 Flag 可验证性。
+- [ ] 扩展 `cloversec-ctf-hub-retag`：按审核后的 HUB 编号更新镜像 tag 并重新导出 tar。
+- [ ] 扩展 `cloversec-ctf-final-report`：生成最终归档 xlsx 和语雀粘贴表。

@@ -22,6 +22,23 @@ description: CloverSec CTF 手册撰写和 HUB 字段草稿 skill。用于根据
 - `hub_fields.json`。
 - `xlsx_fields.json`。
 
+## 脚本入口
+
+使用插件脚本生成手册草稿和字段草稿：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_writeup.py render ctf_case.json --output-dir writeup_out
+```
+
+输出目录包含：
+
+- `writeup_out/hub_fields.json`
+- `writeup_out/xlsx_fields.json`
+- `writeup_out/manual_template.md`
+- `writeup_out/manual_filled_draft.md`
+
+`hub_fields.json` 的 `题目Flag` 和 `xlsx_fields.json` 的 `Flag` 必须保存完整 Flag。
+
 ## 必填内容
 
 - 题目名称。
@@ -41,8 +58,8 @@ description: CloverSec CTF 手册撰写和 HUB 字段草稿 skill。用于根据
 - 解题步骤包含题目信息、工具、关键命令或代码、截图需求、Flag 证明。
 - HUB 字段和 xlsx 字段一致。
 - 不确定的利用链、题名、来源、分值不得编造。
+- 10 级难度必须转换为 `题目等级`、`题目难度`、`题目难度等级`。
 
 ## 停止条件
 
 缺少 WP、无法复现 flag、题目难度无法判断、Hub 字段含义不明确时，停止并给用户选择。
-
