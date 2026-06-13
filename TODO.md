@@ -81,7 +81,7 @@
 - [x] 使用临时浏览器登录 Hub，验证 CTF 列表、提交页路由、表单字段、上传入口和提交接口；不保存 Cookie/token/session，不执行最终提交。
 - [x] 扩展收集源：增加 `ctf-platforms` seeds，以及 CSDN、博客园、语雀 `site:` 定向搜索。
 - [x] 使用临时官方 `busybox:1.36` amd64 镜像完成真实 Docker 验收，覆盖 `run`、`probe`、`tag`、`save`、`load`、`inspect`；没有执行未知题目镜像。
-- [x] 本机插件已安装到 `0.1.8`，`.mcp.json` / `mcpServers` 配置存在。
+- [x] 本机插件已更新安装到 `0.1.9`，`.mcp.json` / `mcpServers` 配置存在。
 - [x] 新开独立 Codex 会话验收 `cloversec-ctf-search` MCP 可发现并可调用：线程 `019ec18b-a5c2-7cd0-987a-929467d11dae`，通过 `tool_search` 加载后出现 `mcp__cloversec_ctf_search`，调用 `cloversec_ctf_ctftime_events(year=2026, limit=1)` 成功返回 `Scarlet CTF 2026`。
 - [x] 使用 CloudRouter 真实 LLM 调用测试当前插件效果，主测 `gpt-5.4-mini`，抽样复测 `gpt-5.4` / `gpt-5.5`；记录搜索质量、Hub、retag、附件 fixture、prompt 体积等问题。
 - [x] Google/Baidu 直连不作为默认稳定来源；已改为浏览器辅助 MCP 第一版。
@@ -110,7 +110,7 @@
 - [x] Docker 验收没有执行未知题目镜像：只使用官方临时镜像，不对来源不明镜像做 `run`。
 - [x] 搜索 key 输入方式已明确：不要在聊天里发送 key；推荐使用本机 `gh auth login` 或终端环境变量 `GITHUB_TOKEN` / `GH_TOKEN`；默认不要求付费搜索 API key。
 - [x] 无 key 情况下的免费源已具备：CTFTime、GitHub public、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀 `site:` 定向搜索。
-- [x] 本机 Codex 插件安装版本已确认：`cloversec-ctf-forexample@cloversec-ctf` 为 `0.1.8`，`mcpServers` 配置存在。
+- [x] 本机 Codex 插件安装版本已确认：`cloversec-ctf-forexample@cloversec-ctf` 为 `0.1.9`，`mcpServers` 配置存在。
 - [x] 新会话 MCP 可发现性已验收：线程 `019ec18b-a5c2-7cd0-987a-929467d11dae` 中通过 `tool_search` 发现 `mcp__cloversec_ctf_search`，并成功调用 `cloversec_ctf_ctftime_events` 返回 `Scarlet CTF 2026`。
 - [x] Hub 页面真实验证已完成：可登录、进入 CTF 列表、打开提交表单；字段和接口已写入 `hub-submission`；没有最终提交、没有上传测试资源、没有保存账号密码、token 或 session。
 - [x] Research 来源扩展已完成第一版：新增 `ctf-platforms`、`csdn`、`cnblogs`、`yuque`，并做过真实搜索样例测试。
@@ -138,6 +138,10 @@
 - [x] Hub Chrome 未登录态风险已修正进计划：`chrome-plan` 现在包含 `login_state_gate`，页面显示“登录/注册”、SSO、403 或未登录状态时停止，不填写字段、不上传附件。
 - [x] Hub Chrome 附件上传已复验通过：`#formImg1 span.upload` 成功触发文件选择器并上传 `/tmp/cloversec-hub-chrome-e2e/resources/cloversec_codex_e2e_attachment.zip`；页面显示 `cloversec_codex_e2e_attachment.zip` 和删除入口。
 - [x] Hub 验收后已把 Chrome 页面退回资源中心，避免误点测试提交；没有点击最终提交。
+- [x] `v0.1.9` Release 页面问题已处理：Actions 失败原因是手动 Release 已存在，重跑后通过；正文重复标题已删除；资产列表清理为三个插件发布包。
+- [x] Release workflow 已改为幂等：Release 已存在时执行 `gh release edit` + `gh release upload --clobber`，以后不会因同名 Release 已存在而失败；上传范围限制为 `dist/cloversec-ctf-forexample-*`。
+- [x] `v0.1.9` 真实 LLM 抽样完成：CloudRouter `/v1/models` 与 `/v1/chat/completions` 可用；`gpt-5.4-mini` 通过搜索弱召回、Hub 登录态门槛、完整流程策略短 JSON 复测；`gpt-5.4` 通过 Hub 登录态门槛复核。
+- [x] LLM 测试暴露的提示限制已记录：长 JSON 回答容易被 `max_tokens` 截断，自动化验收应要求短 JSON、分段输出或增大输出 token；全流程提示应显式包含“默认免费源”“不自动点击最终提交”“完整 Flag”等硬词。
 - [x] Hub 分类映射前置能力已加入：`validate-manifest --classify-options` 可把分类文本映射为 Hub 分类 ID。
 - [x] Hub 附件上传结果回写已加入：`apply-upload-results` 可记录上传返回 URL、文件 ID、状态和错误。
 - [x] Hub 提交前字段完整性检查已加入：题目内容、题目解答、关键字、分类 ID、上传结果和截图槽位会进入 validation。
@@ -146,6 +150,21 @@
 - [x] 完整 Flag 写入 xlsx 的规则可见性已增强：插件级说明、workflow、writeup/final-report description 都可见。
 
 ## MCP / App 后续规划
+
+## 当前版本大白话总结（v0.1.9）
+
+- [x] 现在这个 plugin 已经不是空骨架了，可以按 CloverSec CTF 流程从“找比赛/找题目/找 writeup 和附件线索”一路走到“生成手册、Hub 提交材料、归档包、质量检查、Hub 编号 retag 计划、最终 xlsx/语雀表”。
+- [x] 你原本的两个核心 skill 已保留并迁移进插件：`CloverSec-CTF-Build-Dockerizer` 和 `CloverSec-CTF-Writeup-Scaffold`，没有用简化替代版覆盖。
+- [x] 搜索部分已经有真实公网能力：GitHub、CTFTime、DuckDuckGo、公开归档 seeds、CTF 平台 seeds、CSDN、博客园、语雀；不要求 Brave/Bing 付费 key。
+- [x] 搜索质量比第一版强：会区分 confirmed/writeup/attachment/platform/noise，会把平台首页降为线索，会在默认源召回不足时用 `recall_recovery` 做放宽年份检索，并把历史线索标成 `year_relaxed=true`。
+- [x] Hub 自动化已经过真实页面验收：确认 Chrome 已登录后再填写；字段、关键字、题解富文本、测试 zip 上传都跑到提交前；没有点击最终提交。
+- [x] Docker 不是 mock：已用官方 `busybox:1.36` amd64 镜像做过真实 run/probe/tag/save/load/inspect；没有执行未知题目镜像。
+- [x] 发布方式已正规化：GitHub marketplace 安装可用，`v0.1.9` Release 已发布，本机 Codex 已安装到 `0.1.9`。
+- [x] 真实 LLM 验证结论：`gpt-5.4-mini` 对搜索弱召回、Hub 登录态门槛、完整流程短 JSON 能按规则回答；`gpt-5.4` 对 Hub 登录态门槛也能按规则回答。
+- [ ] 仍不足：全网搜索不是万能下载器。遇到冷门比赛、中文站点收录差、附件下架、网盘失效时，仍需要 Agent 联网搜索、Chrome 浏览器辅助搜索或人工提供入口。
+- [ ] 仍不足：Hub 目前是“辅助填写到提交前”，不是无人值守提交；最终提交、分类不确定、未知附件上传仍需要人确认。
+- [ ] 仍不足：长 JSON LLM 输出可能被截断；批量自动化时要用短 JSON、分段输出或加大输出 token。
+- [ ] 仍不足：还没有可视化 App 工作台；批量任务状态、失败重试、Hub 审核跟踪、归档浏览现在主要靠脚本和文件。
 
 - [ ] MCP：`cloversec-ctf-search-plus`，统一 GitHub、CTFTime、公开归档站、writeup 站点、浏览器可见结果和直接附件 URL 的搜索、证据记录、下载预览与来源评分。
 - [x] MCP：`cloversec-ctf-browser-search` 第一版，生成 Google/Baidu/CSDN/博客园/语雀搜索计划，导入页面可见结果，只记录标题、URL、摘要、排名和 blocked 状态，不保存账号、Cookie 或搜索登录态。
