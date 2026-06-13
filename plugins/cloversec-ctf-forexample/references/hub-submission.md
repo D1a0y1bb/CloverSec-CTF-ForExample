@@ -8,6 +8,7 @@
 
 - 不读取或保存密码、验证码、Cookie、token、CSRF、localStorage、sessionStorage。
 - 不保存浏览器 session 文件。
+- 必须先确认当前 Chrome 已登录 Hub，再打开新增题目页并填写字段。未登录状态下即使新增页表单可见，也不能填写，因为点击提交会跳转登录并丢失已填内容。
 - 不自动点击最终提交按钮。
 - 上传未知文件、页面分类和最终提交都必须有人确认。
 - `hub_fields.json` 的 `题目Flag` 保留完整 Flag。
@@ -131,6 +132,8 @@ Chrome 执行约束：
 - 允许打开页面、等待用户登录、填写可见字段、选择可见分类、设置页面文件控件、记录可见上传结果、生成提交前截图。
 - 禁止读取 Cookie、token、CSRF、localStorage、sessionStorage、密码或验证码。
 - 禁止点击最终提交。
+- 登录态门槛：先打开资源列表或用户已有登录页面，确认没有“登录/注册”、SSO 或 403，再进入 `#/activity/submitctf/0/0/0`；未登录时停止等待用户处理。
+- Chrome 文件上传依赖 Codex 扩展文件访问权限；如果 `setFiles` 返回 `Not allowed`，需要用户在 `chrome://extensions` 中给 Codex 扩展开启 `Allow access to file URLs`。
 
 ## 验证
 

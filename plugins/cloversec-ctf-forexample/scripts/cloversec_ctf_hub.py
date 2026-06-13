@@ -183,20 +183,37 @@ def create_browser_assist_plan(
         "mode": "browser-assisted",
         "auto_submit": False,
         "stop_before_submit": True,
+        "login_state_gate": {
+            "required_before_fill": True,
+            "must_check_before_open_create_form": True,
+            "logged_in_evidence": [
+                "Hub CTF list page is accessible without redirecting to login.",
+                "Page header shows a logged-in user identity instead of login/register.",
+                "Challenge classify options can be loaded or selected on the visible page.",
+            ],
+            "unauthenticated_indicators": [
+                "登录/注册",
+                "login or SSO redirect",
+                "403 from CTF list API",
+                "empty form that later redirects to login on submit",
+            ],
+            "on_unauthenticated": "stop_before_fill_and_wait_for_user_login",
+        },
         "site_observation": HUB_SITE_OBSERVATION,
         "form_fields": HUB_FORM_FIELDS,
         "form_payload": form_payload,
         "validation": validation,
         "security_boundaries": [
             "只使用用户已经登录的浏览器会话。",
+            "没有确认登录态前，不填写字段、不上传附件、不生成提交前状态。",
             "不读取或保存 Cookie、token、CSRF、localStorage、sessionStorage、密码或验证码。",
             "提交前必须让用户确认字段、上传文件和截图。",
             "不自动点击最终提交按钮。",
         ],
         "steps": [
             {"id": "open-hub", "action": "打开 Hub CTF 资源页面", "target": hub_url, "requires_user_confirmation": False},
-            {"id": "verify-login", "action": "确认页面处于用户已登录状态", "target": "browser", "requires_user_confirmation": True},
-            {"id": "open-create-form", "action": "打开新增 CTF 题目路由 #/activity/submitctf/0/0/0", "target": "browser", "requires_user_confirmation": False},
+            {"id": "verify-login", "action": "确认页面处于用户已登录状态；如仍显示登录/注册、SSO 或 403，停止等待用户登录，不填写表单", "target": "browser", "requires_user_confirmation": True},
+            {"id": "open-create-form", "action": "仅在确认登录后打开新增 CTF 题目路由 #/activity/submitctf/0/0/0", "target": "browser", "requires_user_confirmation": False},
             {"id": "resolve-classify", "action": "从 /ctf/classify/?type=1 选择与题目分类匹配的分类项", "target": "form", "requires_user_confirmation": True},
             {"id": "fill-fields", "action": "按 form_payload 和 form_fields 填写表单字段", "target": "form", "requires_user_confirmation": False},
             {"id": "upload-files", "action": "上传附件、镜像 tar 和手册材料", "target": "upload", "requires_user_confirmation": True},
@@ -232,6 +249,11 @@ def create_chrome_assist_plan(
                 "browser": "Chrome plugin or Codex browser-control equivalent",
                 "entry_url": hub_url,
                 "create_url": HUB_SITE_OBSERVATION["routes"]["ctf_create"],
+                "login_state_gate": plan.get("login_state_gate", {}),
+                "file_upload_requirement": (
+                    "Chrome extension file upload must be allowed; if setFiles returns Not allowed, enable "
+                    '"Allow access to file URLs" for the Codex extension in chrome://extensions.'
+                ),
                 "allowed_actions": [
                     "open_page",
                     "wait_for_user_login",
@@ -252,7 +274,7 @@ def create_chrome_assist_plan(
                     "click_final_submit",
                 ],
                 "stop_points": [
-                    {"id": "login-required", "condition": "页面要求登录、验证码或二次确认", "action": "等待用户处理"},
+                    {"id": "login-required", "condition": "资源页或提交页显示登录/注册、SSO、403 或未登录状态", "action": "停止填写，等待用户登录后重新打开新增题目页"},
                     {"id": "upload-result-required", "condition": "页面上传控件未返回可见结果", "action": "等待用户确认上传状态"},
                     {"id": "pre-submit-review", "condition": "最终提交按钮可见前", "action": "停止并展示字段差异、上传结果和截图"},
                 ],
@@ -263,8 +285,8 @@ def create_chrome_assist_plan(
             },
             "steps": [
                 {"id": "open-chrome", "action": "用用户当前 Chrome 会话打开 Hub CTF 页面", "target": hub_url, "requires_user_confirmation": False},
-                {"id": "wait-login", "action": "如果出现登录、验证码或权限页，等待用户在浏览器里处理", "target": "chrome", "requires_user_confirmation": True},
-                {"id": "open-create-form", "action": "打开新增 CTF 题目路由 #/activity/submitctf/0/0/0", "target": "chrome", "requires_user_confirmation": False},
+                {"id": "wait-login", "action": "先确认已登录；如果出现登录/注册、验证码或权限页，停止并等待用户处理，不填写表单", "target": "chrome", "requires_user_confirmation": True},
+                {"id": "open-create-form", "action": "确认登录后再打开新增 CTF 题目路由 #/activity/submitctf/0/0/0", "target": "chrome", "requires_user_confirmation": False},
                 {"id": "fill-visible-fields", "action": "只填写页面可见字段；富文本解答由页面可见编辑器写入", "target": "form", "requires_user_confirmation": False},
                 {"id": "upload-visible-files", "action": "通过页面文件控件上传 manifest 中的附件、镜像 tar 和截图", "target": "upload", "requires_user_confirmation": True},
                 {"id": "record-upload-results", "action": "只记录页面可见的上传结果 URL、文件名、状态和错误", "target": "upload", "requires_user_confirmation": False},
@@ -473,6 +495,14 @@ def render_browser_assist_plan(plan: dict[str, Any]) -> str:
         "",
     ]
     lines.extend(f"- {item}" for item in plan.get("security_boundaries", []))
+    gate = plan.get("login_state_gate") if isinstance(plan.get("login_state_gate"), dict) else {}
+    if gate:
+        lines.extend(["", "## 登录态门槛", ""])
+        lines.append(f"- 填写前必须确认登录：{'是' if gate.get('required_before_fill') else '否'}")
+        lines.append("- 未登录处理：" + str(gate.get("on_unauthenticated", "")))
+        indicators = gate.get("unauthenticated_indicators", [])
+        if indicators:
+            lines.append("- 未登录信号：" + "、".join(str(item) for item in indicators))
     lines.extend(["", "## 步骤", ""])
     for step in plan.get("steps", []):
         confirm = "需要确认" if step.get("requires_user_confirmation") else "无需确认"
@@ -482,6 +512,8 @@ def render_browser_assist_plan(plan: dict[str, Any]) -> str:
         lines.extend(["", "## Chrome 执行约束", ""])
         lines.append(f"- 入口页面：{contract.get('entry_url', '')}")
         lines.append(f"- 新增页面：{contract.get('create_url', '')}")
+        if contract.get("file_upload_requirement"):
+            lines.append(f"- 文件上传要求：{contract.get('file_upload_requirement')}")
         lines.append("- 禁止动作：" + "、".join(contract.get("forbidden_actions", [])))
     lines.extend(["", "## Hub 字段映射", ""])
     for field in plan.get("form_fields", []):

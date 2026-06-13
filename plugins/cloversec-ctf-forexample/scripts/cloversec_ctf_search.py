@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.1.8 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.1.9 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -202,6 +202,10 @@ DEFAULT_DISCOVER_SOURCES = [
     "cnblogs",
     "yuque",
 ]
+
+RECALL_RECOVERY_SOURCES = {"duckduckgo", "csdn", "cnblogs", "yuque"}
+MIN_RECALL_CANDIDATES = 3
+MAX_RECOVERY_QUERIES = 6
 
 RESULT_LAYERS = [
     "confirmed_challenge",
@@ -567,13 +571,23 @@ def discover(
         except Exception as exc:  # noqa: BLE001 - command line tool must keep provider failures isolated.
             errors.append({"provider": source, "error": str(exc), "status": "failed"})
 
+    recovery = create_recall_recovery_plan(query, years=years or [], sources=selected, initial_results=results)
+    if recovery["should_run"]:
+        for recovery_query in recovery["queries"]:
+            results.extend(run_recovery_query(recovery_query, selected, limit=limit))
+
     deduped = rank_results(enrich_results(dedupe_results(results), query=query, years=years or []))
+    recovery["after_recovery"] = {
+        "candidate_count": candidate_count(deduped),
+        "layer_counts": layer_counts(deduped),
+    }
     return {
         "query": query,
         "years": years or [],
         "generated_at": utc_now(),
         "sources": selected,
         "results": deduped[: max(limit, 0) * max(len(selected), 1)],
+        "recall_recovery": recovery,
         "summary": {
             "total_results": len(deduped),
             "provider_counts": provider_counts(deduped),
@@ -582,6 +596,112 @@ def discover(
         },
         "errors": errors,
     }
+
+
+def create_recall_recovery_plan(
+    query: str,
+    *,
+    years: list[int],
+    sources: list[str],
+    initial_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    initial = rank_results(enrich_results(dedupe_results(initial_results), query=query, years=years))
+    initial_candidate_count = candidate_count(initial)
+    queries = build_recovery_queries(query)
+    source_overlap = sorted(set(sources) & RECALL_RECOVERY_SOURCES)
+    should_run = bool(queries and source_overlap and initial_candidate_count < MIN_RECALL_CANDIDATES)
+    agent_queries = queries if should_run else []
+    return {
+        "status": "will_run" if should_run else "not_needed",
+        "reason": "weak_recall" if should_run else "",
+        "should_run": should_run,
+        "initial_candidate_count": initial_candidate_count,
+        "minimum_candidates": MIN_RECALL_CANDIDATES,
+        "queries": queries if should_run else [],
+        "source_overlap": source_overlap,
+        "agent_web_search_queries": agent_queries,
+        "browser_search_queries": [
+            {"engine": engine, "query": candidate}
+            for candidate in agent_queries[:3]
+            for engine in ["google", "baidu"]
+        ],
+        "notes": [
+            "Recovery queries relax exact year pressure and must remain marked as leads unless evidence confirms the requested year.",
+            "Agent web-search or browser-assisted search results should be imported through cloversec_ctf_import_agent_web_results or cloversec_ctf_browser_search_import_visible.",
+        ],
+    }
+
+
+def candidate_count(results: list[dict[str, Any]]) -> int:
+    return sum(1 for item in results if item.get("layer") in {"confirmed_challenge", "writeup_candidate", "attachment_candidate"})
+
+
+def run_recovery_query(query: str, sources: list[str], *, limit: int) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    per_query_limit = max(3, min(limit, 8))
+    if "duckduckgo" in sources:
+        output.extend(mark_recovery_results(search_duckduckgo(query, limit=per_query_limit), query))
+    for source in ["csdn", "cnblogs", "yuque"]:
+        if source in sources:
+            output.extend(mark_recovery_results(search_site_profile(source, query, limit=per_query_limit), query))
+    return output
+
+
+def mark_recovery_results(results: list[dict[str, Any]], recovery_query: str) -> list[dict[str, Any]]:
+    marked = []
+    for item in results:
+        current = dict(item)
+        metadata = dict(current.get("metadata") or {})
+        metadata.update({"recovery_query": recovery_query, "recovery_reason": "weak_recall", "year_relaxed": True})
+        current["metadata"] = metadata
+        current["recovery_query"] = recovery_query
+        current["year_relaxed"] = True
+        marked.append(current)
+    return marked
+
+
+def build_recovery_queries(query: str) -> list[str]:
+    compact = re.sub(r"\s+", " ", query).strip()
+    if not compact:
+        return []
+    lowered = compact.lower()
+    without_year = re.sub(r"\b20\d{2}\b", "", compact).strip()
+    without_year = re.sub(r"\s+", " ", without_year)
+    event_tokens = extract_event_tokens(compact)
+    categories = [token for token in re.findall(r"[a-z0-9_.-]+", lowered) if token in CATEGORY_TERMS]
+    category = categories[0] if categories else ""
+    variants = []
+    if without_year and without_year != compact:
+        variants.append(without_year)
+    for event in event_tokens:
+        event_text = event
+        if category:
+            variants.extend(
+                [
+                    f"{event_text} {category} writeup",
+                    f"{event_text} {category} wp",
+                    f"{event_text} 网络安全大赛 {category} WriteUp",
+                ]
+            )
+        variants.extend([f"{event_text} writeup", f"{event_text} WP"])
+    if "writeup" not in lowered and "wp" not in lowered:
+        variants.append(f"{compact} writeup")
+    output = []
+    seen = {normalize_query_key(compact)}
+    for item in variants:
+        normalized = re.sub(r"\s+", " ", item).strip()
+        key = normalize_query_key(normalized)
+        if not normalized or key in seen:
+            continue
+        seen.add(key)
+        output.append(normalized)
+        if len(output) >= MAX_RECOVERY_QUERIES:
+            break
+    return output
+
+
+def normalize_query_key(query: str) -> str:
+    return re.sub(r"\s+", " ", query.strip().lower())
 
 
 def search_github_repositories(query: str, *, limit: int = 20) -> list[dict[str, Any]]:

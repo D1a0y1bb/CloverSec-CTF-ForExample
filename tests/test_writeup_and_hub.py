@@ -147,10 +147,14 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertIn("classify_id", plan["validation"]["blockers"])
             self.assertIn("upload_results", plan["validation"]["blockers"])
             self.assertIn("02-container-running.png", plan["validation"]["missing_screenshots"])
+            self.assertTrue(plan["login_state_gate"]["required_before_fill"])
+            self.assertEqual(plan["login_state_gate"]["on_unauthenticated"], "stop_before_fill_and_wait_for_user_login")
             self.assertTrue(any("不读取或保存 Cookie" in item for item in plan["security_boundaries"]))
+            self.assertTrue(any("没有确认登录态前" in item for item in plan["security_boundaries"]))
             self.assertTrue(any(step["id"] == "manual-submit" for step in plan["steps"]))
             self.assertTrue(any("手动提交" in step["action"] for step in plan["steps"] if step["id"] == "manual-submit"))
             self.assertIn("Hub 浏览器辅助填表方案", report)
+            self.assertIn("填写前必须确认登录：是", report)
             self.assertIn("POST /ctf/add/", json.dumps(plan, ensure_ascii=False))
 
     def test_chrome_assist_plan_stops_before_submit(self):
@@ -173,9 +177,12 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertFalse(plan["auto_submit"])
         self.assertTrue(plan["stop_before_submit"])
         contract = plan["chrome_execution_contract"]
+        self.assertTrue(contract["login_state_gate"]["required_before_fill"])
+        self.assertIn("登录/注册", contract["login_state_gate"]["unauthenticated_indicators"])
         self.assertIn("click_final_submit", contract["forbidden_actions"])
         self.assertIn("read_cookie", contract["forbidden_actions"])
         self.assertIn("read_localStorage", contract["forbidden_actions"])
+        self.assertIn("Allow access to file URLs", contract["file_upload_requirement"])
         self.assertTrue(any(step["id"] == "pre-submit-review" for step in plan["steps"]))
 
     def test_hub_classify_options_and_upload_results_update_payload(self):
@@ -272,6 +279,8 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(payload["mode"], "chrome-assisted")
         self.assertIn("click_final_submit", payload["chrome_execution_contract"]["forbidden_actions"])
+        self.assertIn("Allow access to file URLs", payload["chrome_execution_contract"]["file_upload_requirement"])
+        self.assertIn("Allow access to file URLs", report_text)
         self.assertIn("提交前停止：是", report_text)
 
     def test_hub_assistant_mcp_tools_list_and_chrome_plan(self):

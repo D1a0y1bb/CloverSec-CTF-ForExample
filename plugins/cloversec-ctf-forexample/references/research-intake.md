@@ -50,6 +50,12 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py import-
 
 Use `cloversec-ctf-browser-search` for Google/Baidu/CSDN/Cnblogs/Yuque pages that may need a real browser. It only reads visible titles, URLs, snippets, ranks, and blocked status. It must not read Cookie, token, localStorage, sessionStorage, passwords, or captcha data.
 
+## Weak Recall Recovery
+
+When the default free sources return fewer than three candidate results, `discover` creates a `recall_recovery` plan and runs relaxed public-web/site-search queries. Recovery queries remove strict year pressure and mark imported hits with `year_relaxed=true`, `metadata.recovery_reason=weak_recall`, and `metadata.recovery_query`.
+
+Recovery hits are leads, not confirmations. They can improve recall for queries such as `祥云杯 2024 pwn writeup`, but the Agent must still use evidence before claiming the requested year, exact challenge, attachment, or writeup exists. If recovery is still weak, use Agent web search or browser-assisted Google/Baidu search and import visible results.
+
 ## Commands
 
 ```bash

@@ -17,8 +17,10 @@ description: 生成 CloverSec CTF Hub 提交包、字段 payload、浏览器/Chr
 - 完整 Flag 必须保留在 `hub_fields.json` 和后续 xlsx 字段中。
 - 不读取或保存密码、验证码、Cookie、token、CSRF、localStorage、sessionStorage。
 - 不保存浏览器 session 文件。
+- 只有确认用户当前 Chrome 已登录 Hub 后，才允许打开新增题目页并填写字段；页面仍显示“登录/注册”、SSO、403 或未登录状态时必须停止，不填写。
 - 不自动点击最终提交按钮；Chrome 辅助流程必须停在提交前检查。
 - 上传未知文件、分类 ID、字段差异和最终提交都需要用户确认。
+- Chrome 文件上传如果返回 `Not allowed`，提示用户在 `chrome://extensions` 给 Codex 扩展开启 `Allow access to file URLs`，不要改用 Cookie/session 方案绕过。
 
 ## 常用命令
 

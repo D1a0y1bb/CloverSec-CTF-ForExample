@@ -330,6 +330,55 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(payload["results"][0]["layer"], "noise")
         self.assertIn("broad tutorial page", payload["results"][0]["quality_issues"])
 
+    def test_weak_recall_recovery_adds_relaxed_queries(self):
+        recovered = search.normalize_result(
+            provider="duckduckgo",
+            kind="web",
+            title="2022_祥云杯_pwn 部分wp",
+            url="https://example.com/xiangyun-pwn-wp",
+            summary="祥云杯 pwn writeup",
+            source_type="public_web",
+            confidence="low",
+        )
+
+        def fake_duckduckgo(query, *, limit=20):
+            if query == "祥云杯 2024 pwn writeup":
+                return []
+            if "祥云杯 pwn" in query:
+                return [recovered]
+            return []
+
+        with mock.patch.object(search, "search_duckduckgo", side_effect=fake_duckduckgo):
+            payload = search.discover("祥云杯 2024 pwn writeup", years=[2024], sources=["duckduckgo"], limit=5)
+
+        self.assertEqual(payload["recall_recovery"]["status"], "will_run")
+        self.assertGreaterEqual(len(payload["recall_recovery"]["agent_web_search_queries"]), 1)
+        self.assertEqual(payload["results"][0]["url"], "https://example.com/xiangyun-pwn-wp")
+        self.assertTrue(payload["results"][0]["year_relaxed"])
+        self.assertEqual(payload["results"][0]["metadata"]["recovery_reason"], "weak_recall")
+        self.assertIn("year missing", payload["results"][0]["quality_issues"])
+
+    def test_recall_recovery_not_needed_when_enough_candidates(self):
+        candidates = [
+            search.normalize_result(
+                provider="duckduckgo",
+                kind="web",
+                title=f"IrisCTF 2025 web writeup {index}",
+                url=f"https://example.com/iris-{index}",
+                summary="IrisCTF 2025 web writeup",
+                source_type="public_web",
+                confidence="low",
+            )
+            for index in range(3)
+        ]
+        with mock.patch.object(search, "search_duckduckgo", return_value=candidates):
+            payload = search.discover("IrisCTF 2025 web writeup", years=[2025], sources=["duckduckgo"], limit=5)
+
+        self.assertEqual(payload["recall_recovery"]["status"], "not_needed")
+        self.assertFalse(payload["recall_recovery"]["should_run"])
+        self.assertEqual(payload["recall_recovery"]["agent_web_search_queries"], [])
+        self.assertEqual(payload["recall_recovery"]["browser_search_queries"], [])
+
     def test_markdown_writeup_is_not_attachment_candidate(self):
         result = search.normalize_result(
             provider="github-code",

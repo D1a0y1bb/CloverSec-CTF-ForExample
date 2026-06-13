@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.1.8"><img alt="Version" src="https://img.shields.io/badge/version-v0.1.8-2563eb?style=for-the-badge"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.1.9"><img alt="Version" src="https://img.shields.io/badge/version-v0.1.9-2563eb?style=for-the-badge"></a>
   <img alt="Skills" src="https://img.shields.io/badge/skills-10-16a34a?style=for-the-badge">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-search%20%2B%20browser-f59e0b?style=for-the-badge">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-plugin-111827?style=for-the-badge">
@@ -26,7 +26,7 @@ CloverSec CTF For Example is a Codex plugin marketplace for internal CTF product
 
 The repository is designed as a GitHub-installable Codex marketplace. A teammate can add this repository from Codex, install `cloversec-ctf-forexample`, and then use the packaged skills from a fresh Codex thread.
 
-Current version: `v0.1.8`
+Current version: `v0.1.9`
 
 ## Install
 
@@ -34,7 +34,7 @@ In Codex, open **Plugins -> Add plugin marketplace** and fill:
 
 ```text
 Source: D1a0y1bb/CloverSec-CTF-ForExample
-Git reference: v0.1.8
+Git reference: v0.1.9
 Sparse path: empty
 ```
 
@@ -48,7 +48,7 @@ plugins
 CLI install:
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.1.8
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.1.9
 codex plugin list
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
@@ -151,6 +151,8 @@ Search results are scored into:
 
 Google/Baidu HTML direct scraping is not treated as a stable default path. Use the Agent's current web-search capability when it exists, then import results through `cloversec_ctf_import_agent_web_results`. For pages that need a human browser because of captcha, login, or risk control, use `cloversec-ctf-browser-search`; it only records visible titles, URLs, snippets, ranks, and blocked status.
 
+When default free sources return too few candidates, `cloversec_ctf_discover` adds a `recall_recovery` section and runs relaxed public-web/site-search queries. Recovery results are marked with `year_relaxed=true` and must be treated as leads until evidence confirms the requested year and challenge.
+
 ## Asset Collection Commands
 
 ```bash
@@ -243,7 +245,7 @@ python3 scripts/package_plugin_release.py
 Release tags must match `plugin.json`:
 
 ```text
-plugin version 0.1.8 -> git tag v0.1.8
+plugin version 0.1.9 -> git tag v0.1.9
 ```
 
 The GitHub Release workflow validates metadata, compiles scripts, runs tests, packages release assets, and creates the GitHub Release.

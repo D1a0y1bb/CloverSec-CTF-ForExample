@@ -130,11 +130,14 @@
 - [x] Key-backed 搜索质量问题关闭：GitHub code search 已通过本机 `gh auth` 真实验收；付费搜索 API key 路线已取消。
 - [x] 更严格 MCP 可见性已验收：线程 `019ec1be-b48d-7452-a4aa-f057339bd952` 不调用 `tool_search` 时初始工具列表没有直接暴露 `cloversec-ctf-search`。
 - [x] 搜索质量扩大验证第二版已完成：抽样覆盖英文赛事、中文赛事、中文站点和平台入口；修复中文赛事名、年份前缀、slug 后缀和泛教程噪声。
-- [ ] 搜索召回仍需后续增强：`祥云杯 2024 pwn writeup` 在默认免费源里召回不足，分类没有误报，但需要 Agent 联网搜索或浏览器辅助搜索补充。
+- [x] 搜索召回增强已完成当前版本验收：`祥云杯 2024 pwn writeup` 会触发 `recall_recovery`，自动运行放宽年份的公开网页/site 查询，候选从 2 条增至 25 条；恢复结果全部带 `year_relaxed=true`，只作为线索，不冒充 2024 精确确认结果。
 - [x] `confirmed_challenge` 语义已收紧：event-level writeup 不再升为 confirmed；需要查询中包含明确题目名或特定线索。
 - [x] 附件 fixture 与名称不一致已修复：`fixture-attachment-ok` 的 `challenge.zip` 现在是合法 zip。
 - [x] Hub assistant MCP 第一版已加入：`cloversec-ctf-hub-assistant` 可生成 browser/Chrome 计划、校验 manifest、回写上传结果；Chrome 计划停止在最终提交前。
-- [ ] Hub Chrome 真实页面自动填写/上传还未验收：需要用户当前浏览器登录态和真实待提交资源，验收范围到最终提交前停止。
+- [x] Hub Chrome 真实登录态自动填写/上传已完成验收：在用户当前 Chrome 登录态下打开资源中心，确认无“登录/注册”且有用户头像后进入新增题目页，填入测试标题、内容、Flag、来源、分值、资源等级、备注、静态 Flag、附件型、题解富文本和关键字，上传测试 zip，停在最终提交前。
+- [x] Hub Chrome 未登录态风险已修正进计划：`chrome-plan` 现在包含 `login_state_gate`，页面显示“登录/注册”、SSO、403 或未登录状态时停止，不填写字段、不上传附件。
+- [x] Hub Chrome 附件上传已复验通过：`#formImg1 span.upload` 成功触发文件选择器并上传 `/tmp/cloversec-hub-chrome-e2e/resources/cloversec_codex_e2e_attachment.zip`；页面显示 `cloversec_codex_e2e_attachment.zip` 和删除入口。
+- [x] Hub 验收后已把 Chrome 页面退回资源中心，避免误点测试提交；没有点击最终提交。
 - [x] Hub 分类映射前置能力已加入：`validate-manifest --classify-options` 可把分类文本映射为 Hub 分类 ID。
 - [x] Hub 附件上传结果回写已加入：`apply-upload-results` 可记录上传返回 URL、文件 ID、状态和错误。
 - [x] Hub 提交前字段完整性检查已加入：题目内容、题目解答、关键字、分类 ID、上传结果和截图槽位会进入 validation。
