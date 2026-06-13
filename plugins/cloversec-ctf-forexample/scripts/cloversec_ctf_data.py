@@ -389,7 +389,7 @@ def _core_xml() -> str:
     return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
  xmlns:dc="http://purl.org/dc/elements/1.1/">
-  <dc:creator>CloverSec CTF ForExample</dc:creator>
+  <dc:creator>CloverSec CTF For Example</dc:creator>
 </cp:coreProperties>"""
 
 
@@ -397,7 +397,7 @@ def _app_xml() -> str:
     return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
  xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-  <Application>CloverSec CTF ForExample</Application>
+  <Application>CloverSec CTF For Example</Application>
 </Properties>"""
 
 
