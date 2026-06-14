@@ -13,7 +13,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.proof_pack.v1"
-VERSION = "0.3.5"
+VERSION = "0.4.1"
 MAX_COPY_BYTES = 2 * 1024 * 1024
 
 

@@ -231,6 +231,87 @@ class Workflow030Tests(unittest.TestCase):
                 self.assertEqual(payload["records"][0]["http_status"], 403)
                 self.assertIn("http_status=403", payload["records"][0]["missing_reason"])
 
+    def test_execute_search_tasks_writes_cases_and_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = root / "run"
+            workflow.init_workflow(event="DemoCTF", years=[2026], categories=["web"], limit=1, out_dir=run)
+
+            def fake_search_plus(*args, **kwargs):  # noqa: ARG001
+                return {
+                    "results": [
+                        {
+                            "provider": "fake",
+                            "kind": "writeup",
+                            "title": "DemoCTF 2026 web hello writeup",
+                            "url": "https://example.com/DemoCTF-2026-web-hello-writeup",
+                            "source_url": "https://example.com/DemoCTF-2026-web-hello-writeup",
+                            "summary": "DemoCTF 2026 web challenge writeup and source hints.",
+                            "source_type": "public_web",
+                            "confidence": "medium",
+                            "metadata": {},
+                        }
+                    ],
+                    "errors": [],
+                    "summary": {"total_results": 1},
+                    "decision_required": [],
+                }
+
+            with mock.patch.object(workflow.search_plus, "search_plus", side_effect=fake_search_plus):
+                payload = workflow.execute_search_tasks(workdir=run, max_tasks=1, fetch_snapshots=False)
+
+            self.assertEqual(payload["summary"]["cases"], 1)
+            self.assertTrue((run / "search_results.json").exists())
+            self.assertTrue((run / "ctf_cases.jsonl").exists())
+            self.assertTrue((run / "evidence" / "source_evidence.json").exists())
+            cases = [json.loads(line) for line in (run / "ctf_cases.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(cases[0]["metadata"]["分类"], "Web")
+
+    def test_collect_materials_downloads_direct_assets_and_previews_github(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            zip_path = root / "challenge.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("README.md", "# demo\n")
+            with LocalServer(root) as server:
+                manifest = {
+                    "results": [
+                        {"title": "asset", "url": f"{server.url}/challenge.zip", "metadata": {}},
+                        {"title": "repo", "url": "https://github.com/example/democtf", "metadata": {"repository": "example/democtf"}},
+                    ]
+                }
+                manifest_path = root / "search_results.json"
+                workflow.write_json(manifest_path, manifest)
+                with mock.patch.object(workflow, "blocked_url_reason", return_value=""):
+                    with mock.patch.object(workflow.search, "github_release_assets", return_value=[]):
+                        with mock.patch.object(
+                            workflow.search,
+                            "github_tree_files",
+                            return_value=[
+                                {"title": "example/democtf/Dockerfile", "metadata": {"path": "Dockerfile"}},
+                                {"title": "example/democtf/challenge.zip", "metadata": {"path": "challenge.zip"}},
+                            ],
+                        ):
+                            payload = workflow.collect_materials(manifest_path=manifest_path, output_dir=root / "out")
+
+            self.assertEqual(payload["summary"]["direct_asset_urls"], 1)
+            self.assertEqual(payload["summary"]["github_repositories"], 1)
+            self.assertTrue((root / "out" / "download_preview.json").exists())
+            self.assertIn("Dockerfile", payload["repo_previews"][0]["summary"]["docker_hints"])
+
+    def test_route_resource_creates_dockerizer_handoff_for_dockerfile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Dockerfile").write_text("FROM python:3.12-slim\nEXPOSE 80\nCMD [\"python3\", \"-m\", \"http.server\", \"80\"]\n", encoding="utf-8")
+            (root / "app.py").write_text("print('demo')\n", encoding="utf-8")
+
+            payload = workflow.route_resource(root=root, output_dir=root / "classification")
+
+            self.assertEqual(payload["recommended_next"]["skill"], "cloversec-ctf-build-dockerizer")
+            self.assertEqual(payload["dockerizer_handoff"]["required_skill"], "cloversec-ctf-build-dockerizer")
+            self.assertEqual(payload["dockerizer_handoff"]["confirmation_action"], "dockerizer")
+            self.assertTrue((root / "classification" / "resource_route.json").exists())
+
 
 class FakeCompleted:
     def __init__(self, returncode, stdout, stderr):

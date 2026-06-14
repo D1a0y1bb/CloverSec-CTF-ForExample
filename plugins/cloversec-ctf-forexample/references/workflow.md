@@ -236,7 +236,7 @@ proof/hashes.json
 
 没有 Dockerizer 方案确认或 `platform_contract_verified=true` 证据时，批量报告必须标 `Dockerizer 改造待确认`，失败案例库必须记录 `platform_conversion_required`，不得把题目写成可归档。
 
-## 0.3.5 手册、Hub、归档和批量交接
+## 0.4.1 手册、Hub、归档和批量交接
 
 ### 手册质量
 

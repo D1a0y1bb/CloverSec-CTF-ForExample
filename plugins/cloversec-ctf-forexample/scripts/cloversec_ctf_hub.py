@@ -173,7 +173,7 @@ def create_hub_draft(
     diff = create_hub_diff(case, hub_fields, form_payload, validation)
     draft = {
         "schema_version": "cloversec.ctf.hub_draft.v1",
-        "version": "0.3.5",
+        "version": "0.4.1",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -229,7 +229,7 @@ def create_hub_review_state(
         status_notes.append("已获得 Hub 编号，可以进入镜像命名和 retag 计划。")
     state = {
         "schema_version": "cloversec.ctf.hub_review_state.v1",
-        "version": "0.3.5",
+        "version": "0.4.1",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -255,6 +255,131 @@ def create_hub_review_state(
     write_json(root / "hub_review_state.json", state)
     write_text(root / "hub_review_state.md", render_hub_review_state(state))
     return state
+
+
+def create_hub_session_state(
+    output_dir: str | Path,
+    *,
+    case: dict[str, Any] | None = None,
+    draft: dict[str, Any] | None = None,
+    manifest: dict[str, Any] | None = None,
+    visible_page: dict[str, Any] | None = None,
+    login_confirmed: bool = False,
+    field_fill_status: str = "not_started",
+    upload_results: list[dict[str, Any]] | None = None,
+    pre_submit_screenshot: str = "",
+    user_submitted: bool = False,
+    hub_id: str = "",
+    notes: list[str] | None = None,
+) -> dict[str, Any]:
+    root = Path(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    case = case or {}
+    draft = draft or {}
+    manifest = manifest or {}
+    visible_page = visible_page or {}
+    upload_results = upload_results or []
+    validation = draft.get("validation") if isinstance(draft.get("validation"), dict) else {}
+    pending_uploads = pending_upload_roles(manifest, upload_results)
+    resolved_hub_id = hub_id or first_nonempty(visible_page, ["hub_id", "HUB编号", "编号", "id"])
+    state = {
+        "schema_version": "cloversec.ctf.hub_session_state.v1",
+        "version": "0.4.1",
+        "created_at": utc_now(),
+        "case_id": str(case.get("case_id") or draft.get("case_id") or manifest.get("case_id") or ""),
+        "case_title": case_title(case) or str(draft.get("case_title") or ""),
+        "login": {
+            "confirmed": bool(login_confirmed),
+            "visible_page": {
+                "url": str(visible_page.get("url") or ""),
+                "title": str(visible_page.get("title") or ""),
+                "captured_at": str(visible_page.get("captured_at") or ""),
+            },
+            "must_be_confirmed_before_fill": True,
+        },
+        "fill": {
+            "status": field_fill_status,
+            "missing_fields": validation.get("missing", []),
+            "blockers": validation.get("blockers", []),
+        },
+        "uploads": {
+            "results": upload_results,
+            "pending_roles": pending_uploads,
+            "pending_count": len(pending_uploads),
+        },
+        "pre_submit": {
+            "screenshot_path": pre_submit_screenshot,
+            "ready_for_user_review": bool(login_confirmed and field_fill_status in {"filled", "ready_for_review"} and not pending_uploads and pre_submit_screenshot),
+        },
+        "manual_submit": {
+            "user_submitted": bool(user_submitted),
+            "hub_id": resolved_hub_id,
+        },
+        "next_action": hub_session_next_action(
+            login_confirmed=login_confirmed,
+            field_fill_status=field_fill_status,
+            pending_uploads=pending_uploads,
+            pre_submit_screenshot=pre_submit_screenshot,
+            user_submitted=user_submitted,
+            hub_id=resolved_hub_id,
+        ),
+        "notes": notes or [],
+        "forbidden_actions": [
+            "read_cookie",
+            "read_token",
+            "read_localStorage",
+            "read_sessionStorage",
+            "save_password",
+            "solve_captcha",
+            "click_final_submit",
+        ],
+    }
+    write_json(root / "hub_session_state.json", state)
+    write_text(root / "hub_session_state.md", render_hub_session_state(state))
+    return state
+
+
+def pending_upload_roles(manifest: dict[str, Any], upload_results: list[dict[str, Any]]) -> list[str]:
+    upload_files = manifest.get("upload_files") if isinstance(manifest.get("upload_files"), list) else []
+    if not upload_files:
+        return []
+    done_roles = {
+        str(item.get("role") or "")
+        for item in upload_results
+        if isinstance(item, dict) and str(item.get("status") or "").lower() in {"uploaded", "ok", "success", "done"}
+    }
+    pending = []
+    for item in upload_files:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "")
+        if role and role not in done_roles:
+            pending.append(role)
+    return sorted(set(pending))
+
+
+def hub_session_next_action(
+    *,
+    login_confirmed: bool,
+    field_fill_status: str,
+    pending_uploads: list[str],
+    pre_submit_screenshot: str,
+    user_submitted: bool,
+    hub_id: str,
+) -> str:
+    if not login_confirmed:
+        return "等待用户在 Chrome 中打开已登录的 Hub 页面，确认后再填写。"
+    if field_fill_status not in {"filled", "ready_for_review"}:
+        return "按 hub_fields、手册和页面可见字段填写 Hub 表单。"
+    if pending_uploads:
+        return "上传附件、镜像或截图，并把页面可见上传结果写回。"
+    if not pre_submit_screenshot:
+        return "在最终提交前截图，生成给用户核对的页面证据。"
+    if not user_submitted:
+        return "停在最终提交前，由用户判断后手动提交。"
+    if not hub_id:
+        return "等待审核通过后，从页面可见内容回填 Hub 编号。"
+    return "Hub 编号已可见，可以进入镜像 retag 和 tar 导出。"
 
 
 def render_checklist(manifest: dict[str, Any]) -> str:
@@ -682,7 +807,7 @@ def create_hub_diff(
         )
     return {
         "schema_version": "cloversec.ctf.hub_diff.v1",
-        "version": "0.3.5",
+        "version": "0.4.1",
         "case_id": str(case.get("case_id") or ""),
         "comparisons": comparisons,
         "validation": validation,
@@ -762,6 +887,37 @@ def render_hub_review_state(state: dict[str, Any]) -> str:
         lines.append("- 使用 Hub 编号生成镜像命名计划和 retag 输入。")
     else:
         lines.append("- 等待人工提供 Hub 编号或可见页面编号。")
+    if state.get("notes"):
+        lines.extend(["", "## 说明", ""])
+        lines.extend(f"- {item}" for item in state["notes"])
+    return "\n".join(lines) + "\n"
+
+
+def render_hub_session_state(state: dict[str, Any]) -> str:
+    login = state.get("login", {}) if isinstance(state.get("login"), dict) else {}
+    fill = state.get("fill", {}) if isinstance(state.get("fill"), dict) else {}
+    uploads = state.get("uploads", {}) if isinstance(state.get("uploads"), dict) else {}
+    pre_submit = state.get("pre_submit", {}) if isinstance(state.get("pre_submit"), dict) else {}
+    manual_submit = state.get("manual_submit", {}) if isinstance(state.get("manual_submit"), dict) else {}
+    lines = [
+        "# Hub 浏览器接管状态",
+        "",
+        f"- 题目：{state.get('case_title', '') or state.get('case_id', '')}",
+        f"- 已确认登录：{'是' if login.get('confirmed') else '否'}",
+        f"- 字段填写状态：{fill.get('status', '')}",
+        f"- 待上传角色：{', '.join(uploads.get('pending_roles', [])) if uploads.get('pending_roles') else '无'}",
+        f"- 提交前截图：{pre_submit.get('screenshot_path') or '无'}",
+        f"- 用户已手动提交：{'是' if manual_submit.get('user_submitted') else '否'}",
+        f"- Hub 编号：{manual_submit.get('hub_id') or '无'}",
+        "",
+        "## 下一步",
+        "",
+        state.get("next_action", ""),
+        "",
+        "## 禁止动作",
+        "",
+    ]
+    lines.extend(f"- {item}" for item in state.get("forbidden_actions", []))
     if state.get("notes"):
         lines.extend(["", "## 说明", ""])
         lines.extend(f"- {item}" for item in state["notes"])
@@ -916,6 +1072,20 @@ def main(argv: list[str] | None = None) -> int:
     review_state_parser.add_argument("--review-comment", default="")
     review_state_parser.add_argument("--visible-page")
 
+    session_parser = subparsers.add_parser("session-state", help="write Hub browser/Chrome assisted filling session state")
+    session_parser.add_argument("--output-dir", required=True)
+    session_parser.add_argument("--case-json")
+    session_parser.add_argument("--draft")
+    session_parser.add_argument("--manifest")
+    session_parser.add_argument("--visible-page")
+    session_parser.add_argument("--login-confirmed", action="store_true")
+    session_parser.add_argument("--field-fill-status", default="not_started")
+    session_parser.add_argument("--upload-results")
+    session_parser.add_argument("--pre-submit-screenshot", default="")
+    session_parser.add_argument("--user-submitted", action="store_true")
+    session_parser.add_argument("--hub-id", default="")
+    session_parser.add_argument("--note", action="append", default=[])
+
     browser_parser = subparsers.add_parser("browser-plan", help="create Hub browser-assisted filling plan")
     browser_parser.add_argument("--manifest", required=True)
     browser_parser.add_argument("--output", required=True)
@@ -970,6 +1140,28 @@ def main(argv: list[str] | None = None) -> int:
             visible_page=visible_page,
         )
         print(f"wrote {Path(args.output_dir) / 'hub_review_state.json'}")
+        return 0
+    if args.command == "session-state":
+        case = json.loads(Path(args.case_json).read_text(encoding="utf-8")) if args.case_json else {}
+        draft = json.loads(Path(args.draft).read_text(encoding="utf-8")) if args.draft else {}
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8")) if args.manifest else {}
+        visible_page = json.loads(Path(args.visible_page).read_text(encoding="utf-8")) if args.visible_page else {}
+        upload_results = json.loads(Path(args.upload_results).read_text(encoding="utf-8")) if args.upload_results else []
+        create_hub_session_state(
+            args.output_dir,
+            case=case,
+            draft=draft,
+            manifest=manifest,
+            visible_page=visible_page,
+            login_confirmed=args.login_confirmed,
+            field_fill_status=args.field_fill_status,
+            upload_results=upload_results if isinstance(upload_results, list) else [],
+            pre_submit_screenshot=args.pre_submit_screenshot,
+            user_submitted=args.user_submitted,
+            hub_id=args.hub_id,
+            notes=args.note,
+        )
+        print(f"wrote {Path(args.output_dir) / 'hub_session_state.json'}")
         return 0
     if args.command == "browser-plan":
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))

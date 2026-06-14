@@ -70,7 +70,7 @@
 ```json
 {
   "schema_version": "cloversec.ctf.workflow.state.v1",
-  "workflow_version": "0.3.5",
+  "workflow_version": "0.4.1",
   "run_id": "",
   "status": "initialized",
   "workdir": "",
@@ -183,7 +183,7 @@
 
 `proof/` 默认只复制小型 JSON/Markdown 证据和 hash，不执行未知 solver，不点击 Hub 最终提交。
 
-## 0.3.5 Dockerizer 改造确认
+## 0.4.1 Dockerizer 改造确认
 
 容器题、compose 项目和源码型在线题如果没有完成平台契约改造，批量报告和失败案例库必须阻断归档：
 
@@ -208,14 +208,14 @@
 
 任一满足条件可以证明已经完成平台改造确认：`dockerizer.status` 为 `accepted/rendered/validated/passed/complete/completed`，或 `dockerizer.user_confirmed=true`，或 `docker_artifacts.platform_contract_verified=true`。否则相关题目必须写入 `Dockerizer 改造待确认` 和 `platform_conversion_required`。
 
-## 0.3.5 手册质量
+## 0.4.1 手册质量
 
 手册和 Hub 字段检查使用 `manual_quality.json`：
 
 ```json
 {
   "schema_version": "cloversec.ctf.manual_quality.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "case_id": "",
   "summary": {
     "status": "pass|needs_review|fail",
@@ -238,14 +238,14 @@
 
 `xlsx_fields_patch.json` 必须保留完整 `Flag`。Markdown 报告只展示状态、问题和 Flag hash。
 
-## 0.3.5 Hub 草稿与审核状态
+## 0.4.1 Hub 草稿与审核状态
 
 Hub 草稿输出：
 
 ```json
 {
   "schema_version": "cloversec.ctf.hub_draft.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "case_id": "",
   "summary": {
     "status": "ready|needs_review|blocked",
@@ -273,7 +273,7 @@ Hub 审核状态输出：
 ```json
 {
   "schema_version": "cloversec.ctf.hub_review_state.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "case_id": "",
   "review_status": "draft|submitted|reviewing|approved|rejected|needs_changes|unknown",
   "hub_id": "",
@@ -284,14 +284,14 @@ Hub 审核状态输出：
 
 插件不会编造 Hub 编号。`hub_id` 只能来自用户输入、Hub 页面可见内容或已存在的结构化文件。
 
-## 0.3.5 镜像命名计划
+## 0.4.1 镜像命名计划
 
 审核通过后使用 `image_naming_plan.json` 记录镜像命名、tar 文件名和 xlsx 回填字段：
 
 ```json
 {
   "schema_version": "cloversec.ctf.image_naming_plan.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "status": "ready|needs_hub_id",
   "hub_id": "CTF-2026060001",
   "image": {
@@ -306,14 +306,14 @@ Hub 审核状态输出：
 
 没有 Hub 编号时状态必须是 `needs_hub_id`，只生成待处理项。
 
-## 0.3.5 归档预览与锁定
+## 0.4.1 归档预览与锁定
 
 归档写入前使用 `archive_preview.json`：
 
 ```json
 {
   "schema_version": "cloversec.ctf.archive_preview.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "archive_dir": "",
   "would_create": [],
   "missing_items": [],
@@ -331,7 +331,7 @@ Hub 审核状态输出：
 ```json
 {
   "schema_version": "cloversec.ctf.manifest_lock.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "case_id": "",
   "files": [],
   "summary": {
@@ -350,14 +350,14 @@ Hub 审核状态输出：
 
 `manifest.lock.json` 保存完整 Flag 和 hash，用于内部归档复核；不要发布到公开渠道。
 
-## 0.3.5 批量报告、失败案例和阶段通知
+## 0.4.1 批量报告、失败案例和阶段通知
 
 批量状态：
 
 ```json
 {
   "schema_version": "cloversec.ctf.batch_status_report.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "summary": {
     "total": 0,
     "ready_to_archive": 0,
@@ -373,7 +373,7 @@ Hub 审核状态输出：
 ```json
 {
   "schema_version": "cloversec.ctf.failure_case.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "failure_type": "search|download|docker|hub|manual|archive|unknown",
   "case_id": "",
   "evidence": {},
@@ -386,7 +386,7 @@ Hub 审核状态输出：
 ```json
 {
   "schema_version": "cloversec.ctf.stage_notification.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "stage": "",
   "completed": [],
   "failed": [],
@@ -395,14 +395,14 @@ Hub 审核状态输出：
 }
 ```
 
-## 0.3.5 浏览器可见内容证据
+## 0.4.1 浏览器可见内容证据
 
 对 403、登录页、验证码页或站点限制导致的抓取失败，允许用户把确认后的页面可见结果导入：
 
 ```json
 {
   "schema_version": "cloversec.ctf.workflow.visible_content_evidence.v1",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "query": "",
   "provider": "user-visible-content",
   "results": [

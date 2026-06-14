@@ -20,11 +20,14 @@ from urllib.parse import urlparse, urlunparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import cloversec_ctf_data as data
+import cloversec_ctf_container as container
+import cloversec_ctf_resource as resource
 import cloversec_ctf_search as search
+import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.3.5"
+WORKFLOW_VERSION = "0.4.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -237,6 +240,527 @@ def init_workflow(
         (workdir / "next_steps.md").as_posix(),
     ] + list(directories.values())
     return output
+
+
+def execute_search_tasks(
+    *,
+    workdir: str | Path,
+    task_plan_path: str | Path | None = None,
+    max_tasks: int = 0,
+    limit: int = 20,
+    sources: list[str] | None = None,
+    agent_results_path: str | Path | None = None,
+    browser_visible_results_path: str | Path | None = None,
+    direct_urls: list[str] | None = None,
+    github_repos: list[Any] | None = None,
+    download_preview: bool = False,
+    fetch_snapshots: bool = False,
+) -> dict[str, Any]:
+    """Run task_plan.search_tasks and write usable cases/evidence files."""
+    base = Path(workdir)
+    plan_path = Path(task_plan_path) if task_plan_path else base / "task_plan.json"
+    plan = read_json(plan_path)
+    request = plan.get("request") if isinstance(plan.get("request"), dict) else {}
+    tasks = [item for item in plan.get("search_tasks", []) if isinstance(item, dict)]
+    if max_tasks > 0:
+        tasks = tasks[:max_tasks]
+    if not tasks:
+        raise ValueError("task_plan.search_tasks is empty")
+
+    base.mkdir(parents=True, exist_ok=True)
+    search_dir = base / "evidence" / "search"
+    search_dir.mkdir(parents=True, exist_ok=True)
+    (base / "snapshots").mkdir(parents=True, exist_ok=True)
+    (base / "evidence").mkdir(parents=True, exist_ok=True)
+
+    agent_results = read_json(agent_results_path) if agent_results_path else None
+    browser_visible_results = read_json(browser_visible_results_path) if browser_visible_results_path else None
+    selected_sources = sources or None
+    all_results: list[dict[str, Any]] = []
+    all_errors: list[dict[str, Any]] = []
+    query_outputs: list[dict[str, Any]] = []
+
+    for index, task in enumerate(tasks, start=1):
+        query = str(task.get("query") or "").strip()
+        if not query:
+            continue
+        year = task.get("year")
+        years = [int(year)] if isinstance(year, int) or str(year).isdigit() else []
+        query_id = str(task.get("query_id") or f"q-{index:04d}")
+        output_path = search_dir / f"{safe_slug(query_id)}.json"
+        payload = search_plus.search_plus(
+            query,
+            years=years,
+            sources=selected_sources,
+            limit=limit,
+            agent_results=agent_results,
+            browser_visible_results=browser_visible_results,
+            direct_urls=direct_urls or [],
+            github_repos=github_repos or [],
+            output_path=output_path,
+            compact=False,
+        )
+        all_results.extend([item for item in payload.get("results", []) if isinstance(item, dict)])
+        all_errors.extend([item for item in payload.get("errors", []) if isinstance(item, dict)])
+        query_outputs.append(
+            {
+                "query_id": query_id,
+                "query": query,
+                "output_path": output_path.as_posix(),
+                "summary": payload.get("summary", {}),
+                "decision_required": payload.get("decision_required", []),
+            }
+        )
+
+    aggregate_query = aggregate_query_from_request(request, tasks)
+    aggregate_years = [int(item) for item in request.get("years", []) if str(item).isdigit()]
+    ranked = search.rank_results(search.enrich_results(search.dedupe_results(all_results), query=aggregate_query, years=aggregate_years))
+    case_limit = int(request.get("limit") or 0)
+    case_results = [
+        item for item in ranked
+        if item.get("layer") in {"confirmed_challenge", "writeup_candidate", "attachment_candidate"}
+    ]
+    cases = search.results_to_cases({"query": aggregate_query, "years": aggregate_years, "results": case_results})
+    if case_limit > 0:
+        cases = cases[:case_limit]
+    search_results_path = base / "search_results.json"
+    aggregate = {
+        "schema_version": f"{SCHEMA_PREFIX}.collect_execute.v1",
+        "workflow_version": WORKFLOW_VERSION,
+        "generated_at": utc_now(),
+        "workdir": base.as_posix(),
+        "task_plan_path": plan_path.as_posix(),
+        "query": aggregate_query,
+        "years": aggregate_years,
+        "sources": selected_sources or search.DEFAULT_DISCOVER_SOURCES,
+        "query_outputs": query_outputs,
+        "results": ranked,
+        "errors": all_errors,
+        "summary": {
+            "search_tasks": len(query_outputs),
+            "results": len(ranked),
+            "cases": len(cases),
+            "case_candidate_results": len(case_results),
+            "errors": len(all_errors),
+            "provider_counts": search.provider_counts(ranked),
+            "layer_counts": search.layer_counts(ranked),
+        },
+        "next_files": {
+            "cases": (base / "ctf_cases.jsonl").as_posix(),
+            "evidence": (base / "evidence" / "source_evidence.json").as_posix(),
+            "download_preview": (base / "download_preview.json").as_posix(),
+        },
+    }
+    write_json(search_results_path, aggregate)
+    write_jsonl(base / "ctf_cases.jsonl", cases)
+    evidence = record_source_evidence(
+        manifest_path=search_results_path,
+        evidence_dir=base / "evidence",
+        snapshots_dir=base / "snapshots",
+        limit=max(len(ranked), 1),
+        fetch_snapshots=fetch_snapshots,
+    )
+    download_payload: dict[str, Any] = {}
+    if download_preview:
+        download_payload = download_sandbox_from_manifest(manifest_path=search_results_path, output_dir=base, accept=False)
+    update_workflow_collect_state(
+        base,
+        stage="research",
+        status="completed" if cases else "pending_user",
+        summary={
+            "search_tasks": len(query_outputs),
+            "results": len(ranked),
+            "cases": len(cases),
+            "evidence_records": evidence.get("summary", {}).get("records", 0),
+            "download_preview_records": download_payload.get("summary", {}).get("total", 0) if download_payload else 0,
+        },
+        errors=all_errors,
+    )
+    append_log(base, f"executed {len(query_outputs)} search tasks and wrote {len(cases)} cases")
+    return {
+        "schema_version": f"{SCHEMA_PREFIX}.collect_execute_result.v1",
+        "workdir": base.as_posix(),
+        "search_results_path": search_results_path.as_posix(),
+        "ctf_cases_path": (base / "ctf_cases.jsonl").as_posix(),
+        "source_evidence_path": (base / "evidence" / "source_evidence.json").as_posix(),
+        "download_preview_path": (base / "download_preview.json").as_posix() if download_preview else "",
+        "query_outputs": query_outputs,
+        "summary": aggregate["summary"],
+        "next_action": "查看 ctf_cases.jsonl，随后对可下载候选执行 collect-materials 或把本地材料目录交给 route-resource。",
+    }
+
+
+def collect_materials(
+    *,
+    manifest_path: str | Path,
+    output_dir: str | Path,
+    max_direct_downloads: int = 10,
+    max_repo_previews: int = 10,
+    max_repo_files: int = 80,
+    github_ref: str = "main",
+    download_direct: bool = True,
+) -> dict[str, Any]:
+    """Turn search links into local previews/download candidates."""
+    manifest = read_json(manifest_path)
+    results = [item for item in manifest.get("results", []) if isinstance(item, dict)] if isinstance(manifest, dict) else []
+    base = Path(output_dir)
+    base.mkdir(parents=True, exist_ok=True)
+    candidate_dir = base / "materials"
+    candidate_dir.mkdir(parents=True, exist_ok=True)
+
+    direct_urls = direct_asset_urls_from_results(results)[: max(max_direct_downloads, 0)]
+    repos = github_repos_from_results(results)[: max(max_repo_previews, 0)]
+    download_payload: dict[str, Any] = {}
+    if download_direct and direct_urls:
+        download_payload = download_sandbox(urls=direct_urls, output_dir=base, accept=False)
+
+    repo_previews = []
+    repo_errors = []
+    for repo in repos:
+        release_assets = []
+        tree_files = []
+        github_ref_used = github_ref
+        try:
+            release_assets = search.github_release_assets(repo, limit=30)
+        except Exception as exc:  # noqa: BLE001
+            repo_errors.append({"repo": repo, "provider": "github-release", "error": str(exc)})
+        tree_error = ""
+        for ref in dict.fromkeys([github_ref, "master"]):
+            try:
+                tree_files = search.github_tree_files(repo, ref=ref, limit=max_repo_files)
+                if tree_files:
+                    github_ref_used = ref
+                    break
+            except Exception as exc:  # noqa: BLE001
+                tree_error = str(exc)
+                github_ref_used = ref
+        if tree_error and not tree_files:
+            repo_errors.append({"repo": repo, "provider": "github-tree", "error": tree_error})
+        repo_previews.append(
+            {
+                "repo": repo,
+                "ref": github_ref_used if tree_files else github_ref,
+                "release_assets": release_assets,
+                "tree_files": tree_files,
+                "summary": {
+                    "release_assets": len(release_assets),
+                    "tree_files": len(tree_files),
+                    "docker_hints": github_tree_docker_hints(tree_files),
+                    "attachment_hints": github_tree_attachment_hints(tree_files),
+                },
+            }
+        )
+
+    payload = {
+        "schema_version": f"{SCHEMA_PREFIX}.material_collection.v1",
+        "workflow_version": WORKFLOW_VERSION,
+        "generated_at": utc_now(),
+        "manifest_path": Path(manifest_path).as_posix(),
+        "output_dir": base.as_posix(),
+        "direct_asset_urls": direct_urls,
+        "github_repositories": repos,
+        "download_preview_path": (base / "download_preview.json").as_posix() if download_payload else "",
+        "download_preview_summary": download_payload.get("summary", {}) if download_payload else {},
+        "repo_previews": repo_previews,
+        "errors": repo_errors,
+        "summary": {
+            "direct_asset_urls": len(direct_urls),
+            "github_repositories": len(repos),
+            "downloaded_or_previewed": download_payload.get("summary", {}).get("total", 0) if download_payload else 0,
+            "repo_errors": len(repo_errors),
+        },
+        "next_action": "下载成功或仓库预览可用后，把材料目录交给 route-resource 自动分流。",
+    }
+    write_json(base / "material_candidates.json", payload)
+    write_text(base / "material_collection_report.md", render_material_collection_report(payload))
+    return payload
+
+
+def route_resource(
+    *,
+    root: str | Path,
+    output_dir: str | Path | None = None,
+    max_files: int = 2000,
+) -> dict[str, Any]:
+    """Classify a local challenge/material directory and prepare the next handoff."""
+    source_root = Path(root)
+    base = Path(output_dir) if output_dir else source_root / "classification"
+    base.mkdir(parents=True, exist_ok=True)
+    classification_path = base / "resource_classification.json"
+    classification = resource.classify_resource_root(source_root, output_path=classification_path, max_files=max_files)
+    container_payload: dict[str, Any] = {}
+    container_path = base / "container_inference.json"
+    if should_infer_container(classification):
+        container_payload = container.infer_container_project(
+            project_dir=source_root,
+            resource_classification=classification,
+            output_path=container_path,
+        )
+    route = build_resource_route(source_root, classification, container_payload, classification_path, container_path if container_payload else None)
+    route_path = base / "resource_route.json"
+    write_json(route_path, route)
+    write_text(base / "resource_route_report.md", render_resource_route_report(route))
+    return {
+        "schema_version": f"{SCHEMA_PREFIX}.resource_route_result.v1",
+        "root": source_root.as_posix(),
+        "output_dir": base.as_posix(),
+        "resource_classification_path": classification_path.as_posix(),
+        "container_inference_path": container_path.as_posix() if container_payload else "",
+        "resource_route_path": route_path.as_posix(),
+        "recommended_next": route.get("recommended_next", {}),
+        "dockerizer_handoff": route.get("dockerizer_handoff", {}),
+        "summary": route.get("summary", {}),
+    }
+
+
+def aggregate_query_from_request(request: dict[str, Any], tasks: list[dict[str, Any]]) -> str:
+    event = str(request.get("event") or "").strip()
+    years = " ".join(str(item) for item in request.get("years", []) if str(item).strip())
+    categories = " ".join(str(item) for item in request.get("categories", []) if str(item).strip())
+    if event or years or categories:
+        return re.sub(r"\s+", " ", f"{event} {years} {categories} CTF writeup attachment source").strip()
+    first_query = next((str(item.get("query") or "") for item in tasks if item.get("query")), "")
+    return first_query or "CTF writeup attachment source"
+
+
+def update_workflow_collect_state(
+    workdir: Path,
+    *,
+    stage: str,
+    status: str,
+    summary: dict[str, Any],
+    errors: list[dict[str, Any]],
+) -> None:
+    state_path = workdir / "workflow_state.json"
+    if not state_path.exists():
+        return
+    state = read_json(state_path)
+    stages = state.setdefault("stages", {})
+    stages[stage] = {
+        "status": status,
+        "started_at": stages.get(stage, {}).get("started_at") or utc_now(),
+        "finished_at": utc_now(),
+        "summary": summary,
+        "errors": errors[:20],
+    }
+    state["status"] = "in_progress" if status in {"completed", "pending_user"} else status
+    state["updated_at"] = utc_now()
+    write_json(state_path, state)
+
+
+def direct_asset_urls_from_results(results: list[dict[str, Any]]) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for result in results:
+        metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+        candidates = [
+            str(result.get("url") or ""),
+            str(result.get("source_url") or ""),
+            str(metadata.get("raw_url") or ""),
+            str(metadata.get("download_url") or ""),
+        ]
+        for url in candidates:
+            clean = url.strip()
+            if not clean or clean in seen or not search.looks_direct_asset_url(clean):
+                continue
+            seen.add(clean)
+            urls.append(clean)
+    return urls
+
+
+def github_repos_from_results(results: list[dict[str, Any]]) -> list[str]:
+    repos: list[str] = []
+    seen: set[str] = set()
+    for result in results:
+        metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+        candidates = [str(metadata.get("repository") or ""), str(result.get("url") or ""), str(result.get("source_url") or "")]
+        for candidate in candidates:
+            repo = github_repo_from_value(candidate)
+            if repo and repo not in seen:
+                seen.add(repo)
+                repos.append(repo)
+    return repos
+
+
+def github_repo_from_value(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        owner, repo = search.parse_github_repo(text)
+        return f"{owner}/{repo}"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def github_tree_docker_hints(tree_files: list[dict[str, Any]]) -> list[str]:
+    hints = []
+    for item in tree_files:
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        path = str(metadata.get("path") or item.get("title") or "")
+        lower = path.lower()
+        if lower.endswith("dockerfile") or "docker-compose" in lower or lower.endswith(("compose.yml", "compose.yaml")):
+            hints.append(path)
+    return hints[:20]
+
+
+def github_tree_attachment_hints(tree_files: list[dict[str, Any]]) -> list[str]:
+    hints = []
+    for item in tree_files:
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        path = str(metadata.get("path") or item.get("title") or "")
+        if search.looks_direct_asset_url(path):
+            hints.append(path)
+    return hints[:20]
+
+
+def should_infer_container(classification: dict[str, Any]) -> bool:
+    if classification.get("must_use_dockerizer") or classification.get("platform_contract_required"):
+        return True
+    types = set(resource_types_from_classification(classification))
+    return bool(types & {"dockerfile", "compose_file", "docker_helper", "source_manifest", "source_file", "source_archive", "docker_image_tar"})
+
+
+def resource_types_from_classification(classification: dict[str, Any]) -> list[str]:
+    resources = classification.get("resources") if isinstance(classification.get("resources"), list) else []
+    return [str(item.get("resource_type") or "") for item in resources if isinstance(item, dict)]
+
+
+def build_resource_route(
+    root: Path,
+    classification: dict[str, Any],
+    container_payload: dict[str, Any],
+    classification_path: Path,
+    container_path: Path | None,
+) -> dict[str, Any]:
+    root_classification = classification.get("root_classification") if isinstance(classification.get("root_classification"), dict) else {}
+    project_type = str(root_classification.get("project_type") or "")
+    types = resource_types_from_classification(classification)
+    next_skill = str(root_classification.get("recommended_next_skill") or "")
+    recommended_next = {
+        "scenario": "manual_review",
+        "skill": next_skill or "cloversec-ctf-asset-collector",
+        "reason": "资源类型不够明确，需要人工确认。",
+    }
+    dockerizer_handoff: dict[str, Any] = {}
+    if classification.get("must_use_dockerizer") or (container_payload and container_payload.get("must_use_dockerizer")):
+        recommended_next = {
+            "scenario": "platform_dockerizer",
+            "skill": "cloversec-ctf-build-dockerizer",
+            "reason": "检测到源码、Dockerfile、compose、镜像 tar 或服务型题目，必须进入 CloverSec 平台镜像改造。",
+        }
+        dockerizer_handoff = {
+            "schema_version": f"{SCHEMA_PREFIX}.dockerizer_handoff.v1",
+            "required_skill": "cloversec-ctf-build-dockerizer",
+            "project_dir": root.as_posix(),
+            "resource_classification_path": classification_path.as_posix(),
+            "container_inference_path": container_path.as_posix() if container_path else "",
+            "existing_docker_is_reference_only": True,
+            "confirmation_action": "dockerizer",
+            "failure_category": "platform_conversion_required",
+            "can_archive": False,
+            "input_prompt": (
+                f"使用 cloversec-ctf-build-dockerizer 处理 {root.as_posix()}。"
+                f"先读取 {classification_path.as_posix()}"
+                + (f" 和 {container_path.as_posix()}" if container_path else "")
+                + "，把已有 Dockerfile/compose/启动说明作为迁移输入，先给方案，等用户确认后再写平台交付文件。"
+            ),
+        }
+    elif any(item in types for item in ["source_archive", "binary", "pcap", "database_dump", "vm_image"]):
+        recommended_next = {
+            "scenario": "attachment_packaging",
+            "skill": "cloversec-ctf-attachment-packager",
+            "reason": "更像附件题或离线材料，先做解压、hash、风险路径和清单检查。",
+        }
+    elif any(item in types for item in ["writeup", "screenshot", "note"]):
+        recommended_next = {
+            "scenario": "writeup_or_manual",
+            "skill": "cloversec-ctf-writeup-scaffold",
+            "reason": "材料主要是手册、题解或截图，适合生成手册和录题字段。",
+        }
+    elif project_type == "empty_or_missing":
+        recommended_next = {
+            "scenario": "missing_material",
+            "skill": "cloversec-ctf-research-intake",
+            "reason": "目录里没有可用题目材料，需要继续采集或让用户提供入口。",
+        }
+
+    return {
+        "schema_version": f"{SCHEMA_PREFIX}.resource_route.v1",
+        "workflow_version": WORKFLOW_VERSION,
+        "generated_at": utc_now(),
+        "root": root.as_posix(),
+        "summary": {
+            "project_type": project_type,
+            "resource_types": dict(sorted((classification.get("summary", {}).get("by_resource_type") or {}).items())),
+            "must_use_dockerizer": bool(classification.get("must_use_dockerizer") or container_payload.get("must_use_dockerizer")),
+            "has_container_inference": bool(container_payload),
+        },
+        "recommended_next": recommended_next,
+        "dockerizer_handoff": dockerizer_handoff,
+        "resource_classification_path": classification_path.as_posix(),
+        "container_inference_path": container_path.as_posix() if container_path else "",
+        "notes": [
+            "已有 Dockerfile、compose 或镜像 tar 只能作为迁移输入。",
+            "涉及容器题时，最终平台交付必须经过 cloversec-ctf-build-dockerizer。",
+        ]
+        if dockerizer_handoff
+        else [],
+    }
+
+
+def render_material_collection_report(payload: dict[str, Any]) -> str:
+    lines = [
+        "# 材料收集报告",
+        "",
+        f"- 直接附件链接：{len(payload.get('direct_asset_urls', []))}",
+        f"- GitHub 仓库：{len(payload.get('github_repositories', []))}",
+        f"- 下载预览：{payload.get('download_preview_path') or '无'}",
+        "",
+        "## GitHub 仓库预览",
+        "",
+    ]
+    for repo in payload.get("repo_previews", []):
+        if not isinstance(repo, dict):
+            continue
+        summary = repo.get("summary", {}) if isinstance(repo.get("summary"), dict) else {}
+        lines.append(f"- {repo.get('repo')}: Release 附件 {summary.get('release_assets', 0)} 个，文件预览 {summary.get('tree_files', 0)} 个")
+        docker_hints = summary.get("docker_hints", []) if isinstance(summary.get("docker_hints"), list) else []
+        if docker_hints:
+            lines.append(f"  - Docker 线索：{', '.join(str(item) for item in docker_hints[:5])}")
+    if payload.get("errors"):
+        lines.extend(["", "## 失败原因", ""])
+        for item in payload["errors"]:
+            lines.append(f"- {item.get('repo', '')} {item.get('provider', '')}: {item.get('error', '')}")
+    return "\n".join(lines) + "\n"
+
+
+def render_resource_route_report(route: dict[str, Any]) -> str:
+    recommended = route.get("recommended_next", {}) if isinstance(route.get("recommended_next"), dict) else {}
+    lines = [
+        "# 资源分流报告",
+        "",
+        f"- 目录：`{route.get('root', '')}`",
+        f"- 推荐下一步：`{recommended.get('skill', '')}`",
+        f"- 场景：`{recommended.get('scenario', '')}`",
+        f"- 原因：{recommended.get('reason', '')}",
+        "",
+    ]
+    handoff = route.get("dockerizer_handoff") if isinstance(route.get("dockerizer_handoff"), dict) else {}
+    if handoff:
+        lines.extend(
+            [
+                "## Dockerizer 输入",
+                "",
+                f"- 题目目录：`{handoff.get('project_dir', '')}`",
+                f"- 资源识别：`{handoff.get('resource_classification_path', '')}`",
+                f"- 容器推断：`{handoff.get('container_inference_path', '')}`",
+                "",
+                handoff.get("input_prompt", ""),
+                "",
+            ]
+        )
+    return "\n".join(lines) + "\n"
 
 
 def initial_workflow_state(
@@ -1097,6 +1621,12 @@ def write_jsonl(path: str | Path, rows: list[dict[str, Any]]) -> None:
     output.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + ("\n" if rows else ""), encoding="utf-8")
 
 
+def write_text(path: str | Path, text: str) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(text, encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="CloverSec CTF workflow orchestration helpers")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1110,6 +1640,36 @@ def main(argv: list[str] | None = None) -> int:
     init_parser.add_argument("--allow-browser-search", action="store_true")
     init_parser.add_argument("--dry-run", action="store_true")
     init_parser.add_argument("--output")
+
+    execute_parser = subparsers.add_parser("execute-search", help="run task_plan.search_tasks and write search_results.json plus ctf_cases.jsonl")
+    execute_parser.add_argument("--workdir", required=True)
+    execute_parser.add_argument("--task-plan")
+    execute_parser.add_argument("--max-tasks", type=int, default=0)
+    execute_parser.add_argument("--limit", type=int, default=20)
+    execute_parser.add_argument("--source", action="append", default=[])
+    execute_parser.add_argument("--agent-results")
+    execute_parser.add_argument("--browser-visible-results")
+    execute_parser.add_argument("--direct-url", action="append", default=[])
+    execute_parser.add_argument("--github-repo", action="append", default=[])
+    execute_parser.add_argument("--download-preview", action="store_true")
+    execute_parser.add_argument("--fetch-snapshots", action="store_true")
+    execute_parser.add_argument("--output")
+
+    materials_parser = subparsers.add_parser("collect-materials", help="preview/download direct assets and GitHub release/tree candidates from search results")
+    materials_parser.add_argument("--manifest", required=True)
+    materials_parser.add_argument("--output-dir", required=True)
+    materials_parser.add_argument("--max-direct-downloads", type=int, default=10)
+    materials_parser.add_argument("--max-repo-previews", type=int, default=10)
+    materials_parser.add_argument("--max-repo-files", type=int, default=80)
+    materials_parser.add_argument("--github-ref", default="main")
+    materials_parser.add_argument("--no-download-direct", action="store_true")
+    materials_parser.add_argument("--output")
+
+    route_parser = subparsers.add_parser("route-resource", help="classify a local resource directory and prepare the next skill handoff")
+    route_parser.add_argument("root")
+    route_parser.add_argument("--output-dir")
+    route_parser.add_argument("--max-files", type=int, default=2000)
+    route_parser.add_argument("--output")
 
     strategy_parser = subparsers.add_parser("strategy", help="generate category-specific search queries")
     strategy_parser.add_argument("--event", required=True)
@@ -1177,6 +1737,47 @@ def main(argv: list[str] | None = None) -> int:
         if args.output:
             write_json(args.output, payload)
         print(json.dumps({"workdir": payload["workdir"], "dry_run": payload["dry_run"]}, ensure_ascii=False))
+        return 0
+
+    if args.command == "execute-search":
+        payload = execute_search_tasks(
+            workdir=args.workdir,
+            task_plan_path=args.task_plan,
+            max_tasks=args.max_tasks,
+            limit=args.limit,
+            sources=args.source or None,
+            agent_results_path=args.agent_results,
+            browser_visible_results_path=args.browser_visible_results,
+            direct_urls=args.direct_url,
+            github_repos=args.github_repo,
+            download_preview=args.download_preview,
+            fetch_snapshots=args.fetch_snapshots,
+        )
+        if args.output:
+            write_json(args.output, payload)
+        print(json.dumps({"cases": payload["summary"]["cases"], "results": payload["summary"]["results"], "workdir": payload["workdir"]}, ensure_ascii=False))
+        return 0
+
+    if args.command == "collect-materials":
+        payload = collect_materials(
+            manifest_path=args.manifest,
+            output_dir=args.output_dir,
+            max_direct_downloads=args.max_direct_downloads,
+            max_repo_previews=args.max_repo_previews,
+            max_repo_files=args.max_repo_files,
+            github_ref=args.github_ref,
+            download_direct=not args.no_download_direct,
+        )
+        if args.output:
+            write_json(args.output, payload)
+        print(json.dumps(payload["summary"], ensure_ascii=False))
+        return 0
+
+    if args.command == "route-resource":
+        payload = route_resource(root=args.root, output_dir=args.output_dir, max_files=args.max_files)
+        if args.output:
+            write_json(args.output, payload)
+        print(json.dumps({"next": payload["recommended_next"], "route": payload["resource_route_path"]}, ensure_ascii=False))
         return 0
 
     if args.command == "strategy":

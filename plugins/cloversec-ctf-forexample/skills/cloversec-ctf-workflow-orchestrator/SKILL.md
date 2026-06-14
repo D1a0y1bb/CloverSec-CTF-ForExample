@@ -1,13 +1,15 @@
 ---
 name: cloversec-ctf-workflow-orchestrator
-description: CloverSec CTF 批量工作流编排 skill。用于从年份、赛事、方向和数量创建采集任务，维护 workflow_state.json，执行 dry-run/apply/resume，检查 GitHub 搜索能力，生成搜索策略、来源证据、资源识别、去重候选和下载沙箱预览。
+description: CloverSec CTF 主流程入口 skill。用于从一句目标创建工作目录，执行采集，收集材料，识别资源，分流到 Dockerizer/附件/手册/Hub/中文交付。
 ---
 
 # CloverSec CTF Workflow Orchestrator
 
 ## 何时使用
 
-- 用户只给年份、赛事、方向、数量，需要先创建标准工作目录。
+- 用户只给年份、赛事、方向、数量，需要直接开始收集题目材料。
+- 用户要求“完整处理”“全流程”“一路做完”，需要把采集、下载、识别、Dockerizer、手册、Hub 和中文交付串起来。
+- 用户给了一个材料目录，需要判断该走 Dockerizer、附件检查、手册还是人工确认。
 - 批量处理多题时，需要 dry-run、apply、断点继续和单题失败记录。
 - 需要检查本机 `gh auth login`、`GITHUB_TOKEN` / `GH_TOKEN` 和 GitHub 搜索能力。
 - 需要按 Web/Pwn/Reverse/Crypto/Misc/Forensics/AI 分类生成搜索 query。
@@ -45,10 +47,10 @@ reports/
 用户要求“完整处理”“全流程”“一路做完”时，按下列阶段推进，并在需要确认的地方停止等待：
 
 ```text
-任务创建 -> 搜索候选 -> 来源证据 -> 去重筛选 -> 下载沙箱 -> 资源识别 -> 容器推断 -> 容器改造或附件检查 -> 手册字段 -> 归档预览 -> 质量检查 -> Hub 草稿 -> Hub 审核状态/retag -> 最终报告
+任务创建 -> 执行采集 -> 材料收集 -> 资源识别 -> Dockerizer 或附件检查 -> 手册字段 -> 中文交付包 -> 质量检查 -> Hub 草稿 -> Hub 浏览器辅助 -> Hub 审核状态/retag -> 最终报告
 ```
 
-默认先执行不改文件、不运行未知代码的阶段。下列动作必须等用户确认：
+默认直接执行能安全读取、搜索、下载预览和识别的阶段。下列动作必须等用户确认：
 
 - 把下载沙箱内容移入正式题目目录。
 - 生成或覆盖 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`check/check.sh`。
@@ -100,6 +102,31 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py init 
   --year 2025 \
   --category web \
   --limit 20
+```
+
+执行采集任务，生成 `search_results.json`、`ctf_cases.jsonl` 和来源证据：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py execute-search \
+  --workdir runs/20260614-2025-IrisCTF-web \
+  --limit 20 \
+  --download-preview
+```
+
+把搜索结果里的附件 URL、GitHub Release 和仓库目录变成本地候选材料：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py collect-materials \
+  --manifest runs/20260614-2025-IrisCTF-web/search_results.json \
+  --output-dir runs/20260614-2025-IrisCTF-web
+```
+
+识别本地材料目录并生成下一步 handoff：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py route-resource \
+  path/to/challenge-or-materials \
+  --output-dir path/to/challenge-or-materials/classification
 ```
 
 生成搜索策略：
@@ -192,6 +219,9 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py class
 ## MCP Tools
 
 - `cloversec_ctf_workflow_init`
+- `cloversec_ctf_collect_execute`
+- `cloversec_ctf_collect_materials`
+- `cloversec_ctf_resource_route`
 - `cloversec_ctf_workflow_batch`
 - `cloversec_ctf_search_strategy`
 - `cloversec_ctf_github_doctor`

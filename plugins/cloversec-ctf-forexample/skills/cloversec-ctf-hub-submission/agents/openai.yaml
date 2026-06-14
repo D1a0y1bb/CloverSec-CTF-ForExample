@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Hub Submission"
-  short_description: "生成 Hub 表单字段、上传清单和提交材料包"
-  default_prompt: "使用 $cloversec-ctf-hub-submission 根据手册、附件、截图和 hub_fields.json 生成 Hub 提交材料包、Hub 草稿、上传清单、截图清单和差异报告。只做材料和浏览器辅助计划；不读取 Cookie/token/session，不自动提交。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-hub-submission、cloversec_ctf_hub_draft、cloversec_ctf_hub_chrome_plan、cloversec_ctf_hub_review_state、cloversec_ctf_hub_validate_manifest。"
+  short_description: "生成 Hub 提交材料，并辅助已登录 Chrome 填表到最终提交前"
+  default_prompt: "使用 $cloversec-ctf-hub-submission 根据手册、附件、截图和 hub_fields.json 生成 Hub 提交材料包、Hub 草稿、上传清单、截图清单和差异报告。用户已在 Chrome 登录 Hub 时，可以用 cloversec_ctf_hub_session_state 记录登录确认、字段填写、上传、提交前截图、人工提交和 Hub 编号状态。只读取页面可见内容；不读取 Cookie/token/session；不自动点击最终提交。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-hub-submission、cloversec_ctf_hub_draft、cloversec_ctf_hub_chrome_plan、cloversec_ctf_hub_session_state、cloversec_ctf_hub_review_state、cloversec_ctf_hub_validate_manifest。"

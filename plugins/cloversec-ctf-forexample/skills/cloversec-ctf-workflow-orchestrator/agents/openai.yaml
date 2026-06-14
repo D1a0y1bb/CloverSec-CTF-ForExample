@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Workflow Orchestrator"
-  short_description: "创建批量采集任务、状态机、搜索策略、证据、资源识别、去重和下载沙箱"
-  default_prompt: "使用 $cloversec-ctf-workflow-orchestrator 创建 CloverSec CTF 批量工作流，维护 workflow_state.json，并生成搜索策略、来源证据、资源识别、去重候选、下载沙箱预览、确认请求和阶段通知。看到源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 在线服务题或镜像构建需求时，必须交给 cloversec-ctf-build-dockerizer；原始 Dockerfile/compose 只算迁移输入。未确认 Dockerizer 方案时必须写 confirmation_action=dockerizer、failure_category=platform_conversion_required、next_skill=cloversec-ctf-build-dockerizer、can_archive=false。输出 ID 时只能写精确值，可调用 cloversec_ctf_platform_contract 读取同一份契约摘要。"
+  short_description: "从一句目标开始采集、下载预览、识别资源并分流到下一步"
+  default_prompt: "使用 $cloversec-ctf-workflow-orchestrator 处理 CloverSec CTF 长流程。用户给年份/赛事/方向/数量时，先用 cloversec_ctf_workflow_init 创建目录，再用 cloversec_ctf_collect_execute 真正执行采集，必要时用 cloversec_ctf_collect_materials 下载预览附件和 GitHub 材料。用户给本地目录时，用 cloversec_ctf_resource_route 判断走 Dockerizer、附件检查、手册还是人工确认。看到源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 在线服务题或镜像构建需求时，必须交给 cloversec-ctf-build-dockerizer；原始 Dockerfile/compose 只算迁移输入。未确认 Dockerizer 方案时写 confirmation_action=dockerizer、failure_category=platform_conversion_required、next_skill=cloversec-ctf-build-dockerizer、can_archive=false。"

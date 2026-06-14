@@ -12,7 +12,7 @@ import cloversec_ctf_hub as hub
 import cloversec_ctf_retag as retag
 
 
-SERVER_VERSION = "0.3.5"
+SERVER_VERSION = "0.4.1"
 
 
 TOOLS = [
@@ -100,6 +100,28 @@ TOOLS = [
         },
     },
     {
+        "name": "cloversec_ctf_hub_session_state",
+        "description": "Record the logged-in Hub browser filling session: login check, field fill status, uploads, pre-submit screenshot, manual submit status, and visible Hub id.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "output_dir": {"type": "string"},
+                "case": {"type": "object"},
+                "draft": {"type": "object"},
+                "manifest": {"type": "object"},
+                "visible_page": {"type": "object"},
+                "login_confirmed": {"type": "boolean"},
+                "field_fill_status": {"type": "string"},
+                "upload_results": {"type": "array", "items": {"type": "object"}},
+                "pre_submit_screenshot": {"type": "string"},
+                "user_submitted": {"type": "boolean"},
+                "hub_id": {"type": "string"},
+                "notes": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["output_dir"],
+        },
+    },
+    {
         "name": "cloversec_ctf_image_naming_plan",
         "description": "Create image_naming_plan.json and retag_inputs.json from Hub id, case metadata, image source, and tag rules.",
         "inputSchema": {
@@ -178,6 +200,21 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             reviewer=str(arguments.get("reviewer") or ""),
             review_comment=str(arguments.get("review_comment") or ""),
             visible_page=arguments.get("visible_page") if isinstance(arguments.get("visible_page"), dict) else None,
+        )
+    if name == "cloversec_ctf_hub_session_state":
+        return hub.create_hub_session_state(
+            str(arguments.get("output_dir") or ""),
+            case=arguments.get("case") if isinstance(arguments.get("case"), dict) else {},
+            draft=arguments.get("draft") if isinstance(arguments.get("draft"), dict) else {},
+            manifest=arguments.get("manifest") if isinstance(arguments.get("manifest"), dict) else {},
+            visible_page=arguments.get("visible_page") if isinstance(arguments.get("visible_page"), dict) else {},
+            login_confirmed=bool(arguments.get("login_confirmed", False)),
+            field_fill_status=str(arguments.get("field_fill_status") or "not_started"),
+            upload_results=arguments.get("upload_results") if isinstance(arguments.get("upload_results"), list) else [],
+            pre_submit_screenshot=str(arguments.get("pre_submit_screenshot") or ""),
+            user_submitted=bool(arguments.get("user_submitted", False)),
+            hub_id=str(arguments.get("hub_id") or ""),
+            notes=[str(item) for item in arguments.get("notes", [])] if isinstance(arguments.get("notes"), list) else [],
         )
     if name == "cloversec_ctf_image_naming_plan":
         return retag.create_image_naming_plan(

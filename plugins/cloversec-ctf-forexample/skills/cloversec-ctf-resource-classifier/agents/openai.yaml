@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Resource Classifier"
-  short_description: "识别题目资源类型并推荐下一步 skill"
-  default_prompt: "使用 $cloversec-ctf-resource-classifier 扫描本地题目资源目录，输出 resource_classification.json，并推荐下一步 skill。没有源码/附件时写缺失项；附件题走 cloversec-ctf-attachment-packager；源码、Dockerfile、compose、source archive、镜像构建信息、端口服务都必须推荐 cloversec-ctf-build-dockerizer。上游 Dockerfile/compose 只是迁移输入，不能当 CloverSec 平台最终交付。未确认 Dockerizer 方案时写 confirmation_action=dockerizer、failure_category=platform_conversion_required、next_skill=cloversec-ctf-build-dockerizer、can_archive=false。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-resource-classifier、cloversec_ctf_resource_classify、cloversec_ctf_platform_contract。"
+  short_description: "识别材料目录并给出 Dockerizer、附件、手册或人工确认入口"
+  default_prompt: "使用 $cloversec-ctf-resource-classifier 处理本地题目材料目录。优先调用 cloversec_ctf_resource_route，输出 resource_classification.json、resource_route.json，容器相关目录还要输出 container_inference.json 和 dockerizer_handoff。没有源码/附件时写缺失项；附件题走 cloversec-ctf-attachment-packager；源码、Dockerfile、compose、source archive、镜像构建信息、端口服务都必须推荐 cloversec-ctf-build-dockerizer。上游 Dockerfile/compose 只是迁移输入，不能当 CloverSec 平台最终交付。未确认 Dockerizer 方案时写 confirmation_action=dockerizer、failure_category=platform_conversion_required、next_skill=cloversec-ctf-build-dockerizer、can_archive=false。"

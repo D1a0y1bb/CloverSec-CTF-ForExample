@@ -188,6 +188,39 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertIn("Allow access to file URLs", contract["file_upload_requirement"])
         self.assertTrue(any(step["id"] == "pre-submit-review" for step in plan["steps"]))
 
+    def test_hub_session_state_tracks_login_upload_and_manual_submit_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            fields = writeup.build_hub_fields(case)
+            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            draft = hub.create_hub_draft(case, fields["hub_fields"], manual, tmp_path / "hub_submission_package")
+            manifest = json.loads((tmp_path / "hub_submission_package" / "hub_upload_manifest.json").read_text(encoding="utf-8"))
+            upload_results = [
+                {"role": "attachment", "status": "uploaded", "url": "/media/ctf/challenge.zip"},
+                {"role": "image_tar", "status": "uploaded", "url": "/media/ctf/web.tar"},
+            ]
+
+            state = hub.create_hub_session_state(
+                tmp_path / "hub_submission_package",
+                case=case,
+                draft=draft,
+                manifest=manifest,
+                visible_page={"url": "https://hub.yunyansec.com/#/resource/ctf", "title": "云演资源中心"},
+                login_confirmed=True,
+                field_fill_status="filled",
+                upload_results=upload_results,
+                pre_submit_screenshot=(tmp_path / "pre_submit.png").as_posix(),
+                user_submitted=False,
+            )
+            state_path_exists = (tmp_path / "hub_submission_package" / "hub_session_state.json").exists()
+
+        self.assertTrue(state["login"]["confirmed"])
+        self.assertEqual(state["uploads"]["pending_count"], 0)
+        self.assertIn("停在最终提交前", state["next_action"])
+        self.assertIn("click_final_submit", state["forbidden_actions"])
+        self.assertTrue(state_path_exists)
+
     def test_hub_classify_options_and_upload_results_update_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

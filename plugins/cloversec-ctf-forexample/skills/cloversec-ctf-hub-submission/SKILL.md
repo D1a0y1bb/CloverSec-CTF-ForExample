@@ -10,6 +10,7 @@ description: 生成 CloverSec CTF Hub 提交包、字段 payload、浏览器/Chr
 - 已有 `ctf_case.json`、手册草稿、Hub 字段和资源文件，需要生成 Hub 提交材料。
 - 需要把题目分类文本匹配成 Hub 分类 ID。
 - 需要用浏览器或 Chrome 插件辅助填写 Hub 表单、上传附件和截图。
+- 用户已经在 Chrome 登录 Hub，需要记录登录确认、字段填写、上传、提交前截图和人工提交状态。
 - 需要在最终提交前检查字段、附件、截图、上传结果和 Flag。
 
 ## 必须遵守
@@ -57,6 +58,18 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-uplo
   --output hub_submission_package/manifests/upload_manifest.with_uploads.json
 ```
 
+记录 Hub 浏览器接管状态：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py session-state \
+  --output-dir hub_submission_package \
+  --draft hub_submission_package/hub_draft.json \
+  --manifest hub_submission_package/hub_upload_manifest.json \
+  --login-confirmed \
+  --field-fill-status filled \
+  --pre-submit-screenshot hub_submission_package/pre_submit.png
+```
+
 ## MCP
 
 优先使用 `cloversec-ctf-hub-assistant`：
@@ -65,6 +78,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-uplo
 - `cloversec_ctf_hub_browser_plan`
 - `cloversec_ctf_hub_validate_manifest`
 - `cloversec_ctf_hub_apply_upload_results`
+- `cloversec_ctf_hub_session_state`
 
 ## 需要更多细节时再读取
 

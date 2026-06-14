@@ -14,7 +14,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_container as container
 
 
-SERVER_VERSION = "0.3.5"
+SERVER_VERSION = "0.4.1"
 
 PLATFORM_CONTRACT = {
     "schema_version": "cloversec.ctf.platform_contract.v1",
@@ -74,6 +74,57 @@ TOOLS = [
                 "dry_run": {"type": "boolean"},
             },
             "required": ["event"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_collect_execute",
+        "description": "Run task_plan.search_tasks across free sources, Agent/browser visible results, direct URLs, and GitHub repos; write search_results.json, ctf_cases.jsonl, and evidence.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workdir": {"type": "string"},
+                "task_plan_path": {"type": "string"},
+                "max_tasks": {"type": "integer"},
+                "limit": {"type": "integer"},
+                "sources": {"type": "array", "items": {"type": "string"}},
+                "agent_results_path": {"type": "string"},
+                "browser_visible_results_path": {"type": "string"},
+                "direct_urls": {"type": "array", "items": {"type": "string"}},
+                "github_repos": {"type": "array", "items": {}},
+                "download_preview": {"type": "boolean"},
+                "fetch_snapshots": {"type": "boolean"},
+            },
+            "required": ["workdir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_collect_materials",
+        "description": "Turn search result links into local material candidates: direct attachment download preview, GitHub release assets, repository tree preview, and failure reasons.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "manifest_path": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "max_direct_downloads": {"type": "integer"},
+                "max_repo_previews": {"type": "integer"},
+                "max_repo_files": {"type": "integer"},
+                "github_ref": {"type": "string"},
+                "download_direct": {"type": "boolean"},
+            },
+            "required": ["manifest_path", "output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_resource_route",
+        "description": "Classify a local material directory, infer container hints when needed, and create the next skill handoff including Dockerizer input when required.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "root": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "max_files": {"type": "integer"},
+            },
+            "required": ["root"],
         },
     },
     {
@@ -310,6 +361,36 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
                 allow_browser_search=bool(arguments.get("allow_browser_search", False)),
                 dry_run=bool(arguments.get("dry_run", False)),
             )
+        )
+    if name == "cloversec_ctf_collect_execute":
+        return workflow.execute_search_tasks(
+            workdir=str(arguments.get("workdir") or ""),
+            task_plan_path=str(arguments.get("task_plan_path") or "") or None,
+            max_tasks=int(arguments.get("max_tasks", 0)),
+            limit=int(arguments.get("limit", 20)),
+            sources=[str(item) for item in arguments.get("sources", [])] if isinstance(arguments.get("sources"), list) else None,
+            agent_results_path=str(arguments.get("agent_results_path") or "") or None,
+            browser_visible_results_path=str(arguments.get("browser_visible_results_path") or "") or None,
+            direct_urls=[str(item) for item in arguments.get("direct_urls", [])] if isinstance(arguments.get("direct_urls"), list) else None,
+            github_repos=arguments.get("github_repos", []) if isinstance(arguments.get("github_repos"), list) else None,
+            download_preview=bool(arguments.get("download_preview", False)),
+            fetch_snapshots=bool(arguments.get("fetch_snapshots", False)),
+        )
+    if name == "cloversec_ctf_collect_materials":
+        return workflow.collect_materials(
+            manifest_path=str(arguments.get("manifest_path") or ""),
+            output_dir=str(arguments.get("output_dir") or ""),
+            max_direct_downloads=int(arguments.get("max_direct_downloads", 10)),
+            max_repo_previews=int(arguments.get("max_repo_previews", 10)),
+            max_repo_files=int(arguments.get("max_repo_files", 80)),
+            github_ref=str(arguments.get("github_ref") or "main"),
+            download_direct=bool(arguments.get("download_direct", True)),
+        )
+    if name == "cloversec_ctf_resource_route":
+        return workflow.route_resource(
+            root=str(arguments.get("root") or ""),
+            output_dir=str(arguments.get("output_dir") or "") or None,
+            max_files=int(arguments.get("max_files", 2000)),
         )
     if name == "cloversec_ctf_workflow_batch":
         return workflow.batch_orchestrate(

@@ -10,7 +10,7 @@
 
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.3.5-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.4.1-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -33,15 +33,9 @@
 
 `CloverSec CTF For Example` 是一个 Codex 原生适配的四叶草安全-创研中心专属工作流插件，由一组可被 Codex 自动调用的 skill、脚本和 MCP server 组成。你只需要描述一个周期性重复工作目标，例如“收集 2025 年某比赛的 Web 题目并整理附件和 WP”，Codex 会按场景选择对应能力，生成结构化文件、证据记录、归档目录、质量检查报告、Hub 提交材料和最终 xlsx/语雀表。
 
-竞赛岗位里有一类工作，创造性很低，重复性很高：收集题目材料、整理附件、写 Dockerfile、调启动脚本、验证 Flag、完善 writeup、打包归档、填提交表。过去让工程师和实习生长时间耗在这些地方，是因为工具链没有把规律抽出来。
+竞赛岗位里有一类工作，创造性很低，重复性很高：收集题目材料、整理附件、写 Dockerfile、调启动脚本、验证 Flag、完善 writeup、打包归档、填提交表。过去让工程师和实习生长时间耗在这些地方，是因为工具链没有把规律抽出来。为什么不把这些工作交给 AGENT？
 
-为什么不把这些工作交给 AGENT？
-
-上帝说：要有好用的 AGENT，于是有了 Codex。
-
-上帝说：要速度、格式一致性、可复现性都更好，于是有了 `CloverSec CTF For Example`。
-
-值得深思的是，Agent 时代还停在执行型杂活上，人就会被执行型能力替代。低价值工作被拿走以后，岗位才会被迫往题目设计、质量审查和赛事运营升级。这个插件的目标很清楚：把规律固定下来，让人去处理更值钱的问题。
+上帝说：要有好用的 AGENT，于是有了 Codex。上帝说：要速度、格式一致性、可复现性都更好，于是有了 `CloverSec CTF For Example`。值得深思的是，Agent 时代还停在执行型杂活上，人就会被执行型能力替代。低价值工作被拿走以后，岗位才会被迫往题目设计、质量审查和赛事运营升级。这个插件的目标很清楚：把规律固定下来，让人去处理更值钱的问题。
 
 它覆盖竞赛岗位工程师常见的长流程工作：
 
@@ -87,7 +81,7 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.3.5
+Git 引用：v0.4.1
 稀疏路径：留空
 ```
 
@@ -96,7 +90,7 @@ Git 引用：v0.3.5
 当然也可以使用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.5
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.4.1
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -668,7 +662,7 @@ gh auth login
 - zip/tar 先做安全预览，检查路径穿越、文件数量和解压体积。
 - 人工确认后再进入 `downloads_accepted/` 或题目目录。
 - `v0.3.2` 会对本地资源目录生成 `resource_classification.json` 和 `container_inference.json`，识别 Docker/compose/source archive/attachment/writeup/screenshot/pcap/binary/database/Docker image tar，并推荐下一步 skill 和 Docker 验证等级。
-- `v0.3.5` 会把低置信度搜索结果转成带人工确认原因的 `ctf_cases.jsonl`，并支持把用户确认后的浏览器可见内容导入为 evidence。Medium、InfosecWriteups 等返回 403 时，可以把可见页面标题、链接、摘要或正文片段交给浏览器辅助导入工具。
+- `v0.4.1` 会把低置信度搜索结果转成带人工确认原因的 `ctf_cases.jsonl`，并支持把用户确认后的浏览器可见内容导入为 evidence。Medium、InfosecWriteups 等返回 403 时，可以把可见页面标题、链接、摘要或正文片段交给浏览器辅助导入工具。
 
 现实边界：
 
@@ -755,7 +749,7 @@ python3 scripts/package_plugin_release.py
 发布到 GitHub Release 后，Codex 可以按 tag 安装：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.5
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.4.1
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 

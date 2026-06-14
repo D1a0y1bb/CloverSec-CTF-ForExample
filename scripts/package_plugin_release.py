@@ -14,9 +14,13 @@ PLUGIN_NAME = "cloversec-ctf-forexample"
 PLUGIN = ROOT / "plugins" / PLUGIN_NAME
 DIST = ROOT / "dist"
 RELEASE_NOTES = ROOT / ".github" / "release-notes"
+SKIP_DIR_NAMES = {"__pycache__", ".pytest_cache"}
+SKIP_FILE_SUFFIXES = {".pyc", ".pyo"}
+SKIP_FILE_NAMES = {".DS_Store"}
 
 
 def main() -> int:
+    clean_generated_files(PLUGIN)
     DIST.mkdir(exist_ok=True)
     for path in DIST.iterdir():
         if path.is_file():
@@ -51,13 +55,29 @@ def zip_dir(source: Path, output: Path, *, prefix: str | Path) -> None:
 
 def add_dir(archive: zipfile.ZipFile, source: Path, *, prefix: Path) -> None:
     for path in sorted(source.rglob("*")):
-        if path.is_file():
+        if path.is_file() and not should_skip(path):
             relative = prefix / path.relative_to(source)
             archive.write(path, relative.as_posix())
 
 
 def add_file(archive: zipfile.ZipFile, path: Path) -> None:
+    if should_skip(path):
+        return
     archive.write(path, path.relative_to(ROOT).as_posix())
+
+
+def clean_generated_files(root: Path) -> None:
+    for directory in sorted(root.rglob("*"), reverse=True):
+        if directory.is_dir() and directory.name in SKIP_DIR_NAMES:
+            shutil.rmtree(directory)
+
+
+def should_skip(path: Path) -> bool:
+    if any(part in SKIP_DIR_NAMES for part in path.parts):
+        return True
+    if path.name in SKIP_FILE_NAMES:
+        return True
+    return path.suffix in SKIP_FILE_SUFFIXES
 
 
 def render_release_notes(display_name: str, version: str) -> str:
