@@ -210,6 +210,52 @@ class V033AuditManualHubTests(unittest.TestCase):
             self.assertEqual(warnings["summary"]["cloversec_blockers"], 1)
             self.assertEqual(warnings["summary"]["external_warnings"], 1)
 
+    def test_dockerizer_gate_blocks_unconfirmed_container_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["metadata"]["验证状态"] = "通过"
+            case["metadata"]["是否通过"] = "是"
+            case["metadata"]["问题"] = ""
+            case["metadata"]["构建状态"] = "已构建"
+            case["metadata"]["是否归档"] = "否"
+            case["docker_artifacts"] = {
+                "project_dir": tmp_path.as_posix(),
+                "dockerfile": "Dockerfile",
+                "image_name": "upstream/web:latest",
+            }
+
+            batch = audit.create_batch_status_report([case], tmp_path / "batch")
+            row = batch["rows"][0]
+            failures = audit.create_failure_library([case], tmp_path / "failure_cases.jsonl")
+            confirmation = audit.create_confirmation_request(action="dockerizer", output_dir=tmp_path / "dockerizer-confirm", case=case)
+
+            self.assertEqual(row["可归档"], "否")
+            self.assertIn("Dockerizer 改造待确认", row["待人工确认"])
+            self.assertIn("cloversec-ctf-build-dockerizer", row["问题"])
+            self.assertIn("platform_conversion_required", {item["category"] for item in failures["failures"]})
+            self.assertIn("CONFIG PROPOSAL", confirmation["planned_outputs"])
+
+    def test_dockerizer_gate_passes_when_platform_contract_verified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["metadata"]["验证状态"] = "通过"
+            case["metadata"]["是否通过"] = "是"
+            case["metadata"]["问题"] = ""
+            case["metadata"]["是否归档"] = "否"
+            case["docker_artifacts"] = {
+                "project_dir": tmp_path.as_posix(),
+                "dockerfile": "Dockerfile",
+                "image_name": "cloversec/web:local",
+                "platform_contract_verified": True,
+            }
+
+            row = audit.create_batch_status_report([case], tmp_path / "batch")["rows"][0]
+
+            self.assertEqual(row["可归档"], "是")
+            self.assertNotIn("Dockerizer 改造待确认", row["待人工确认"])
+
     def test_hub_draft_review_state_and_image_naming_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -304,7 +350,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.4")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.5")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

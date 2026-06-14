@@ -73,6 +73,15 @@ reports/
 
 看到 Dockerfile、compose 或官方启动脚本时，不能直接把它们当作 CloverSec 平台最终交付。容器题最终必须经 `cloversec-ctf-build-dockerizer` 生成或校验 `/start.sh`、`/changeflag.sh`、`/flag`、端口、amd64、镜像 tar 和 xlsx 字段。
 
+如果容器题或源码题还没有完成 Dockerizer 方案确认，批量报告必须标记 `Dockerizer 改造待确认`，失败案例库必须记录 `platform_conversion_required`。Agent 要把问题、运行差异和建议方案交给用户确认，不能自行把题目写成可归档。
+
+机器字段必须使用精确值：
+
+- `confirmation_action`: `dockerizer`
+- `failure_category`: `platform_conversion_required`
+- `next_skill`: `cloversec-ctf-build-dockerizer`
+- `can_archive`: `false`
+
 ## 常用命令
 
 创建任务：

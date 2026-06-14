@@ -12,7 +12,7 @@ import cloversec_ctf_hub as hub
 import cloversec_ctf_retag as retag
 
 
-SERVER_VERSION = "0.3.4"
+SERVER_VERSION = "0.3.5"
 
 
 TOOLS = [

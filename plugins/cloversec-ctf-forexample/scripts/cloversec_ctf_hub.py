@@ -173,7 +173,7 @@ def create_hub_draft(
     diff = create_hub_diff(case, hub_fields, form_payload, validation)
     draft = {
         "schema_version": "cloversec.ctf.hub_draft.v1",
-        "version": "0.3.4",
+        "version": "0.3.5",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -229,7 +229,7 @@ def create_hub_review_state(
         status_notes.append("已获得 Hub 编号，可以进入镜像命名和 retag 计划。")
     state = {
         "schema_version": "cloversec.ctf.hub_review_state.v1",
-        "version": "0.3.4",
+        "version": "0.3.5",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -682,7 +682,7 @@ def create_hub_diff(
         )
     return {
         "schema_version": "cloversec.ctf.hub_diff.v1",
-        "version": "0.3.4",
+        "version": "0.3.5",
         "case_id": str(case.get("case_id") or ""),
         "comparisons": comparisons,
         "validation": validation,

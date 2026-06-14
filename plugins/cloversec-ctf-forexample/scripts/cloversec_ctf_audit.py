@@ -16,7 +16,7 @@ import cloversec_ctf_archive as archive
 import cloversec_ctf_data as data
 
 
-VERSION = "0.3.4"
+VERSION = "0.3.5"
 CONFIRMATION_SCHEMA = "cloversec.ctf.confirmation_request.v1"
 LOCK_SCHEMA = "cloversec.ctf.manifest_lock.v1"
 PREVIEW_SCHEMA = "cloversec.ctf.archive_preview.v1"
@@ -25,7 +25,7 @@ FAILURE_SCHEMA = "cloversec.ctf.failure_case.v1"
 NOTIFICATION_SCHEMA = "cloversec.ctf.stage_notification.v1"
 WARNING_SCHEMA = "cloversec.ctf.codex_warning_report.v1"
 
-CONFIRMATION_ACTIONS = {"download", "extract", "docker", "hub", "retag", "archive", "final"}
+CONFIRMATION_ACTIONS = {"download", "extract", "dockerizer", "docker", "hub", "retag", "archive", "final"}
 ARCHIVE_ROLES = {
     "source": "源码",
     "attachment": "附件",
@@ -492,11 +492,17 @@ def case_problem_messages(case: dict[str, Any]) -> list[str]:
             message = str(item.get("summary") or item.get("message") or item.get("error") or "").strip()
             if message:
                 problems.append(message)
+    gate = dockerizer_conversion_gate(case)
+    if gate["required"] and not gate["satisfied"]:
+        problems.append(gate["message"])
     return dedupe_strings(problems)
 
 
 def pending_confirmations(case: dict[str, Any], *, workflow_state: dict[str, Any] | None = None) -> list[str]:
     pending = []
+    gate = dockerizer_conversion_gate(case)
+    if gate["required"] and not gate["satisfied"]:
+        pending.append("Dockerizer 改造待确认")
     if str(case.get("confidence") or "").lower() == "low":
         pending.append("低置信度题目信息")
     for evidence in case.get("evidence", []) if isinstance(case.get("evidence"), list) else []:
@@ -562,7 +568,10 @@ def extract_failures_from_case(case: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
         )
+    gate = dockerizer_conversion_gate(case)
     for problem in case_problem_messages(case):
+        if gate["required"] and not gate["satisfied"] and problem == gate["message"]:
+            continue
         failures.append(
             normalize_failure_case(
                 {
@@ -575,7 +584,93 @@ def extract_failures_from_case(case: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
         )
+    if gate["required"] and not gate["satisfied"]:
+        failures.append(
+            normalize_failure_case(
+                {
+                    "case_id": case_id(case),
+                    "stage": "dockerizer",
+                    "category": "platform_conversion_required",
+                    "message": gate["message"],
+                    "retryable": True,
+                    "suggested_action": "先用 cloversec-ctf-build-dockerizer 生成平台改造方案，把风险和确认项交给用户确认；确认后再生成 Docker 交付件并重新验证。",
+                }
+            )
+        )
     return failures
+
+
+def dockerizer_conversion_gate(case: dict[str, Any]) -> dict[str, Any]:
+    reasons = dockerizer_required_reasons(case)
+    satisfied, evidence = dockerizer_conversion_satisfied(case)
+    required = bool(reasons)
+    return {
+        "required": required,
+        "satisfied": satisfied if required else True,
+        "status": "passed" if (not required or satisfied) else "needs_user_confirmation",
+        "action": "dockerizer",
+        "skill": "cloversec-ctf-build-dockerizer",
+        "reasons": reasons,
+        "evidence": evidence,
+        "message": "容器题或源码题必须先经 cloversec-ctf-build-dockerizer 改造成 CloverSec 平台契约，并由用户确认方案" if required and not satisfied else "",
+    }
+
+
+def dockerizer_required_reasons(case: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    source_items = list_value(case.get("source_files"))
+    docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
+    environment = case.get("environment") if isinstance(case.get("environment"), dict) else {}
+
+    for key in ["platform_delivery", "resource_classification", "container_inference"]:
+        value = case.get(key) if isinstance(case.get(key), dict) else {}
+        if value.get("must_use_dockerizer") is True:
+            reasons.append(f"{key}.must_use_dockerizer=true")
+        delivery = value.get("platform_delivery") if isinstance(value.get("platform_delivery"), dict) else {}
+        if delivery.get("must_use_dockerizer") is True:
+            reasons.append(f"{key}.platform_delivery.must_use_dockerizer=true")
+
+    for item in source_items:
+        name = str(item.get("name") or item.get("path") or item.get("local_path") or "").lower()
+        if name.endswith("dockerfile") or "docker-compose" in name or name.endswith("compose.yml") or name.endswith("compose.yaml"):
+            reasons.append("source_files contains Dockerfile/compose")
+
+    if any(str(docker_artifacts.get(key) or "").strip() for key in ["project_dir", "build_context", "dockerfile", "compose_file"]):
+        reasons.append("docker_artifacts contains build context or Dockerfile")
+
+    challenge_type = str(metadata.get("题目类型") or "")
+    has_port = bool(str(metadata.get("开放端口") or "").strip() or environment.get("port_mappings"))
+    if ("环境" in challenge_type or "容器" in challenge_type or str(metadata.get("离线/在线解题") or "") == "在线") and (source_items or has_port):
+        reasons.append("metadata indicates online/container challenge with source or port")
+
+    return dedupe_strings(reasons)
+
+
+def dockerizer_conversion_satisfied(case: dict[str, Any]) -> tuple[bool, list[str]]:
+    evidence: list[str] = []
+    dockerizer = case.get("dockerizer") if isinstance(case.get("dockerizer"), dict) else {}
+    status = str(dockerizer.get("status") or "").lower()
+    if status in {"accepted", "rendered", "validated", "passed", "complete", "completed"}:
+        evidence.append(f"dockerizer.status={status}")
+        return True, evidence
+    if dockerizer.get("user_confirmed") is True or dockerizer.get("conversion_confirmed") is True:
+        evidence.append("dockerizer confirmation flag")
+        return True, evidence
+
+    platform_delivery = case.get("platform_delivery") if isinstance(case.get("platform_delivery"), dict) else {}
+    if platform_delivery.get("dockerizer_conversion_accepted") is True:
+        evidence.append("platform_delivery.dockerizer_conversion_accepted=true")
+        return True, evidence
+
+    docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
+    if docker_artifacts.get("platform_contract_verified") is True:
+        evidence.append("docker_artifacts.platform_contract_verified=true")
+        return True, evidence
+    if str(docker_artifacts.get("contract") or "").lower() in {"cloversec", "cloversec_verified", "platform_verified"}:
+        evidence.append(f"docker_artifacts.contract={docker_artifacts.get('contract')}")
+        return True, evidence
+    return False, evidence
 
 
 def normalize_failure_case(item: dict[str, Any]) -> dict[str, Any]:
@@ -842,6 +937,8 @@ def infer_action_inputs(action: str, case: dict[str, Any]) -> list[str]:
         return [case_id(case), *[item["path"] for item in iter_case_paths(case)]]
     if action == "hub":
         return [case_id(case), "hub_fields.json", "manual markdown", "upload manifest"]
+    if action == "dockerizer":
+        return [case_id(case), "source directory", "resource_classification.json", "container_inference.json", "upstream Dockerfile/compose if present"]
     if action == "docker":
         docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
         return [str(docker_artifacts.get("image_name") or ""), str(docker_artifacts.get("tar_path") or "")]
@@ -852,6 +949,7 @@ def infer_action_outputs(action: str, case: dict[str, Any]) -> list[str]:
     mapping = {
         "download": ["downloads_sandbox/", "download_preview.json", "download_safety_report.md"],
         "extract": ["extraction preview", "resource_classification.json"],
+        "dockerizer": ["CONFIG PROPOSAL", "Dockerfile", "start.sh", "changeflag.sh", "flag", "environment.json", "docker_artifacts.json", "xlsx_fields.json"],
         "docker": ["docker_evidence.json", "docker_logs.txt"],
         "hub": ["hub_draft.json", "hub_upload_manifest.json", "hub_diff_report.md"],
         "retag": ["retag_plan.json", "image tar"],
@@ -865,6 +963,7 @@ def default_risks(action: str) -> list[str]:
     return {
         "download": ["外部 URL 可能失效、过大、重定向到登录页或不是题目附件"],
         "extract": ["压缩包可能包含路径穿越、过多文件或非题目资源"],
+        "dockerizer": ["上游 Dockerfile/compose 只能作为迁移输入；未确认 CONFIG PROPOSAL 前不得生成最终平台交付件", "需要 privileged、eBPF/tc、KVM、jail 或多服务时必须把平台差异列给用户确认"],
         "docker": ["镜像或容器可能执行未知服务；只在明确授权后执行"],
         "hub": ["未登录时填写会丢失表单内容；最终提交必须人工判断"],
         "retag": ["HUB 编号错误会导致镜像 tag 和归档字段错误"],
@@ -877,6 +976,7 @@ def default_checks(action: str) -> list[str]:
     return {
         "download": ["URL 属于预期来源", "文件大小和协议符合限制", "失败原因已记录"],
         "extract": ["预览无路径穿越", "文件数量和体积可接受", "资源类型已识别"],
+        "dockerizer": ["已列出源码、上游 Dockerfile/compose、端口、启动命令和高风险依赖", "已明确生成 CloverSec 平台契约文件，不直接沿用上游 Dockerfile", "用户已确认 CONFIG PROPOSAL 后再写入 Dockerfile/start.sh/changeflag.sh/flag"],
         "docker": ["只执行受信样例或用户授权题目", "目标平台为 linux/amd64", "日志和端口探测会保存"],
         "hub": ["用户已在浏览器登录 Hub", "分类 ID 已确认", "停止在最终提交前"],
         "retag": ["HUB 编号来自审核结果", "源镜像存在", "输出 tar 路径正确"],
@@ -887,6 +987,8 @@ def default_checks(action: str) -> list[str]:
 
 def allowed_actions(action: str) -> list[str]:
     base = ["read_local_files", "write_json_reports", "write_markdown_reports"]
+    if action == "dockerizer":
+        base.extend(["write_platform_delivery_after_user_confirmation", "run_static_validate"])
     if action in {"archive", "final", "hub"}:
         base.append("copy_declared_files")
     if action == "docker":
@@ -898,6 +1000,8 @@ def forbidden_actions(action: str) -> list[str]:
     items = ["hide_failed_checks", "invent_missing_ids", "discard_full_flag_from_xlsx"]
     if action == "hub":
         items.extend(["read_browser_secrets", "click_final_submit", "fill_form_before_login"])
+    if action == "dockerizer":
+        items.extend(["treat_upstream_dockerfile_as_final_delivery", "write_delivery_files_before_config_proposal_acceptance"])
     if action == "docker":
         items.append("run_unknown_image_without_user_approval")
     return items

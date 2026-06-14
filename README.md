@@ -10,7 +10,7 @@
 
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.3.4-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.3.5-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -79,7 +79,7 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.3.4
+Git 引用：v0.3.5
 稀疏路径：留空
 ```
 
@@ -88,7 +88,7 @@ Git 引用：v0.3.4
 当然也可以使用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.4
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.5
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -189,6 +189,7 @@ codex plugin add cloversec-ctf-forexample@cloversec-ctf
 - 上游 `docker-compose.yml` 不作为最终平台交付物。
 - 直接 `docker build/run` 只能作为验证证据，不能替代平台改造。
 - 容器题最终必须符合 `/start.sh`、`/changeflag.sh`、`/flag`、端口、amd64、镜像 tar 和 xlsx 字段要求。
+- 容器题或源码题没有完成 Dockerizer 方案确认时，批量报告会写 `Dockerizer 改造待确认`，失败案例库会记录 `platform_conversion_required`，不能进入可归档状态。
 - 不可复现的题目要明确写 `未验证`、`缺源码`、`缺附件`、`缺运行证据`，不能为了凑数量写成完成。
 
 ## Usage
@@ -634,7 +635,7 @@ gh auth login
 - zip/tar 先做安全预览，检查路径穿越、文件数量和解压体积。
 - 人工确认后再进入 `downloads_accepted/` 或题目目录。
 - `v0.3.2` 会对本地资源目录生成 `resource_classification.json` 和 `container_inference.json`，识别 Docker/compose/source archive/attachment/writeup/screenshot/pcap/binary/database/Docker image tar，并推荐下一步 skill 和 Docker 验证等级。
-- `v0.3.4` 会把低置信度搜索结果转成带人工确认原因的 `ctf_cases.jsonl`，并支持把用户确认后的浏览器可见内容导入为 evidence。Medium、InfosecWriteups 等返回 403 时，可以把可见页面标题、链接、摘要或正文片段交给浏览器辅助导入工具。
+- `v0.3.5` 会把低置信度搜索结果转成带人工确认原因的 `ctf_cases.jsonl`，并支持把用户确认后的浏览器可见内容导入为 evidence。Medium、InfosecWriteups 等返回 403 时，可以把可见页面标题、链接、摘要或正文片段交给浏览器辅助导入工具。
 
 现实边界：
 
@@ -722,7 +723,7 @@ python3 scripts/package_plugin_release.py
 发布到 GitHub Release 后，Codex 可以按 tag 安装：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.4
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.5
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 

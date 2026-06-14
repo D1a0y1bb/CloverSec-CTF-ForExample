@@ -200,9 +200,11 @@ proof/hashes.json
 
 1. 先运行 `cloversec_ctf_resource_classify`，得到 `resource_classification.json`。
 2. 再运行 `cloversec_ctf_container_infer`，得到 `container_inference.json`。
-3. 根据 `summary.recommended_validation_level` 生成 Docker 验证计划。
-4. 只有用户明确授权时，才执行 `cloversec_ctf_docker_execute`。
-5. 质量检查完成后，运行 `cloversec_ctf_proof_pack` 生成 `proof/`。
+3. 如果 `must_use_dockerizer=true`，先运行 `cloversec_ctf_confirmation_request action=dockerizer`，把 Dockerizer 改造方案、风险和确认项交给用户。
+4. 用户确认后再使用 `cloversec-ctf-build-dockerizer` 生成或校验 CloverSec 平台交付件。
+5. 根据 `summary.recommended_validation_level` 生成 Docker 验证计划。
+6. 只有用户明确授权时，才执行 `cloversec_ctf_docker_execute`。
+7. 质量检查完成后，运行 `cloversec_ctf_proof_pack` 生成 `proof/`。
 
 验证等级：
 
@@ -214,7 +216,9 @@ proof/hashes.json
 
 `proof/` 用于审核复核，不替代最终人工判断。
 
-## 0.3.4 手册、Hub、归档和批量交接
+没有 Dockerizer 方案确认或 `platform_contract_verified=true` 证据时，批量报告必须标 `Dockerizer 改造待确认`，失败案例库必须记录 `platform_conversion_required`，不得把题目写成可归档。
+
+## 0.3.5 手册、Hub、归档和批量交接
 
 ### 手册质量
 

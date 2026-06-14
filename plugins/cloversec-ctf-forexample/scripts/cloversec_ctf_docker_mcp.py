@@ -11,7 +11,7 @@ from typing import Any
 import cloversec_ctf_docker as docker_runner
 
 
-SERVER_VERSION = "0.3.4"
+SERVER_VERSION = "0.3.5"
 
 TOOLS = [
     {

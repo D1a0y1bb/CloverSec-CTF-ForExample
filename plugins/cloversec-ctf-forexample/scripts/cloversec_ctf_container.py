@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "0.3.4"
+VERSION = "0.3.5"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}
@@ -424,6 +424,9 @@ def build_platform_delivery_policy(project_type: str) -> dict[str, Any]:
         "must_use_dockerizer": must_use_dockerizer,
         "existing_docker_is_reference_only": project_type in {"container_project", "compose_project"},
         "final_delivery_skill": "cloversec-ctf-build-dockerizer" if must_use_dockerizer else "",
+        "requires_user_confirmation": must_use_dockerizer,
+        "confirmation_action": "dockerizer" if must_use_dockerizer else "",
+        "blocking_until_confirmed": must_use_dockerizer,
         "docker_validation_is_evidence_only": project_type in {"container_project", "compose_project", "docker_image_delivery"},
     }
 

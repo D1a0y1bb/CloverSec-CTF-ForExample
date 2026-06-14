@@ -14,7 +14,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_container as container
 
 
-SERVER_VERSION = "0.3.4"
+SERVER_VERSION = "0.3.5"
 
 TOOLS = [
     {
@@ -173,7 +173,7 @@ TOOLS = [
     },
     {
         "name": "cloversec_ctf_confirmation_request",
-        "description": "Create confirmation_request.json/md before download, extract, Docker, Hub, retag, archive, or final output.",
+        "description": "Create confirmation_request.json/md before download, extract, Dockerizer conversion, Docker execution, Hub, retag, archive, or final output.",
         "inputSchema": {
             "type": "object",
             "properties": {

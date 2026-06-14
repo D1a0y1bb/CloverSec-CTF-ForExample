@@ -34,6 +34,8 @@ class ResourceClassificationTests(unittest.TestCase):
             self.assertEqual(payload["final_delivery_skill"], "cloversec-ctf-build-dockerizer")
             self.assertTrue(payload["root_classification"]["platform_delivery"]["must_use_dockerizer"])
             self.assertTrue(payload["root_classification"]["platform_delivery"]["existing_docker_is_reference_only"])
+            self.assertTrue(payload["root_classification"]["platform_delivery"]["blocking_until_confirmed"])
+            self.assertEqual(payload["root_classification"]["platform_delivery"]["confirmation_action"], "dockerizer")
             self.assertIn("platform_conversion", {item["type"] for item in payload["recommendations"]})
             by_name = {item["name"]: item for item in payload["resources"]}
             self.assertEqual(by_name["docker-compose.yml"]["resource_type"], "compose_file")

@@ -321,7 +321,7 @@
 - [x] 已创建独立平台契约验收线程 `019ec4a0-fbf9-7311-b3a8-b9f0e12ce707`：使用安装版 `0.3.3` 的本机 Dockerfile/compose 样例验证流程，不执行 Docker build/run；报告路径为 `/Users/d1a0y1bb/Documents/Codex/2026-06-14/cloversec-plugin-e2e-contract-033/outputs/cloversec-plugin-e2e-contract-report.md`。
 - [x] 平台契约验收结果：安装版 `0.3.3` 没有把上游 Dockerfile 当成 CloverSec 可交付；`workflow.py render` 在未接受 proposal 时返回 `CONFIG_PROPOSAL_NOT_ACCEPTED`，退出码 `2`，没有生成 `challenge.yaml`、`start.sh`、`changeflag.sh` 或 `flag`。
 - [x] 安装版 `v0.3.3` 契约字段复测发现：`container_inference.json` 缺少顶层 `platform_contract_required` / `must_use_dockerizer`，自然语言 Agent 可能漏读平台改造要求；当前工作区已把资源分类和容器推断的顶层字段补齐，并通过脚本复测。
-- [ ] 旧测试线程真实题目问题仍需用户判断：Pasteboard 构建连接中断、Firewall 依赖 eBPF/tc 不适配 Docker Desktop、3 个 pwn/jail privileged 运行出现 `init seccomp: operation canceled`、Vibe Code solver 服务提前断开。0.3.4 的职责是把这些题目标成未通过并写入待处理事项；是否改造、降级验收或剔除需要按题目决定，插件不能替用户决定。
+- [x] 旧测试线程真实题目问题已转为强制 Dockerizer 改造确认策略：Pasteboard 构建连接中断、Firewall 依赖 eBPF/tc 不适配 Docker Desktop、3 个 pwn/jail privileged 运行出现 `init seccomp: operation canceled`、Vibe Code solver 服务提前断开这类问题，插件会把容器题或源码题标成 `Dockerizer 改造待确认`，批量报告阻断可归档，失败案例库记录 `platform_conversion_required`；用户仍需要在改造、降级验收或剔除之间做最终判断。
 
 ## v0.3.4 开发与验收记录
 
@@ -336,3 +336,14 @@
 - [x] `v0.3.4` Release 已发布：[v0.3.4](https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.3.4)。
 - [x] 本机 Codex 插件已更新到 `0.3.4`：`codex plugin list` 显示 `cloversec-ctf-forexample@cloversec-ctf` 为 installed/enabled `0.3.4`。
 - [x] 安装版插件复测完成：从 `/Users/d1a0y1bb/.codex/plugins/cache/cloversec-ctf/cloversec-ctf-forexample/0.3.4` 执行归档、中文交付包和 8 个 MCP 初始化/工具列表检查，确认中文目录、无数字前缀、未验证题目标 `是否归档=否`、镜像 tar 为引用模式。
+
+## v0.3.5 开发与验收记录
+
+- [x] 新增 Dockerizer 改造确认 gate：容器题、compose 项目、源码型在线题如果没有 `dockerizer.status=accepted/rendered/validated/completed` 或 `docker_artifacts.platform_contract_verified=true`，会进入 `Dockerizer 改造待确认`。
+- [x] 批量报告和失败案例库已阻断未确认容器源码题：`batch_status_report` 写 `可归档=否`，`failure_cases.jsonl` 写 `platform_conversion_required`。
+- [x] `confirmation_request` 新增 `dockerizer` 动作，用于在写 Dockerfile/start.sh/changeflag.sh/flag 前，把 CONFIG PROPOSAL、风险和确认项交给用户。
+- [x] `resource_classification.json` 和 `container_inference.json` 已增加 `confirmation_action=dockerizer`、`blocking_until_confirmed=true`。
+- [x] 新增 `scripts/bump_version.py`，后续发布前可统一替换插件版本、README 安装 tag、脚本版本和测试预期。
+- [x] 发布前本地验证完成：相关测试 22 个通过，全量 unittest 117 个通过，官方 plugin 校验通过，release 校验通过。
+- [x] 发布前真实 LLM 验证完成：`gpt-5.5` 主验收通过；`gpt-5.4-mini` 仅作为字段约束压力测试，严格字段提示下通过，宽松提示下曾输出近义字段，已通过插件提示和 skill 提示修正。
+- [x] v0.3.5 验证记录已写入 `docs/validation/v0.3.5-dockerizer-gate-llm-validation.md`。

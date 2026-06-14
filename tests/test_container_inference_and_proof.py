@@ -46,6 +46,8 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertTrue(payload["existing_docker_is_reference_only"])
         self.assertEqual(payload["final_delivery_skill"], "cloversec-ctf-build-dockerizer")
         self.assertTrue(payload["platform_delivery"]["existing_docker_is_reference_only"])
+        self.assertTrue(payload["platform_delivery"]["blocking_until_confirmed"])
+        self.assertEqual(payload["platform_delivery"]["confirmation_action"], "dockerizer")
         self.assertIn("cloversec-ctf-build-dockerizer", " ".join(payload["next_actions"]))
         self.assertIn("18080:8080", payload["summary"]["ports"])
         self.assertEqual(payload["dockerfile"]["base_images"], ["python:3.12-alpine"])
@@ -180,7 +182,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.3.4")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.3.5")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_NAME = "cloversec-ctf-forexample"
 PLUGIN = ROOT / "plugins" / PLUGIN_NAME
 DIST = ROOT / "dist"
+RELEASE_NOTES = ROOT / "docs" / "release-notes"
 
 
 def main() -> int:
@@ -36,24 +37,7 @@ def main() -> int:
         add_file(archive, ROOT / "README.md")
 
     notes = DIST / "release-notes.md"
-    notes.write_text(
-        "\n".join(
-            [
-                f"# {display_name} {version}",
-                "",
-                "Install as a Codex marketplace from GitHub:",
-                "",
-                "```bash",
-                f"codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v{version}",
-                "codex plugin add cloversec-ctf-forexample@cloversec-ctf",
-                "```",
-                "",
-                "Release assets include a plugin-only zip and a repo-marketplace zip.",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    notes.write_text(render_release_notes(display_name, version), encoding="utf-8")
 
     shutil.make_archive(str(DIST / archive_base), "gztar", root_dir=PLUGIN.parent, base_dir=PLUGIN_NAME)
     print(f"created release artifacts in {DIST}")
@@ -74,6 +58,27 @@ def add_dir(archive: zipfile.ZipFile, source: Path, *, prefix: Path) -> None:
 
 def add_file(archive: zipfile.ZipFile, path: Path) -> None:
     archive.write(path, path.relative_to(ROOT).as_posix())
+
+
+def render_release_notes(display_name: str, version: str) -> str:
+    custom = RELEASE_NOTES / f"v{version}.md"
+    if custom.is_file():
+        return custom.read_text(encoding="utf-8")
+    return "\n".join(
+        [
+            f"# {display_name} {version}",
+            "",
+            "Install as a Codex marketplace from GitHub:",
+            "",
+            "```bash",
+            f"codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v{version}",
+            "codex plugin add cloversec-ctf-forexample@cloversec-ctf",
+            "```",
+            "",
+            "Release assets include a plugin-only zip and a repo-marketplace zip.",
+            "",
+        ]
+    )
 
 
 if __name__ == "__main__":
