@@ -333,5 +333,6 @@
 - [x] 发布前完整测试完成：官方 plugin 校验、release 校验、全量 unittest、真实 fixture 流程、8 个 MCP server 初始化/工具列表与安全调用、真实 LLM 大小模型测试、独立 Codex 线程黑盒测试均已执行。
 - [x] 独立黑盒线程 `019ec513-d7ee-7300-aa67-b4360c6020d0` 重跑通过：115 个 unittest、fixture 流程、中文目录、镜像 tar 引用、`是否归档` 修复、xlsx/语雀表、Hub 草稿停止点和 8 个 MCP 安全调用均通过。
 - [x] 黑盒线程非通过状态已确认是输入或人工确认边界：fixture `evidence` 为空导致 `validate-collection --json` 返回 1；Hub draft 缺分类 ID、上传结果和部分字段，所以保持 `needs_input`；delivery 只复制本次 final 目录能识别的材料，不创建空目录。
-- [ ] `v0.3.4` Release 待发布。
-- [ ] 本机 Codex 插件待更新到 `0.3.4`。
+- [x] `v0.3.4` Release 已发布：[v0.3.4](https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.3.4)。
+- [x] 本机 Codex 插件已更新到 `0.3.4`：`codex plugin list` 显示 `cloversec-ctf-forexample@cloversec-ctf` 为 installed/enabled `0.3.4`。
+- [x] 安装版插件复测完成：从 `/Users/d1a0y1bb/.codex/plugins/cache/cloversec-ctf/cloversec-ctf-forexample/0.3.4` 执行归档、中文交付包和 8 个 MCP 初始化/工具列表检查，确认中文目录、无数字前缀、未验证题目标 `是否归档=否`、镜像 tar 为引用模式。
