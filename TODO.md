@@ -345,5 +345,8 @@
 - [x] `resource_classification.json` 和 `container_inference.json` 已增加 `confirmation_action=dockerizer`、`blocking_until_confirmed=true`。
 - [x] 新增 `scripts/bump_version.py`，后续发布前可统一替换插件版本、README 安装 tag、脚本版本和测试预期。
 - [x] 发布前本地验证完成：相关测试 22 个通过，全量 unittest 117 个通过，官方 plugin 校验通过，release 校验通过。
-- [x] 发布前真实 LLM 验证完成：`gpt-5.5` 主验收通过；`gpt-5.4-mini` 仅作为字段约束压力测试，严格字段提示下通过，宽松提示下曾输出近义字段，已通过插件提示和 skill 提示修正。
+- [x] 发布前真实 LLM 验证完成：`gpt-5.5` 作为工程化主验收模型通过；`gpt-5.4-mini` 只保留为字段约束压力测试，不作为真实工程流程验收依据。严格字段提示下 mini 通过，宽松提示下曾输出近义字段，已通过插件提示和 skill 提示修正。
 - [x] v0.3.5 验证记录已写入 `docs/validation/v0.3.5-dockerizer-gate-llm-validation.md`。
+- [x] `v0.3.5` Release 已发布：[v0.3.5](https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases/tag/v0.3.5)，包含 repo marketplace、plugin zip、tar.gz 和 release notes。
+- [x] 本机 Codex 插件已更新到 `0.3.5`：`codex plugin list` 显示 `cloversec-ctf-forexample@cloversec-ctf` 为 installed/enabled `0.3.5`。
+- [x] 安装版插件复测完成：从 `/Users/d1a0y1bb/.codex/plugins/cache/cloversec-ctf/cloversec-ctf-forexample/0.3.5` 执行 8 个 MCP server 初始化和工具列表检查，全部返回 `version=0.3.5` 且工具数量非空。
