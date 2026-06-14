@@ -49,7 +49,7 @@
       "skills": ["cloversec-ctf-archive-packager", "cloversec-ctf-final-report", "cloversec-ctf-batch-reporter"],
       "mcp_tools": ["cloversec_ctf_archive_preview", "cloversec_ctf_manifest_lock", "cloversec_ctf_archive_batch", "cloversec_ctf_batch_status_report"],
       "inputs": ["reviewed cases", "Hub 编号", "镜像 tar", "手册和附件"],
-      "outputs": ["archive_preview.json", "manifest.lock.json", "archive.xlsx", "yuque_table.md", "batch_status_report.xlsx"]
+      "outputs": ["archive_preview.json", "manifest.lock.json", "最终归档表.xlsx", "语雀粘贴表.md", "最终报告.md", "batch_status_report.xlsx"]
     }
   ]
 }

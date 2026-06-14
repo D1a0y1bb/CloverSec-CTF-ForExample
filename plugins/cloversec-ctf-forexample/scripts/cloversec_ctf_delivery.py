@@ -145,6 +145,7 @@ def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Path]
     selected["final_xlsx"] = first_existing(
         outputs_dir,
         [
+            "*最终归档表.xlsx",
             "*completed_final_archive.xlsx",
             "*after_docker_final_archive.xlsx",
             "*final_archive.xlsx",
@@ -153,9 +154,9 @@ def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Path]
     )
     selected["reviewed_xlsx"] = first_existing(outputs_dir, ["*reviewed_archive.xlsx"])
     selected["after_docker_xlsx"] = first_existing(outputs_dir, ["*after_docker.xlsx"])
-    selected["yuque_table"] = first_existing(outputs_dir, ["*completed_yuque_table.md", "*after_docker_yuque_table.md", "*yuque_table.md"])
-    selected["final_report_md"] = first_existing(outputs_dir, ["*completed_final_report.md", "*after_docker_final_report.md", "*final_report.md"])
-    selected["final_report_json"] = first_existing(outputs_dir, ["*completed_final_report.json", "*after_docker_final_report.json", "*final_report.json"])
+    selected["yuque_table"] = first_existing(outputs_dir, ["*语雀粘贴表.md", "*completed_yuque_table.md", "*after_docker_yuque_table.md", "*yuque_table.md"])
+    selected["final_report_md"] = first_existing(outputs_dir, ["*最终报告.md", "*completed_final_report.md", "*after_docker_final_report.md", "*final_report.md"])
+    selected["final_report_json"] = first_existing(outputs_dir, ["*最终报告.json", "*completed_final_report.json", "*after_docker_final_report.json", "*final_report.json"])
     selected["quality_summary_md"] = first_existing(outputs_dir, ["*quality_summary.md"])
     selected["quality_summary_json"] = first_existing(outputs_dir, ["*quality_summary.json"])
     selected["docker_summary_md"] = first_existing(outputs_dir, ["*docker_execution_summary.md"])

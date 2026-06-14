@@ -954,7 +954,7 @@ def infer_action_outputs(action: str, case: dict[str, Any]) -> list[str]:
         "hub": ["hub_draft.json", "hub_upload_manifest.json", "hub_diff_report.md"],
         "retag": ["retag_plan.json", "image tar"],
         "archive": ["archive_manifest.json", "manifest.lock.json"],
-        "final": ["archive.xlsx", "yuque_table.md", "final_report.md"],
+        "final": ["最终归档表.xlsx", "语雀粘贴表.md", "最终报告.md"],
     }
     return mapping.get(action, [case_id(case)])
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Container Validator"
   short_description: "识别容器题、选择 Docker 验证等级并生成 proof 证据包"
-  default_prompt: "使用 $cloversec-ctf-container-validator 生成 container_inference.json；优先调用 cloversec_ctf_container_infer，再用 cloversec_ctf_docker_validation_plan 生成 Docker 验证等级计划，最后用 cloversec_ctf_proof_pack 整理 proof 证据包。Dockerfile/compose 的 build/run 结果只是证据。未确认 Dockerizer 方案时必须写 confirmation_action=dockerizer、failure_category=platform_conversion_required、can_archive=false。"
+  default_prompt: "使用 $cloversec-ctf-container-validator 生成 container_inference.json；优先调用 cloversec_ctf_container_infer，再用 cloversec_ctf_docker_validation_plan 生成 Docker 验证等级计划，最后用 cloversec_ctf_proof_pack 整理 proof 证据包。源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 在线服务题最终都必须经过 cloversec-ctf-build-dockerizer；Dockerfile/compose 的 build/run 结果只是证据，不替代平台契约。未确认 Dockerizer 方案时必须写 confirmation_action=dockerizer、failure_category=platform_conversion_required、next_skill=cloversec-ctf-build-dockerizer、can_archive=false。"

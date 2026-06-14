@@ -436,8 +436,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py lock --c
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py batch-report --cases ctf_cases.jsonl --output-dir batch_report
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py visible-content-evidence --input visible_results.json --evidence-dir evidence --output visible_content_evidence.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl archive.xlsx
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx archive.xlsx
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl 最终归档表.xlsx
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx 最终归档表.xlsx
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py summary ctf_cases.jsonl
 ```
 
@@ -575,7 +575,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate
 - `cloversec_ctf_archive.py`：`是否归档`、`归档目录`、`环境包/附件包路径`
 - `cloversec_ctf_review.py`：`验证状态`、`是否通过`、`问题`、`手册状态`
 - `cloversec_ctf_retag.py`：`HUB编号`、`环境包/附件包路径`
-- `cloversec_ctf_final.py`：生成最终 `archive.xlsx`，其中 `Flag` 必须完整保留
+- `cloversec_ctf_final.py`：生成 `最终归档表.xlsx`、`语雀粘贴表.md`、`最终报告.md`，其中 `Flag` 必须完整保留；同时保留 `archive.xlsx`、`yuque_table.md`、`final_report.md` 兼容副本
 
 `quality_review.json` 使用 `pass`、`fail`、`skip` 三种状态。没有真实 Docker run 或按手册解题记录时，对应检查必须是 `skip`。
 受控 Docker 执行只在显式传入 `--execute-docker` 或 `--execute` 时运行，并把命令、退出码、平台、日志路径、端口探测、tar SHA256 写入结构化证据。

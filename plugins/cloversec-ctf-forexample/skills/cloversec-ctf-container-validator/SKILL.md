@@ -30,6 +30,14 @@ description: CloverSec CTF 容器题识别与验证分级 skill。用于从 Dock
 - 没有 Dockerizer 方案确认或 `platform_contract_verified=true` 证据时，容器题只能标 `Dockerizer 改造待确认`，不能写成可归档。
 - 输出机器字段时必须使用精确值：`confirmation_action=dockerizer`、`failure_category=platform_conversion_required`、`next_skill=cloversec-ctf-build-dockerizer`、`can_archive=false`。
 
+## 平台契约摘要
+
+- 只要涉及题目镜像构建、源码服务、Dockerfile、compose、镜像 tar、端口服务或 Web/Pwn 在线服务，最终平台交付必须经过 `cloversec-ctf-build-dockerizer`。
+- 上游 Dockerfile、compose 和原始镜像只能用于推断端口、依赖、启动命令和风险，不能直接进入最终交付。
+- Dockerizer 方案未确认时，容器验证只能输出证据和待确认项，不能把题目写成可归档。
+- 平台交付证据至少覆盖：`Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`environment`、`docker_artifacts`、`xlsx_fields`、`linux/amd64`、端口一致性。
+- `cloversec-ctf-docker` 的 build/run/probe 结果只能说明环境启动情况，不替代 Dockerizer 平台改造。
+
 ## 常用命令
 
 ```bash

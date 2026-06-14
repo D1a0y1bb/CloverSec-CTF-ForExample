@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -42,16 +43,21 @@ def create_final_outputs(
     output = Path(output_dir)
     path_base = Path(base_dir).expanduser().resolve() if base_dir else None
     output.mkdir(parents=True, exist_ok=True)
-    xlsx_path = output / "archive.xlsx"
-    yuque_path = output / "yuque_table.md"
-    report_path = output / "final_report.md"
-    json_path = output / "final_report.json"
+    xlsx_path = output / "最终归档表.xlsx"
+    yuque_path = output / "语雀粘贴表.md"
+    report_path = output / "最终报告.md"
+    json_path = output / "最终报告.json"
+    legacy_xlsx_path = output / "archive.xlsx"
+    legacy_yuque_path = output / "yuque_table.md"
+    legacy_report_path = output / "final_report.md"
+    legacy_json_path = output / "final_report.json"
 
     rows = [data.case_to_xlsx_row(case) for case in cases]
     validation_errors = []
     for index, case in enumerate(cases, start=1):
         validation_errors.extend(f"case {index}: {error}" for error in data.validate_case(case))
     data.write_xlsx(cases, xlsx_path)
+    shutil.copyfile(xlsx_path, legacy_xlsx_path)
     read_back = data.read_xlsx(xlsx_path)
 
     entries = [_final_entry(case, row, path_base) for case, row in zip(cases, rows)]
@@ -67,6 +73,16 @@ def create_final_outputs(
         "yuque_table_path": yuque_path.as_posix(),
         "report_path": report_path.as_posix(),
         "json_path": json_path.as_posix(),
+        "legacy_xlsx_path": legacy_xlsx_path.as_posix(),
+        "legacy_yuque_table_path": legacy_yuque_path.as_posix(),
+        "legacy_report_path": legacy_report_path.as_posix(),
+        "legacy_json_path": legacy_json_path.as_posix(),
+        "legacy_paths": {
+            "archive_xlsx": legacy_xlsx_path.as_posix(),
+            "yuque_table": legacy_yuque_path.as_posix(),
+            "final_report_md": legacy_report_path.as_posix(),
+            "final_report_json": legacy_json_path.as_posix(),
+        },
         "xlsx_readback_rows": len(read_back),
         "remaining_actions": len(remaining_actions),
     }
@@ -75,9 +91,15 @@ def create_final_outputs(
         "entries": entries,
         "remaining_actions": remaining_actions,
     }
-    yuque_path.write_text(render_yuque_table(rows), encoding="utf-8")
-    report_path.write_text(render_final_report(payload), encoding="utf-8")
-    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    yuque_content = render_yuque_table(rows)
+    report_content = render_final_report(payload)
+    json_content = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    yuque_path.write_text(yuque_content, encoding="utf-8")
+    report_path.write_text(report_content, encoding="utf-8")
+    json_path.write_text(json_content, encoding="utf-8")
+    legacy_yuque_path.write_text(yuque_content, encoding="utf-8")
+    legacy_report_path.write_text(report_content, encoding="utf-8")
+    legacy_json_path.write_text(json_content, encoding="utf-8")
     return payload
 
 
@@ -97,8 +119,9 @@ def render_final_report(payload: dict[str, Any]) -> str:
         "# 最终归档报告",
         "",
         f"- 题目数量：{summary.get('total', 0)}",
-        f"- xlsx：{summary.get('xlsx_path', '')}",
+        f"- 最终归档表：{summary.get('xlsx_path', '')}",
         f"- 语雀粘贴表：{summary.get('yuque_table_path', '')}",
+        f"- 最终报告：{summary.get('report_path', '')}",
         f"- xlsx 回读行数：{summary.get('xlsx_readback_rows', 0)}",
         f"- 待处理事项：{summary.get('remaining_actions', 0)}",
         "",

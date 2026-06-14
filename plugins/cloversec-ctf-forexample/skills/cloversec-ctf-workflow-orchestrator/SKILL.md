@@ -82,6 +82,14 @@ reports/
 - `next_skill`: `cloversec-ctf-build-dockerizer`
 - `can_archive`: `false`
 
+## 容器题平台契约摘要
+
+- 批量流程中发现源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 服务题或需要构建镜像时，必须把该题交给 `cloversec-ctf-build-dockerizer`。
+- 原始 Dockerfile/compose/镜像只作为迁移输入；没有 Dockerizer 产物和确认记录时，不能进入最终归档可交付状态。
+- Dockerizer 未确认时，批量状态写 `Dockerizer 改造待确认`，失败库写 `platform_conversion_required`，归档状态写 `can_archive=false`。
+- 交付证据必须覆盖 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`environment`、`docker_artifacts`、`xlsx_fields`、端口、`linux/amd64`。
+- 直接 Docker build/run/probe 只能证明运行现象，不代表符合 CloverSec 平台契约。
+
 ## 常用命令
 
 创建任务：

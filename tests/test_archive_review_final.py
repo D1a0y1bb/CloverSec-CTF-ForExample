@@ -228,11 +228,14 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             case = review.apply_review_outputs(case, quality)
 
             payload = final.create_final_outputs([case], tmp_path / "final")
-            rows = data.read_xlsx(tmp_path / "final" / "archive.xlsx")
-            yuque = (tmp_path / "final" / "yuque_table.md").read_text(encoding="utf-8")
+            rows = data.read_xlsx(tmp_path / "final" / "最终归档表.xlsx")
+            yuque = (tmp_path / "final" / "语雀粘贴表.md").read_text(encoding="utf-8")
 
             self.assertEqual(payload["summary"]["total"], 1)
             self.assertEqual(payload["summary"]["xlsx_readback_rows"], 1)
+            self.assertTrue((tmp_path / "final" / "archive.xlsx").exists())
+            self.assertTrue((tmp_path / "final" / "yuque_table.md").exists())
+            self.assertTrue((tmp_path / "final" / "final_report.md").exists())
             self.assertEqual(rows[0]["Flag"], "flag{stage-six-full-flag}")
             self.assertIn("flag{stage-six-full-flag}", yuque)
             self.assertGreater(payload["summary"]["remaining_actions"], 0)
@@ -377,6 +380,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((tmp_path / "archive" / "_batch" / "batch_archive_summary.json").exists())
             self.assertTrue((tmp_path / "archive" / "_batch" / "batch_archive_report.md").exists())
             self.assertTrue((tmp_path / "ctf_cases.archived.jsonl").exists())
+            self.assertTrue((tmp_path / "final" / "最终归档表.xlsx").exists())
             self.assertTrue((tmp_path / "final" / "archive.xlsx").exists())
 
     def test_archive_runner_writes_resource_index_missing_report_and_final_outputs(self):

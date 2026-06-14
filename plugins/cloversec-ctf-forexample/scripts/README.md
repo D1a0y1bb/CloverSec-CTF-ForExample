@@ -6,8 +6,8 @@
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl archive.xlsx
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx archive.xlsx
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl 最终归档表.xlsx
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx 最终归档表.xlsx
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py summary ctf_cases.jsonl
 ```
 
@@ -264,8 +264,9 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive_runner.py
 - `archive_out/_batch/resource_index.json`
 - `archive_out/_batch/missing_report.md`
 - `archive_out/_batch/ctf_cases.archived.jsonl`
-- `archive_out/_final/archive.xlsx`
-- `archive_out/_final/yuque_table.md`
+- `archive_out/_final/最终归档表.xlsx`
+- `archive_out/_final/语雀粘贴表.md`
+- 兼容副本：`archive_out/_final/archive.xlsx`、`archive_out/_final/yuque_table.md`
 
 ## `cloversec_ctf_quality_runner.py`
 
@@ -553,11 +554,18 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate
 
 输出文件：
 
+- `final_out/最终归档表.xlsx`
+- `final_out/语雀粘贴表.md`
+- `final_out/最终报告.md`
+- `final_out/最终报告.json`
+
+兼容副本：
+
 - `final_out/archive.xlsx`
 - `final_out/yuque_table.md`
 - `final_out/final_report.md`
 - `final_out/final_report.json`
 
-`archive.xlsx` 和 `yuque_table.md` 均按内部归档字段写入完整 `Flag`，不要放到公开渠道。
+`最终归档表.xlsx` 和 `语雀粘贴表.md` 均按内部归档字段写入完整 `Flag`，不要放到公开渠道。
 
 如果 cases 里保存的是 `work/...` 这类相对路径，`--base-dir` 填线程或项目根目录。否则最终报告可能在不同执行目录下误判归档目录或附件不存在。

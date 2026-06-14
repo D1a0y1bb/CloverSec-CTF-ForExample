@@ -130,6 +130,7 @@ class ResourceClassificationTests(unittest.TestCase):
         messages = [
             {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "cloversec_ctf_platform_contract", "arguments": {}}},
         ]
         result = subprocess.run(
             [sys.executable, str(server)],
@@ -141,9 +142,13 @@ class ResourceClassificationTests(unittest.TestCase):
         )
         lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
         tools = [item["name"] for item in lines[1]["result"]["tools"]]
+        contract = json.loads(lines[2]["result"]["content"][0]["text"])
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("cloversec_ctf_resource_classify", tools)
+        self.assertIn("cloversec_ctf_platform_contract", tools)
+        self.assertEqual(contract["must_use_skill"], "cloversec-ctf-build-dockerizer")
+        self.assertFalse(contract["blocking_fields"]["can_archive"])
 
 
 def add_tar_file(archive: tarfile.TarFile, name: str, body: bytes) -> None:

@@ -65,7 +65,7 @@
 | Hub 发布准备 | Hub 草稿、上传清单、截图清单、字段差异、浏览器辅助计划、提交前人工确认 |
 | 审核后处理 | Hub 审核状态、Hub 编号回填、镜像命名计划、镜像 tag 计划、tar 导出记录 |
 | 批量交接 | 批量状态报告、人工确认请求、阶段通知、失败案例库 |
-| 最终交付 | `archive.xlsx`、`yuque_table.md`、`final_report.md` |
+| 最终交付 | `交付包-.../交付说明.md`、`最终表格/最终归档表.xlsx`、`语雀归档表/语雀粘贴表.md`、`质量检查报告/最终报告.md` |
 
 ## Amazing Demo
 
@@ -156,8 +156,8 @@ codex plugin add cloversec-ctf-forexample@cloversec-ctf
 | 手册字段 | `生成手册、Hub 字段和 xlsx 字段，完整 Flag 写入内部字段` | `manual_filled_draft.md`、`hub_fields.json`、`xlsx_fields.json` |
 | 归档质检 | `生成归档目录、proof 包和质量检查报告` | `archive/`、`quality_review.json`、`proof/` |
 | Hub 准备 | `生成 Hub 草稿和 Chrome 填表计划，最终提交前停止` | `hub_draft.json`、`hub_chrome_plan.json` |
-| 最终交付 | `生成最终报告、archive.xlsx 和语雀表` | `final_report.md`、`archive.xlsx`、`yuque_table.md` |
-| 中文交付包 | `把 work 和 outputs 整理成给人看的中文交付目录` | `交付说明.md`、`最终表格/`、`镜像包清单/` |
+| 最终交付 | `生成给人接手看的中文交付包` | `交付说明.md`、`最终表格/最终归档表.xlsx`、`语雀归档表/语雀粘贴表.md` |
+| 过程兼容文件 | `保留脚本和批处理需要的英文副本` | `archive.xlsx`、`yuque_table.md`、`final_report.md` |
 
 `workflow_state.json` 是批处理状态文件。中断后可以继续说：
 
@@ -541,14 +541,16 @@ retag_inputs.json
 基于归档结果生成最终报告、xlsx 和语雀表。
 ```
 
-Codex 会使用 `cloversec-ctf-final-report`。常见输出：
+Codex 会使用 `cloversec-ctf-final-report`。对人展示的最终交付使用中文文件名：
 
 ```text
-final_report.md
-archive.xlsx
-yuque_table.md
-final_report.json
+最终报告.md
+最终归档表.xlsx
+语雀粘贴表.md
+最终报告.json
 ```
+
+脚本仍会同时写出 `final_report.md`、`archive.xlsx`、`yuque_table.md`、`final_report.json`，这些是兼容旧批处理和已有测试数据的过程文件，不作为给人接手看的最终交付名称。
 
 如果归档字段里是 `work/...` 这种相对路径，生成最终报告时会带上 `--base-dir <线程根目录>`。这样换目录执行时也能正确识别归档目录、附件和镜像包。
 
@@ -579,7 +581,7 @@ Codex 会使用 `cloversec_ctf_delivery.py` 生成面向人查看的交付包。
 最常见的一条完整链路：
 
 ```text
-收集线索 -> 下载材料 -> 容器化/附件检查 -> 生成手册 -> 手册质量检查 -> 归档预览/锁定 -> 质量检查 -> Hub 草稿 -> Hub 审核状态/retag -> 最终报告 -> 中文交付包
+收集线索 -> 下载材料 -> 容器化/附件检查 -> 生成手册 -> 手册质量检查 -> 归档预览/锁定 -> 质量检查 -> Hub 草稿 -> Hub 审核状态/retag -> 最终中文交付
 ```
 
 ## Workflow

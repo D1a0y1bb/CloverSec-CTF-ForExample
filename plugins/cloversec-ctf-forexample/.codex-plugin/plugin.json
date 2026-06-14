@@ -1,9 +1,9 @@
 {
   "name": "cloversec-ctf-forexample",
   "version": "0.3.5",
-  "description": "CloverSec CTF collection, conversion, platform Docker delivery, writeup, archive, review, and Hub submission workflows for Codex.",
+  "description": "The process of CloverSec regarding the collection and conversion of CTF questions, the construction and deployment of the platform using Docker, report writing, archiving, review, and submission to Codex.",
   "author": {
-    "name": "CloverSec",
+    "name": "CloverSec-D1a0y1bb",
     "url": "https://github.com/D1a0y1bb"
   },
   "homepage": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample#readme",
@@ -21,9 +21,9 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "CloverSec CTF For Example",
-    "shortDescription": "CTF 收集、构建、手册、归档和 Hub 提交流程",
-    "longDescription": "CloverSec CTF For Example packages Codex skills for workflow task intake, contest research, challenge resource classification, container inference, Docker validation, asset collection, platform Docker delivery, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting. Existing upstream Dockerfile or compose files are treated as evidence and migration inputs; container challenges must still pass through cloversec-ctf-build-dockerizer before they can be considered CloverSec platform deliverables. Version 0.3.5 adds a Dockerizer confirmation gate: unconfirmed container/source cases are marked as pending, batch reports block archive readiness, and failure_cases.jsonl records platform_conversion_required. Internal xlsx and Yuque outputs must keep the complete Flag field.",
-    "developerName": "CloverSec",
+    "shortDescription": "The periodic work plugin for the Clover Security Competition covers various aspects, including the collection of competition questions, the construction of images, the writing of question manuals and reports, and the archiving and review processes.",
+    "longDescription": "The CloverSec CTF For Example plugin is primarily utilized for a series of periodic workflow tasks, including task reception, competition research, question resource classification, container inference, image asset verification, question information collection, standardized Docker construction on the platform, report writing, archiving and packaging, quality review, preparation for submission to the internal Hub platform, re - tagging after review, and the generation of the final report. Existing external question Dockerfiles or compose files are regarded as known assets and migration inputs. Container questions must first pass through cloversec - ctf - build - dockerizer before they can be considered as CloverSec - standardized image deliverables.",
+    "developerName": "CloverSec-D1a0y1bb",
     "category": "Developer Tools",
     "websiteURL": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample",
     "logo": "./assets/app-icon.png",
@@ -32,12 +32,13 @@
     "capabilities": [
       "Read",
       "Write",
-      "Interactive"
+      "Interactive",
+      "CTF"
     ],
     "defaultPrompt": [
-      "完整 Flag 必须写入 xlsx/语雀字段；公开报告只写状态和 hash。",
-      "Hub 只生成草稿、上传清单、浏览器计划和审核状态；不自动最终提交。",
-      "Dockerfile/compose 只作迁移输入；未确认时写 confirmation_action=dockerizer、failure_category=platform_conversion_required。"
+      "帮我收集 10 道 2026 年的 CTF 竞赛题目",
+      "把这个包含了很多外部题目源码的目录整理成内部规范的手册、交付包",
+      "帮我收集 2024 LA CTF 的 Web 题、WP 和附件线索"
     ]
   }
 }

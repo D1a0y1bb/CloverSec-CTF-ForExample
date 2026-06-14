@@ -33,6 +33,23 @@
 - 内部 xlsx、语雀归档表和相关字段草稿必须保留完整 `Flag`，不能替换成摘要或脱敏值。
 - 阶段结束前更新当前任务目录内的 `workflow_state.json`、`stage_notification.json/md` 和 `failure_cases.jsonl`。根目录 `TODO.md` 仅作为维护者本地计划，不作为插件运行产物。
 
+## 容器题平台契约摘要
+
+只要题目处理涉及源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 在线服务题或镜像构建需求，必须进入 `cloversec-ctf-build-dockerizer`。上游 Dockerfile、compose、README 启动命令和镜像 tar 只能作为迁移输入，不能直接算 CloverSec 平台交付。
+
+未完成 Dockerizer 方案确认时，各阶段必须写入以下机器字段：
+
+```json
+{
+  "confirmation_action": "dockerizer",
+  "failure_category": "platform_conversion_required",
+  "next_skill": "cloversec-ctf-build-dockerizer",
+  "can_archive": false
+}
+```
+
+平台交付至少需要这些证据：`Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`environment`、`docker_artifacts`、`xlsx_fields`、端口一致性、`linux/amd64` 校验。直接 Docker build/run/probe 只算运行证据，不能替代 Dockerizer 生成或校验平台交付件。
+
 ## 搜索与采集能力
 
 脚本入口：
@@ -58,6 +75,7 @@ MCP 入口：
 - `cloversec_ctf_dedupe_candidates`
 - `cloversec_ctf_dedupe_apply`
 - `cloversec_ctf_download_sandbox`
+- `cloversec_ctf_platform_contract`
 - `cloversec_ctf_resource_classify`
 - `cloversec_ctf_search_plus`
 - `cloversec_ctf_results_to_cases`

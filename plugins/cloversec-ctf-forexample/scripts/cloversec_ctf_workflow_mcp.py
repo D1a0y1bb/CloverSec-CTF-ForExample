@@ -16,6 +16,48 @@ import cloversec_ctf_container as container
 
 SERVER_VERSION = "0.3.5"
 
+PLATFORM_CONTRACT = {
+    "schema_version": "cloversec.ctf.platform_contract.v1",
+    "summary": "涉及源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 在线服务题或镜像构建需求时，必须使用 cloversec-ctf-build-dockerizer。",
+    "must_use_skill": "cloversec-ctf-build-dockerizer",
+    "trigger_resources": [
+        "source",
+        "Dockerfile",
+        "docker-compose",
+        "compose",
+        "image_tar",
+        "container_service",
+        "web_service",
+        "pwn_service",
+        "port_service",
+        "image_build",
+    ],
+    "reference_only": ["upstream Dockerfile", "docker-compose.yml", "README run command", "existing image tar"],
+    "blocking_fields": {
+        "confirmation_action": "dockerizer",
+        "failure_category": "platform_conversion_required",
+        "next_skill": "cloversec-ctf-build-dockerizer",
+        "can_archive": False,
+    },
+    "required_artifacts": [
+        "Dockerfile",
+        "start.sh",
+        "changeflag.sh",
+        "flag",
+        "environment",
+        "docker_artifacts",
+        "xlsx_fields",
+    ],
+    "required_evidence": [
+        "/start.sh can start the real service",
+        "/bin/bash /changeflag.sh is available",
+        "/flag exists and matches flag handling",
+        "Dockerfile EXPOSE and runtime port match",
+        "linux/amd64 image or tar verification",
+    ],
+    "docker_execution_scope": "docker build/run/probe only records runtime evidence and never replaces Dockerizer platform conversion",
+}
+
 TOOLS = [
     {
         "name": "cloversec_ctf_workflow_init",
@@ -61,6 +103,14 @@ TOOLS = [
                 "limit": {"type": "integer"},
             },
             "required": ["event"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_platform_contract",
+        "description": "Return the current CloverSec container challenge platform contract summary for workflow, resource classification, and batch review.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
         },
     },
     {
@@ -278,6 +328,8 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
                 limit=int(arguments.get("limit", 20)),
             )
         }
+    if name == "cloversec_ctf_platform_contract":
+        return PLATFORM_CONTRACT
     if name == "cloversec_ctf_github_doctor":
         return workflow.github_doctor(
             sample_query=str(arguments.get("sample_query") or "ctf writeup"),
