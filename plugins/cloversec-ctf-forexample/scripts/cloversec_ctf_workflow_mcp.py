@@ -9,9 +9,10 @@ import traceback
 from typing import Any
 
 import cloversec_ctf_workflow as workflow
+import cloversec_ctf_resource as resource
 
 
-SERVER_VERSION = "0.3.0"
+SERVER_VERSION = "0.3.1"
 
 TOOLS = [
     {
@@ -127,6 +128,20 @@ TOOLS = [
             "required": ["output_dir"],
         },
     },
+    {
+        "name": "cloversec_ctf_resource_classify",
+        "description": "Classify local CTF resources into Docker/compose/source/attachment/writeup/screenshot/pcap/binary/database types and recommend the next skill.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "root": {"type": "string"},
+                "output_path": {"type": "string"},
+                "max_files": {"type": "integer"},
+                "archive_preview_entries": {"type": "integer"},
+            },
+            "required": ["root"],
+        },
+    },
 ]
 
 
@@ -228,6 +243,23 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             max_file_size=int(arguments.get("max_file_size", workflow.DEFAULT_MAX_FILE_SIZE)),
             max_redirects=int(arguments.get("max_redirects", workflow.DEFAULT_MAX_REDIRECTS)),
         )
+    if name == "cloversec_ctf_resource_classify":
+        payload = resource.classify_resource_root(
+            root=str(arguments.get("root") or ""),
+            output_path=str(arguments.get("output_path") or "") or None,
+            max_files=int(arguments.get("max_files", 2000)),
+            archive_preview_entries=int(arguments.get("archive_preview_entries", 200)),
+        )
+        return {
+            "schema_version": payload.get("schema_version", ""),
+            "version": payload.get("version", ""),
+            "root": payload.get("root", ""),
+            "root_classification": payload.get("root_classification", {}),
+            "summary": payload.get("summary", {}),
+            "recommendations": payload.get("recommendations", []),
+            "warnings": payload.get("warnings", []),
+            "output_path": str(arguments.get("output_path") or ""),
+        }
     raise ValueError(f"unknown tool: {name}")
 
 

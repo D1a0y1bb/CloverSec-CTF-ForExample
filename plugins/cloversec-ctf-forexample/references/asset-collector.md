@@ -26,6 +26,7 @@ Each record should include:
 - Always compute SHA256 for downloaded/local files.
 - Record HTTP 4xx/5xx, failed downloads, suspicious content types, and likely wrong-problem materials as issues.
 - Preview zip/tar archives before archive handoff; report path traversal and file inventory.
+- After download or user-provided material intake, classify local resources before handing off to Dockerizer, attachment packager, writeup scaffold, or manual review.
 
 ## Commands
 
@@ -64,6 +65,10 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py preview
   --output archive_preview.json
 
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py asset-inventory <题目材料目录> asset_inventory.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py classify \
+  <题目材料目录> \
+  --output resource_classification.json
 ```
 
 ## Validation
@@ -73,6 +78,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_collect.py asset-
 - Challenge/event names and asset names must be checked for mismatch risk.
 - GitHub tree downloads preserve relative paths.
 - Unsafe archive paths block direct archive delivery.
+- `resource_classification.json` should include `root_classification`, file-level `resource_type`, `confidence`, `evidence`, `sha256`, and `recommended_next_skill`.
 
 ## Stop Conditions
 

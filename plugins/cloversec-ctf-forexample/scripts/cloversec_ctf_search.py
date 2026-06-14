@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.3.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.3.1 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -261,6 +261,24 @@ GENERIC_CJK_EVENT_TERMS = {
     "校外赛",
 }
 CATEGORY_TERMS = {"web", "pwn", "misc", "crypto", "reverse", "rev", "forensics", "osint", "mobile", "iot", "ai"}
+CATEGORY_ALIASES = {
+    "rev": "reverse",
+    "reversing": "reverse",
+    "forensic": "forensics",
+    "stego": "forensics",
+    "steganography": "forensics",
+    "bin": "pwn",
+    "binary": "pwn",
+    "cryptography": "crypto",
+    "nosql": "web",
+    "sqli": "web",
+    "sql": "web",
+    "injection": "web",
+    "xss": "web",
+    "ssti": "web",
+    "csrf": "web",
+    "ssrf": "web",
+}
 WRITEUP_TERMS = {"writeup", "write-up", "wp", "题解", "复现"}
 ATTACHMENT_TERMS = {"attachment", "attachments", "source", "源码", "附件", "release", "download", "challenge.zip"}
 TUTORIAL_NOISE_TERMS = {"从零基础", "入门到竞赛", "学习路线", "保姆级", "看这一篇", "基础入门"}
@@ -1351,7 +1369,7 @@ def build_query_profile(query: str, *, years: list[int]) -> dict[str, Any]:
         for token in tokens
         if len(token) > 1 and token not in GENERIC_EVENT_QUERY_TERMS and token not in year_terms
     }
-    categories = {token for token in tokens if token in CATEGORY_TERMS}
+    categories = {category for token in tokens if (category := normalize_category_term(token))}
     query_specific_terms = meaningful_terms - event_terms - event_component_terms
     return {
         "query": query,
@@ -1422,9 +1440,15 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
             score -= 12
             issues.append("year missing")
 
-    if categories and any(category in haystack for category in categories):
+    detected_categories = detect_categories(haystack)
+    if categories and (categories & detected_categories):
         score += 10
         reasons.append("category matched")
+    elif categories and detected_categories:
+        conflicting = sorted(detected_categories - categories)
+        if conflicting:
+            score -= 35
+            issues.append(f"category mismatch: {', '.join(conflicting[:5])}")
 
     if looks_attachment_candidate_url(url) or kind == "release_asset" or (kind == "raw_file" and any(term in haystack for term in ATTACHMENT_TERMS)):
         score += 30
@@ -1472,6 +1496,18 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
 def has_challenge_specific_evidence(haystack: str, profile: dict[str, Any]) -> bool:
     terms: set[str] = set(profile.get("query_specific_terms") or set())
     return bool(terms) and all(term in haystack for term in terms)
+
+
+def normalize_category_term(token: str) -> str:
+    lowered = token.strip("._-").lower()
+    if lowered in CATEGORY_TERMS:
+        return CATEGORY_ALIASES.get(lowered, lowered)
+    return CATEGORY_ALIASES.get(lowered, "")
+
+
+def detect_categories(text: str) -> set[str]:
+    tokens = re.findall(r"[a-z0-9_.-]+", text.lower())
+    return {category for token in tokens if (category := normalize_category_term(token))}
 
 
 def event_name_matches(haystack: str, event_terms: set[str], event_phrases: set[str]) -> bool:

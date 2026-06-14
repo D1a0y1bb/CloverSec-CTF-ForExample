@@ -1,0 +1,4 @@
+interface:
+  display_name: "CloverSec CTF Resource Classifier"
+  short_description: "识别题目资源类型并推荐下一步 skill"
+  default_prompt: "使用 $cloversec-ctf-resource-classifier 扫描本地题目资源目录，输出 resource_classification.json，并推荐下一步 skill。"

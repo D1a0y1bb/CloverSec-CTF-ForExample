@@ -36,6 +36,7 @@ class Workflow030Tests(unittest.TestCase):
             self.assertTrue((out / "logs").is_dir())
             self.assertTrue((out / "evidence").is_dir())
             self.assertTrue((out / "snapshots").is_dir())
+            self.assertTrue((out / "classification").is_dir())
             plan = json.loads((out / "task_plan.json").read_text(encoding="utf-8"))
             self.assertEqual(plan["request"]["categories"], ["web"])
             self.assertTrue(any("IrisCTF 2025 web writeup" == item["query"] for item in plan["search_tasks"]))
@@ -199,6 +200,37 @@ class Workflow030Tests(unittest.TestCase):
                 self.assertEqual(payload["summary"]["snapshots"], 1)
                 self.assertTrue(Path(payload["records"][0]["snapshot_metadata_path"]).exists())
 
+    def test_source_evidence_marks_http_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with ForbiddenServer() as server:
+                manifest = {
+                    "results": [
+                        {
+                            "title": "Blocked writeup",
+                            "url": f"{server.url}/blocked",
+                            "summary": "writeup",
+                            "provider": "local",
+                            "layer": "writeup_candidate",
+                            "confidence": "medium",
+                            "score": 10,
+                        }
+                    ]
+                }
+                manifest_path = root / "manifest.json"
+                workflow.write_json(manifest_path, manifest)
+                payload = workflow.record_source_evidence(
+                    manifest_path=manifest_path,
+                    evidence_dir=root / "evidence",
+                    snapshots_dir=root / "snapshots",
+                    fetch_snapshots=True,
+                )
+
+                self.assertEqual(payload["summary"]["records"], 1)
+                self.assertEqual(payload["summary"]["errors"], 1)
+                self.assertEqual(payload["records"][0]["http_status"], 403)
+                self.assertIn("http_status=403", payload["records"][0]["missing_reason"])
+
 
 class FakeCompleted:
     def __init__(self, returncode, stdout, stderr):
@@ -273,6 +305,40 @@ class RedirectServer:
                     return
                 self.send_response(404)
                 self.end_headers()
+
+            def log_message(self, format, *args):  # noqa: A002
+                return
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        port = self.httpd.server_address[1]
+        self.url = f"http://127.0.0.1:{port}"
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if self.httpd:
+            self.httpd.shutdown()
+            self.httpd.server_close()
+        if self.thread:
+            self.thread.join(timeout=5)
+
+
+class ForbiddenServer:
+    def __init__(self):
+        self.httpd = None
+        self.thread = None
+        self.url = ""
+
+    def __enter__(self):
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                body = b"blocked"
+                self.send_response(403)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
 
             def log_message(self, format, *args):  # noqa: A002
                 return

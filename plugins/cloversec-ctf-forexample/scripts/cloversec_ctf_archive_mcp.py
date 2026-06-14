@@ -11,7 +11,7 @@ from typing import Any
 import cloversec_ctf_archive_runner as archive_runner
 
 
-SERVER_VERSION = "0.3.0"
+SERVER_VERSION = "0.3.1"
 
 TOOLS = [
     {

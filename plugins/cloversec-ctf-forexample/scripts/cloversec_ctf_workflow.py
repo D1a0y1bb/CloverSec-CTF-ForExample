@@ -24,7 +24,7 @@ import cloversec_ctf_search as search
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.3.0"
+WORKFLOW_VERSION = "0.3.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -48,6 +48,7 @@ WORKFLOW_DIRS = [
     "snapshots",
     "downloads_sandbox",
     "downloads_accepted",
+    "classification",
     "reports",
 ]
 
@@ -205,6 +206,7 @@ def init_workflow(
             "先运行 GitHub 配置向导，确认 gh auth login 或 token 可用。",
             "按 search_tasks 执行 search-plus，结果写入 evidence/ 和 ctf_cases.jsonl。",
             "对直接附件 URL 使用 downloads_sandbox 做安全预览。",
+            "对下载或用户提供的资源目录运行 resource classify，生成 resource_classification.json。",
             "对重复候选执行 dedupe，人工确认后再合并字段。",
         ],
     }
@@ -502,6 +504,11 @@ def record_source_evidence(
                 record["snapshot_metadata_path"] = snapshot.get("metadata_path", "")
                 record["http_status"] = snapshot.get("status")
                 record["content_sha256"] = snapshot.get("sha256", "")
+                status = int(snapshot.get("status") or 0)
+                if status >= 400:
+                    reason = f"http_status={status}"
+                    record["missing_reason"] = append_reason(str(record.get("missing_reason") or ""), reason)
+                    errors.append({"url": url, "error": reason, "status": status})
             except Exception as exc:  # noqa: BLE001
                 record["missing_reason"] = str(exc)
                 errors.append({"url": url, "error": str(exc)})
@@ -516,6 +523,16 @@ def record_source_evidence(
     }
     write_json(evidence_base / "source_evidence.json", payload)
     return payload
+
+
+def append_reason(existing: str, reason: str) -> str:
+    current = str(existing or "").strip()
+    new_reason = str(reason or "").strip()
+    if not current:
+        return new_reason
+    if not new_reason or new_reason in current.split("; "):
+        return current
+    return f"{current}; {new_reason}"
 
 
 def evidence_record_from_result(item: dict[str, Any], *, index: int) -> dict[str, Any]:

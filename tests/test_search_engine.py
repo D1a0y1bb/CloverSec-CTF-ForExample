@@ -230,6 +230,41 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(payload["results"][0]["layer"], "confirmed_challenge")
 
+    def test_explicit_category_mismatch_is_downgraded(self):
+        payload = search.import_agent_search_results(
+            [
+                {
+                    "rank": 1,
+                    "title": "picoCTF 2024 Forensics Writeup",
+                    "url": "https://example.com/picoctf-2024-forensics",
+                    "snippet": "picoCTF 2024 forensics writeup",
+                },
+                {
+                    "rank": 2,
+                    "title": "PicoCTF2024 Web Writeup_picoctf web-CSDN博客",
+                    "url": "https://blog.csdn.net/example/picoctf-web",
+                    "snippet": "picoCTF 2024 web writeup",
+                },
+                {
+                    "rank": 3,
+                    "title": "picoCTF 2024: NoSQL Injection - Writeup - CSDN博客",
+                    "url": "https://blog.csdn.net/example/nosql-injection",
+                    "snippet": "picoCTF 2024 NoSQL injection writeup",
+                },
+            ],
+            query="picoCTF 2024 forensics writeup",
+        )
+
+        by_title = {item["title"]: item for item in payload["results"]}
+        forensics = by_title["picoCTF 2024 Forensics Writeup"]
+        web = by_title["PicoCTF2024 Web Writeup_picoctf web-CSDN博客"]
+        nosql = by_title["picoCTF 2024: NoSQL Injection - Writeup - CSDN博客"]
+
+        self.assertGreater(forensics["score"], web["score"])
+        self.assertIn("category mismatch: web", web["quality_issues"])
+        self.assertGreater(forensics["score"], nosql["score"])
+        self.assertIn("category mismatch: web", nosql["quality_issues"])
+
     def test_wrong_year_result_is_not_counted_as_candidate(self):
         result = search.normalize_result(
             provider="duckduckgo",

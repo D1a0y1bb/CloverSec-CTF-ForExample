@@ -5,14 +5,15 @@
 1. `cloversec-ctf-workflow-orchestrator`：从年份、赛事、方向和数量创建批量采集任务。
 2. `cloversec-ctf-research-intake`：收集赛事和赛题信息。
 3. `cloversec-ctf-asset-collector`：收集题目源码、附件、WP、复现资料。
-4. `cloversec-ctf-build-dockerizer`：容器题目构建转换。
-5. `cloversec-ctf-attachment-packager`：附件题目检查和打包。
-6. `cloversec-ctf-writeup-scaffold`：手册和 Hub 字段草稿。
-7. `cloversec-ctf-archive-packager`：归档目录、镜像 tar、hash 清单。
-8. `cloversec-ctf-quality-review`：题目、手册、附件、镜像一致性检查。
-9. `cloversec-ctf-hub-submission`：Hub 提交材料生成。
-10. `cloversec-ctf-hub-retag`：审核通过后按 HUB 编号重打镜像 tag。
-11. `cloversec-ctf-final-report`：最终位置、xlsx 和后续动作报告。
+4. `cloversec-ctf-resource-classifier`：识别资源类型并推荐下一步 skill。
+5. `cloversec-ctf-build-dockerizer`：容器题目构建转换。
+6. `cloversec-ctf-attachment-packager`：附件题目检查和打包。
+7. `cloversec-ctf-writeup-scaffold`：手册和 Hub 字段草稿。
+8. `cloversec-ctf-archive-packager`：归档目录、镜像 tar、hash 清单。
+9. `cloversec-ctf-quality-review`：题目、手册、附件、镜像一致性检查。
+10. `cloversec-ctf-hub-submission`：Hub 提交材料生成。
+11. `cloversec-ctf-hub-retag`：审核通过后按 HUB 编号重打镜像 tag。
+12. `cloversec-ctf-final-report`：最终位置、xlsx 和后续动作报告。
 
 ## 全局原则
 
@@ -24,6 +25,7 @@
 - 搜索、抓取、下载必须写入来源 URL、访问时间、hash、HTTP 状态和失败原因。
 - 批量任务必须维护 `workflow_state.json`，支持 `dry-run`、`apply` 和 `resume`。
 - 外部附件必须先进入 `downloads_sandbox/` 做安全预览，确认后再进入题目目录。
+- 下载后或用户提供目录后，先运行资源识别，输出 `resource_classification.json`，再决定进入 Dockerizer、附件题检查或手册流程。
 - Hub 自动化第一版不提交，只生成材料。
 - 涉及镜像导出时必须检查 `linux/amd64`。
 - 内部 xlsx、语雀归档表和相关字段草稿必须保留完整 `Flag`，不能替换成摘要或脱敏值。
@@ -40,6 +42,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py strat
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discover --query "<赛事/题目/年份/分类>" --year 2025 --output search_results.json --cases-jsonl ctf_cases.jsonl
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py source-evidence --manifest search_results.json --evidence-dir evidence --snapshots-dir snapshots
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py download-sandbox --manifest search_results.json --output-dir .
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py classify challenge-dir --output classification/resource_classification.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py dedupe --cases ctf_cases.jsonl --output dedupe_candidates.json
 ```
 
@@ -53,6 +56,7 @@ MCP 入口：
 - `cloversec_ctf_dedupe_candidates`
 - `cloversec_ctf_dedupe_apply`
 - `cloversec_ctf_download_sandbox`
+- `cloversec_ctf_resource_classify`
 - `cloversec_ctf_search_plus`
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
@@ -116,6 +120,7 @@ evidence/
 snapshots/
 downloads_sandbox/
 downloads_accepted/
+classification/
 reports/
 ```
 
@@ -140,3 +145,24 @@ reports/
 - zip/tar 预览路径穿越、文件数量和解压体积。
 - 输出 `download_preview.json` 和 `download_safety_report.md`。
 - `accept=true` 且安全状态为 `safe` 时才复制到 `downloads_accepted/`。
+
+## 0.3.1 资源识别
+
+资源识别默认不执行未知代码，不启动 Docker，不把压缩包解压到正式题目目录。
+
+输出文件：
+
+```text
+classification/resource_classification.json
+```
+
+识别类型包括：
+
+- Dockerfile / compose 项目
+- 源码文件和源码压缩包
+- 附件压缩包
+- writeup 和截图
+- pcap / binary / database dump / VM image
+- Docker image tar
+
+每条记录都包含 `resource_type`、`confidence`、`evidence`、`sha256` 和 `recommended_next_skill`。低置信度或未知资源必须进入人工确认项。

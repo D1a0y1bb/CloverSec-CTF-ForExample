@@ -10,10 +10,10 @@
 
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.3.0-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.3.1-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
-  <img alt="Skills" src="https://img.shields.io/badge/skills-11-f59e0b">
+  <img alt="Skills" src="https://img.shields.io/badge/skills-12-f59e0b">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-8-8b5cf6">
 </p>
 
@@ -41,6 +41,7 @@
 | 赛事和赛题调研 | 多来源搜索、证据评分、结构化数据 |
 | 批处理编排 | `dry-run`、`apply`、`resume` 和 `workflow_state.json` |
 | 附件、源码、WP 收集 | 下载预览、hash、失败原因、来源证据 |
+| 资源智能识别 | 判断 Docker/compose/source/attachment/writeup/pcap/binary/database 等类型并推荐下一步 |
 | 来源可信度 | 多来源证据、置信度、页面快照、下载 URL、hash、抓取时间和缺失原因 |
 | 去重合并 | 按赛事、题名、分类、URL、附件 hash 和 writeup 标题生成合并候选 |
 | 容器题改造 | Docker 交付、amd64 检查、build/run/save/load 记录 |
@@ -72,7 +73,7 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.3.0
+Git 引用：v0.3.1
 稀疏路径：留空
 ```
 
@@ -81,7 +82,7 @@ Git 引用：v0.3.0
 当然也可以使用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.0
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.1
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -131,6 +132,7 @@ evidence/
 snapshots/
 downloads_sandbox/
 downloads_accepted/
+classification/
 ```
 
 ### 收集题目线索
@@ -162,6 +164,18 @@ downloads/
 asset_inventory.json
 asset_downloads.json
 asset_collection_report.md
+```
+
+### 识别题目资源类型
+
+```text
+判断这个题目目录里是 Docker 项目、附件题、源码包还是 writeup，并推荐下一步。
+```
+
+Codex 会使用 `cloversec-ctf-resource-classifier`。它只读取文件名、目录结构、hash、少量文本样本和压缩包清单，不执行未知脚本，不启动 Docker。常见输出：
+
+```text
+resource_classification.json
 ```
 
 ### 把题目整理成容器交付件
@@ -302,16 +316,17 @@ flowchart LR
   B --> C["Research Intake"]
   C --> D["Source Evidence / Dedupe / Download Sandbox"]
   D --> E["Asset Collector"]
-  E --> F{"题目类型"}
-  F -->|"容器题"| G["Build Dockerizer"]
-  F -->|"附件题"| H["Attachment Packager"]
-  G --> I["Writeup Scaffold"]
-  H --> I
-  I --> J["Archive Packager"]
-  J --> K["Quality Review"]
-  K --> L["Hub Submission Prep"]
-  L --> M["Hub Retag"]
-  M --> N["Final Report / xlsx / Yuque"]
+  E --> F["Resource Classifier"]
+  F --> G{"题目类型"}
+  G -->|"容器题"| H["Build Dockerizer"]
+  G -->|"附件题"| I["Attachment Packager"]
+  H --> J["Writeup Scaffold"]
+  I --> J
+  J --> K["Archive Packager"]
+  K --> L["Quality Review"]
+  L --> M["Hub Submission Prep"]
+  M --> N["Hub Retag"]
+  N --> O["Final Report / xlsx / Yuque"]
 ```
 
 ## Capabilities
@@ -323,6 +338,7 @@ flowchart LR
 | `cloversec-ctf-workflow-orchestrator` | 创建批量采集任务、状态机、搜索策略、证据、去重和下载沙箱 |
 | `cloversec-ctf-research-intake` | 收集赛事、赛题、writeup、附件线索和证据 |
 | `cloversec-ctf-asset-collector` | 下载和整理源码、附件、WP、截图、hash 与失败原因 |
+| `cloversec-ctf-resource-classifier` | 识别本地资源类型并推荐下一步 skill |
 | `cloversec-ctf-build-dockerizer` | 将容器题整理成 Docker 交付件 |
 | `cloversec-ctf-attachment-packager` | 检查和整理非容器附件题 |
 | `cloversec-ctf-writeup-scaffold` | 生成题目手册、Hub 字段、xlsx 字段 |
@@ -343,7 +359,7 @@ flowchart LR
 | `cloversec-ctf-archive` | 批量读取 `ctf_cases.jsonl`，生成归档目录、manifest、xlsx 和缺失项报告 |
 | `cloversec-ctf-quality-runner` | 汇总资源、Docker、手册、Flag 和归档质量证据 |
 | `cloversec-ctf-hub-assistant` | 生成 Hub 页面字段计划和浏览器辅助填写数据 |
-| `cloversec-ctf-workflow` | 创建工作流任务、GitHub 检测、搜索策略、证据快照、去重、下载沙箱 |
+| `cloversec-ctf-workflow` | 创建工作流任务、GitHub 检测、搜索策略、证据快照、去重、下载沙箱和资源识别 |
 
 ## Search Strategy
 
@@ -362,7 +378,7 @@ gh auth login
 5. 搜索结果分层：`confirmed_challenge`、`writeup_candidate`、`attachment_candidate`、`platform_lead`、`noise`。
 6. 赛事名、年份、题目名、分类和附件类型会分开评分，平台首页和搜索首页会被降级或剔除。
 
-0.3.0 增加的安全下载流程：
+安全下载与资源识别：
 
 - 外部附件先进入 `downloads_sandbox/`。
 - 默认单文件上限 300MB。
@@ -370,6 +386,7 @@ gh auth login
 - 禁止 `file://`、`ftp://`、localhost 和内网 IP。
 - zip/tar 先做安全预览，检查路径穿越、文件数量和解压体积。
 - 人工确认后再进入 `downloads_accepted/` 或题目目录。
+- `v0.3.1` 会对本地资源目录生成 `resource_classification.json`，识别 Docker/compose/source archive/attachment/writeup/screenshot/pcap/binary/database/Docker image tar，并推荐下一步 skill。
 
 现实边界：
 
@@ -457,7 +474,7 @@ python3 scripts/package_plugin_release.py
 发布到 GitHub Release 后，Codex 可以按 tag 安装：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.0
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.1
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 

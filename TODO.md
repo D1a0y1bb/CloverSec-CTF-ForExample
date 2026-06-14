@@ -195,7 +195,7 @@
 - [x] 搜索策略库：为 Web/Pwn/Reverse/Crypto/Misc/Forensics/AI 等分类生成专用 query 组合，提高公开资料命中率。0.3.0 已实现 `references/search-strategies.json` 和 `strategy` 命令。
 - [x] GitHub 配置向导：检测 `gh auth login`、`GITHUB_TOKEN` / `GH_TOKEN`，执行小样本查询，展示限额、失败原因和当前可用搜索源。0.3.0 已实现 `github-doctor`。
 - [x] 下载沙箱：所有外部附件先进入隔离目录，限制协议、大小、重定向、文件名和解压路径，生成安全预览后再进入题目目录。0.3.0 已实现 `download-sandbox`，默认单文件上限 300MB、最多 5 次重定向。
-- [ ] 附件智能识别：自动判断源码包、附件题、Docker 项目、compose 项目、writeup、截图、pcap、binary、数据库 dump 等资源类型。
+- [x] 附件智能识别：自动判断源码包、附件题、Docker 项目、compose 项目、writeup、截图、pcap、binary、数据库 dump 等资源类型。0.3.1 已实现 `cloversec_ctf_resource.py classify` 和 `cloversec_ctf_resource_classify`。
 - [ ] 容器题识别：从 Dockerfile、compose、README、端口、启动脚本中推断服务类型、端口、环境变量、构建命令和运行命令。
 - [ ] Docker 验证分级：轻量 inspect、构建验证、启动验证、端口探测、日志采集、HTTP 探测、手册解题验证分层执行。
 - [ ] 手册质量助手：检查字段完整性、题目描述、考点、环境、解题步骤、截图引用、Flag、附件引用和 Hub 表单字段一致性。
@@ -230,3 +230,22 @@
 - [x] 安装后真实测试完成：cache manifest 为 `0.3.0`，可见 11 个 skills 和 8 个 MCP server；安装版 `cloversec_ctf_workflow.py` 能初始化任务、生成搜索策略和 dry-run 状态；安装版 `cloversec-ctf-workflow` MCP stdio 可列出 8 个工具。
 - [x] 新 Codex 会话可见性验收完成：`codex exec` 只读新会话返回 `version=0.3.0`、`has_workflow_skill=true`、`has_workflow_mcp=true`、`skill_count=11`、`mcp_count=8`、`pass=true`。
 - [x] 新会话测试附带 warning 已确认非本插件阻断项：输出中仍有其他已安装插件的 `interface.icon_*` 和 `ngs-analysis defaultPrompt` warning，以及 shutdown 阶段某外部 MCP `Auth required` warning；CloverSec 插件本次未出现 defaultPrompt 数量或长度 warning，测试返回成功。
+
+## v0.3.1 开发与验收记录
+
+- [x] 新增 `cloversec-ctf-resource-classifier` skill，作为资源智能识别入口。
+- [x] 新增 `cloversec_ctf_resource.py classify`，输出 `resource_classification.json`，识别 Dockerfile、compose、源码、源码压缩包、附件压缩包、writeup、截图、pcap、binary、database dump、VM image、Docker image tar。
+- [x] `cloversec-ctf-workflow` MCP 新增 `cloversec_ctf_resource_classify` 工具。
+- [x] workflow 初始化目录新增 `classification/`。
+- [x] 真实批量样本验证：已覆盖 IrisCTF 2025 Web、LA CTF 2024 Crypto、picoCTF 2024 Forensics，记录见 `docs/validation/v0.3.1-real-batch-validation.md`。
+- [x] 真实资源识别验证：已下载 `uclaacm/lactf-archive/2023/crypto/hill-hard`，识别为 `container_project`；同目录 zip 识别为 `source_archive_bundle`。
+- [x] 搜索评分修复：Forensics 查询中 Web/NoSQL/CSDN 文章会被 `category mismatch: web` 降权。
+- [x] 证据抓取修复：HTTP 4xx/5xx 现在计入 `source-evidence` 的 `errors`，并写入 `missing_reason`。
+- [x] 资源识别修复：`challenge.yaml`、`.sage`、`flag.txt` 已能识别为题目清单、源码/解题脚本和 flag 文件。
+- [x] 发布前真实 LLM 测试：CloudRouter `gpt-5.4-mini` 通过精确 ID 验收，会选择 `cloversec-ctf-resource-classifier` / `cloversec_ctf_resource_classify`，低置信度 unknown 资源要求人工确认，完整 Flag 写入 xlsx，Hub 不自动最终提交。
+- [ ] `v0.3.1` Release 发布。
+- [ ] 本机 Codex 插件更新到 `0.3.1`。
+- [ ] 安装后真实测试：确认新会话能发现 12 个 skills，`cloversec-ctf-workflow` 能列出 `cloversec_ctf_resource_classify`。
+- [ ] 待后续增强：`results-to-cases` 目前仍是调研草稿，不自动把赛事、分类、题目名拆成最终内部字段；这一步交给 Agent 归并或人工确认。
+- [ ] 待后续增强：Medium/InfosecWriteups 等站点可能返回 403，当前会记录为失败证据；需要 Chrome/浏览器辅助或人工提供页面内容。
+- [ ] 待后续增强：LLM 输出精确 skill ID 时需要明确“只能输出精确 ID，不允许前后缀”；未加严格约束时模型可能写成泛称或加 `skill ` 前缀。

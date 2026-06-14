@@ -70,7 +70,7 @@
 ```json
 {
   "schema_version": "cloversec.ctf.workflow.state.v1",
-  "workflow_version": "0.3.0",
+  "workflow_version": "0.3.1",
   "run_id": "",
   "status": "initialized",
   "workdir": "",
@@ -92,6 +92,39 @@
 
 `cases[].stages` 记录单题阶段状态。单题失败只能影响该题，不能把整批直接写成失败。
 
+## 资源识别
+
+0.3.1 起，资源目录使用 `resource_classification.json` 记录识别结果：
+
+```json
+{
+  "schema_version": "cloversec.ctf.resource_classification.v1",
+  "version": "0.3.1",
+  "root": "",
+  "root_classification": {
+    "project_type": "container_project|compose_project|source_archive_bundle|attachment_challenge|writeup_only|mixed_resource_bundle",
+    "confidence": "high|medium|low",
+    "recommended_next_skill": "",
+    "evidence": []
+  },
+  "resources": [
+    {
+      "relative_path": "",
+      "resource_type": "dockerfile|compose_file|source_archive|attachment_archive|writeup|screenshot|pcap|binary|database_dump|docker_image_tar|unknown",
+      "confidence": "high|medium|low",
+      "sha256": "",
+      "recommended_next_skill": "",
+      "evidence": []
+    }
+  ],
+  "summary": {},
+  "recommendations": [],
+  "warnings": []
+}
+```
+
+资源识别结果是分流建议。进入 Dockerizer、附件题检查、Hub 或最终归档前仍要保留人工确认点。
+
 ## 脚本入口
 
 统一数据模型脚本：
@@ -99,6 +132,7 @@
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py init --event "IrisCTF" --year 2025 --category web --limit 20
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py batch --workdir runs/20260614-2025-IrisCTF-web --stage research --mode dry-run --output reports/research_dry_run.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py classify challenge-dir --output classification/resource_classification.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl archive.xlsx
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx archive.xlsx
