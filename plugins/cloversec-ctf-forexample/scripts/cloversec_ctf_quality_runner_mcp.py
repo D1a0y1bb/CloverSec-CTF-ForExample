@@ -9,9 +9,10 @@ import traceback
 from typing import Any
 
 import cloversec_ctf_quality_runner as quality_runner
+import cloversec_ctf_proof as proof
 
 
-SERVER_VERSION = "0.3.1"
+SERVER_VERSION = "0.3.2"
 
 TOOLS = [
     {
@@ -32,7 +33,26 @@ TOOLS = [
             },
             "required": ["cases_path", "output_dir"],
         },
-    }
+    },
+    {
+        "name": "cloversec_ctf_proof_pack",
+        "description": "Create a proof package with copied evidence, hashes, manifest, and review report from resource, container, Docker, and quality JSON files.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "output_dir": {"type": "string"},
+                "case": {"type": "object"},
+                "case_json": {"type": "string"},
+                "resource_classification_path": {"type": "string"},
+                "container_inference_path": {"type": "string"},
+                "docker_evidence_path": {"type": "string"},
+                "quality_review_path": {"type": "string"},
+                "extra_files": {"type": "array", "items": {"type": "string"}},
+                "notes": {"type": "string"},
+            },
+            "required": ["output_dir"],
+        },
+    },
 ]
 
 
@@ -78,6 +98,19 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             probe_timeout=float(arguments.get("probe_timeout", 3.0)),
         )
         return quality_runner.compact_quality_payload(payload)
+    if name == "cloversec_ctf_proof_pack":
+        payload = proof.create_proof_package(
+            output_dir=str(arguments.get("output_dir") or ""),
+            case=arguments.get("case", {}),
+            case_json=str(arguments.get("case_json") or ""),
+            resource_classification_path=str(arguments.get("resource_classification_path") or ""),
+            container_inference_path=str(arguments.get("container_inference_path") or ""),
+            docker_evidence_path=str(arguments.get("docker_evidence_path") or ""),
+            quality_review_path=str(arguments.get("quality_review_path") or ""),
+            extra_files=[str(item) for item in arguments.get("extra_files", [])],
+            notes=str(arguments.get("notes") or ""),
+        )
+        return proof.compact_proof_payload(payload)
     raise ValueError(f"unknown tool: {name}")
 
 

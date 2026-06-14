@@ -1,0 +1,181 @@
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+
+import cloversec_ctf_container as container
+import cloversec_ctf_docker as docker_runner
+import cloversec_ctf_proof as proof
+import cloversec_ctf_resource as resource
+
+
+class ContainerInferenceAndProofTests(unittest.TestCase):
+    def test_infers_dockerfile_runtime_and_run_probe_level(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Dockerfile").write_text(
+                "\n".join(
+                    [
+                        "FROM python:3.12-alpine",
+                        "WORKDIR /app",
+                        "ENV FLAG=flag{demo}",
+                        "EXPOSE 8080",
+                        'CMD ["python", "-m", "http.server", "8080"]',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "README.md").write_text("docker run -p 18080:8080 demo\n", encoding="utf-8")
+            classification = resource.classify_resource_root(root)
+            payload = container.infer_container_project(root, resource_classification=classification)
+
+        self.assertEqual(payload["summary"]["project_type"], "container_project")
+        self.assertEqual(payload["summary"]["recommended_validation_level"], "run_probe")
+        self.assertIn("18080:8080", payload["summary"]["ports"])
+        self.assertEqual(payload["dockerfile"]["base_images"], ["python:3.12-alpine"])
+        self.assertIn("http://127.0.0.1:18080/", payload["runtime"]["probe_urls"])
+
+    def test_infers_compose_service_and_ports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "docker-compose.yml").write_text(
+                "\n".join(
+                    [
+                        "services:",
+                        "  web:",
+                        "    build: .",
+                        "    image: cloversec/web-demo:local",
+                        "    ports:",
+                        '      - "18081:80"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = container.infer_container_project(root)
+
+        self.assertEqual(payload["summary"]["project_type"], "compose_project")
+        self.assertEqual(payload["summary"]["service_count"], 1)
+        self.assertEqual(payload["compose"]["services"][0]["name"], "web")
+        self.assertIn("18081:80", payload["summary"]["ports"])
+
+    def test_docker_validation_levels_select_expected_operations(self):
+        self.assertEqual(docker_runner.operations_for_validation_level("static_only"), [])
+        self.assertEqual(docker_runner.operations_for_validation_level("inspect_only"), ["inspect"])
+        self.assertEqual(docker_runner.operations_for_validation_level("inspect_only", tar_path="image.tar"), ["load", "inspect"])
+        self.assertEqual(docker_runner.operations_for_validation_level("build_only"), ["build", "inspect"])
+        self.assertEqual(docker_runner.operations_for_validation_level("run_probe"), ["build", "inspect", "run", "logs", "stop"])
+
+    def test_static_only_execute_writes_skip_without_subprocess(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = docker_runner.execute_docker_workflow(
+                case={"case_id": "static-001"},
+                output_dir=Path(tmp) / "docker",
+                validation_level="static_only",
+            )
+
+        self.assertEqual(evidence["summary"]["status"], "skip")
+        self.assertEqual(evidence["plan"]["operations"], [])
+        self.assertEqual(evidence["steps"], [])
+
+    def test_docker_plan_accepts_container_inference_runtime(self):
+        inference = {
+            "runtime": {
+                "image_name": "cloversec/demo:local",
+                "build_context": "/tmp/demo",
+                "dockerfile": "Dockerfile",
+                "ports": ["18080:80"],
+                "validation_level": "run_probe",
+            }
+        }
+        plan = docker_runner.create_docker_validation_plan(
+            case={"case_id": "docker-plan-001"},
+            container_inference=inference,
+        )
+
+        self.assertEqual(plan["validation_level"], "run_probe")
+        self.assertEqual(plan["operations"], ["build", "inspect", "run", "logs", "stop"])
+        self.assertEqual(plan["image_name"], "cloversec/demo:local")
+        self.assertEqual(plan["ports"], ["18080:80"])
+
+    def test_proof_package_copies_evidence_and_writes_hashes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = {
+                "case_id": "proof-001",
+                "metadata": {"名称": "Demo", "分类": "Web"},
+                "flag": {"value": "flag{demo}"},
+            }
+            case_path = root / "ctf_case.json"
+            resource_path = root / "resource_classification.json"
+            container_path = root / "container_inference.json"
+            docker_path = root / "docker_evidence.json"
+            quality_path = root / "quality_review.json"
+            case_path.write_text(json.dumps(case, ensure_ascii=False), encoding="utf-8")
+            resource_path.write_text(json.dumps({"root_classification": {"project_type": "container_project"}}, ensure_ascii=False), encoding="utf-8")
+            container_path.write_text(json.dumps({"summary": {"project_type": "container_project"}}, ensure_ascii=False), encoding="utf-8")
+            docker_path.write_text(
+                json.dumps({"summary": {"status": "pass", "validation_level": "run_probe", "run_verified": True}}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            quality_path.write_text(
+                json.dumps({"case_id": "proof-001", "summary": {"status": "通过"}, "checks": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            payload = proof.create_proof_package(
+                output_dir=root / "proof",
+                case_json=case_path,
+                resource_classification_path=resource_path,
+                container_inference_path=container_path,
+                docker_evidence_path=docker_path,
+                quality_review_path=quality_path,
+            )
+
+            self.assertTrue(Path(payload["paths"]["manifest"]).exists())
+            self.assertTrue(Path(payload["paths"]["report"]).exists())
+            self.assertTrue(Path(payload["paths"]["hashes"]).exists())
+            self.assertEqual(payload["summary"]["docker_validation_level"], "run_probe")
+            self.assertTrue(payload["summary"]["flag_present"])
+            self.assertGreaterEqual(len(payload["copied_evidence"]), 5)
+            self.assertGreaterEqual(len(payload["hashes"]), 1)
+
+    def test_mcp_servers_expose_container_and_proof_tools(self):
+        expectations = {
+            "cloversec_ctf_workflow_mcp.py": ["cloversec_ctf_container_infer"],
+            "cloversec_ctf_docker_mcp.py": ["cloversec_ctf_docker_validation_plan"],
+            "cloversec_ctf_quality_runner_mcp.py": ["cloversec_ctf_proof_pack"],
+        }
+        for script, expected_tools in expectations.items():
+            result = subprocess.run(
+                [sys.executable, str(SCRIPTS / script)],
+                input="\n".join(
+                    [
+                        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+                        json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}),
+                    ]
+                )
+                + "\n",
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=20,
+            )
+            lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+            tools = [item["name"] for item in lines[1]["result"]["tools"]]
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.3.2")
+            for expected in expected_tools:
+                self.assertIn(expected, tools)
+
+
+if __name__ == "__main__":
+    unittest.main()

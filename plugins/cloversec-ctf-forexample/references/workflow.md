@@ -166,3 +166,35 @@ classification/resource_classification.json
 - Docker image tar
 
 每条记录都包含 `resource_type`、`confidence`、`evidence`、`sha256` 和 `recommended_next_skill`。低置信度或未知资源必须进入人工确认项。
+
+## 0.3.2 容器推断、验证分级和 proof
+
+容器推断默认只读取本地文件，不执行未知脚本，不启动 Docker。
+
+输出文件：
+
+```text
+classification/container_inference.json
+docker_validation_plan.json
+proof/proof_manifest.json
+proof/proof_report.md
+proof/hashes.json
+```
+
+推荐顺序：
+
+1. 先运行 `cloversec_ctf_resource_classify`，得到 `resource_classification.json`。
+2. 再运行 `cloversec_ctf_container_infer`，得到 `container_inference.json`。
+3. 根据 `summary.recommended_validation_level` 生成 Docker 验证计划。
+4. 只有用户明确授权时，才执行 `cloversec_ctf_docker_execute`。
+5. 质量检查完成后，运行 `cloversec_ctf_proof_pack` 生成 `proof/`。
+
+验证等级：
+
+- `static_only`：只读取文件和 JSON。
+- `inspect_only`：只 load/inspect 已有镜像或镜像 tar。
+- `build_only`：build amd64 镜像并 inspect。
+- `run_probe`：build/inspect/run/logs/stop，并探测端口或 URL。
+- `solve_verify`：需要人工确认后按手册验证解题，不自动执行未知 solver。
+
+`proof/` 用于审核复核，不替代最终人工判断。

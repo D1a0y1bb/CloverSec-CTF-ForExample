@@ -1,6 +1,6 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "CloverSec CTF collection, conversion, writeup, archive, review, and Hub submission workflows for Codex.",
   "author": {
     "name": "CloverSec",
@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "CloverSec CTF For Example",
     "shortDescription": "CTF 收集、构建、手册、归档和 Hub 提交流程",
-    "longDescription": "CloverSec CTF For Example packages Codex skills for workflow task intake, contest research, challenge resource classification, asset collection, container and attachment conversion, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting. Version 0.3.1 adds local resource classification for Docker, compose, source archives, attachments, writeups, screenshots, pcaps, binaries, database dumps, and Docker image tar files. Internal xlsx and Yuque outputs must keep the complete Flag field.",
+    "longDescription": "CloverSec CTF For Example packages Codex skills for workflow task intake, contest research, challenge resource classification, container inference, Docker validation, asset collection, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting. Version 0.3.2 adds cloversec-ctf-container-validator, cloversec_ctf_container_infer, cloversec_ctf_docker_validation_plan, validation levels static_only/inspect_only/build_only/run_probe/solve_verify, and cloversec_ctf_proof_pack for review evidence. Internal xlsx and Yuque outputs must keep the complete Flag field.",
     "developerName": "CloverSec",
     "category": "Developer Tools",
     "websiteURL": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample",
@@ -37,7 +37,7 @@
     "defaultPrompt": [
       "从年份、赛事、方向和数量创建 CloverSec CTF 批量采集任务",
       "按 CloverSec CTF 流程生成 Hub 提交材料、归档清单和语雀表",
-      "识别题目资源类型并检查手册、附件和镜像；xlsx 必须保留完整 Flag"
+      "遇到 Dockerfile/compose 时使用 cloversec-ctf-container-validator，生成 container_inference.json、Docker 验证等级和 proof 证据包；xlsx 必须保留完整 Flag"
     ]
   }
 }

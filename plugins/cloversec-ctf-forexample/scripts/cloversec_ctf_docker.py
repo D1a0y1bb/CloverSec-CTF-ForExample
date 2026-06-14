@@ -19,6 +19,8 @@ from urllib.request import urlopen
 
 TARGET_PLATFORM = "linux/amd64"
 DEFAULT_OPERATIONS = ["build", "load", "inspect", "run", "logs", "stop", "save"]
+VERSION = "0.3.2"
+VALIDATION_LEVELS = ["static_only", "inspect_only", "build_only", "run_probe", "solve_verify"]
 
 
 def create_docker_plan(
@@ -31,18 +33,33 @@ def create_docker_plan(
     dockerfile: str | Path = "",
     container_command: str = "",
     operations: list[str] | None = None,
+    validation_level: str = "",
+    container_inference: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     case = case or {}
+    container_inference = container_inference or {}
     docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
     environment = case.get("environment") if isinstance(case.get("environment"), dict) else {}
-    selected_operations = normalize_operations(operations or DEFAULT_OPERATIONS)
-    selected_ports = normalize_ports(ports or docker_artifacts.get("ports") or environment.get("port_mappings") or [])
-    selected_image = str(image_name or docker_artifacts.get("image_name") or "").strip()
+    inferred_runtime = container_inference.get("runtime") if isinstance(container_inference.get("runtime"), dict) else {}
+    selected_level = normalize_validation_level(validation_level or inferred_runtime.get("validation_level") or "")
+    selected_ports = normalize_ports(ports or docker_artifacts.get("ports") or environment.get("port_mappings") or inferred_runtime.get("ports") or [])
+    selected_image = str(image_name or docker_artifacts.get("image_name") or inferred_runtime.get("image_name") or "").strip()
     selected_tar = str(tar_path or docker_artifacts.get("tar_path") or "").strip()
-    selected_project_dir_text = str(project_dir or docker_artifacts.get("project_dir") or environment.get("project_dir") or "").strip()
+    selected_project_dir_text = str(
+        project_dir
+        or docker_artifacts.get("project_dir")
+        or environment.get("project_dir")
+        or inferred_runtime.get("build_context")
+        or ""
+    ).strip()
     selected_project_dir = Path(selected_project_dir_text) if selected_project_dir_text else None
-    selected_dockerfile = Path(str(dockerfile or "Dockerfile"))
-    selected_command = str(container_command or environment.get("start_command") or "").strip()
+    selected_dockerfile = Path(str(dockerfile or inferred_runtime.get("dockerfile") or "Dockerfile"))
+    dockerfile_for_command = selected_dockerfile
+    if selected_project_dir and not selected_dockerfile.is_absolute():
+        dockerfile_for_command = selected_project_dir / selected_dockerfile
+    selected_command = str(container_command or environment.get("start_command") or inferred_runtime.get("container_command") or "").strip()
+    raw_operations = operations if operations is not None else operations_for_validation_level(selected_level, tar_path=selected_tar)
+    selected_operations = [] if selected_level == "static_only" and raw_operations == [] else normalize_operations(raw_operations)
     container_name = f"cloversec-docker-{safe_token(str(case.get('case_id') or 'case'))}-{int(time.time())}"
 
     commands: dict[str, list[str]] = {}
@@ -55,7 +72,7 @@ def create_docker_plan(
             "-t",
             selected_image,
             "-f",
-            selected_dockerfile.as_posix(),
+            dockerfile_for_command.as_posix(),
             selected_project_dir.as_posix() if selected_project_dir else "",
         ]
     if "load" in selected_operations and selected_tar:
@@ -79,7 +96,9 @@ def create_docker_plan(
         commands["save"] = ["docker", "save", selected_image, "-o", selected_tar]
 
     issues = []
-    if not selected_image:
+    if selected_level == "static_only" and selected_operations:
+        issues.append("static_only validation must not execute Docker operations")
+    if selected_operations and not selected_image:
         issues.append("image_name is required")
     if "build" in selected_operations and not selected_project_dir_text:
         issues.append("project_dir is required for docker build")
@@ -88,11 +107,14 @@ def create_docker_plan(
 
     return {
         "schema_version": "cloversec.ctf.docker_plan.v1",
+        "version": VERSION,
         "case_id": str(case.get("case_id") or ""),
+        "validation_level": selected_level,
         "target_platform": TARGET_PLATFORM,
         "image_name": selected_image,
         "tar_path": selected_tar,
         "project_dir": selected_project_dir.as_posix() if selected_project_dir else "",
+        "dockerfile": dockerfile_for_command.as_posix(),
         "ports": selected_ports,
         "operations": selected_operations,
         "container_name": container_name,
@@ -100,10 +122,38 @@ def create_docker_plan(
         "issues": issues,
         "safety": [
             "Only run Docker operations explicitly requested by the Agent/user.",
+            "validation_level=static_only creates evidence without running Docker.",
+            "validation_level=solve_verify records the intent; it does not execute unknown solver scripts.",
             "Record command output, exit code, platform, probes, logs, tar hash, and failure evidence.",
             "Stop and remove the test container after run/logs when stop is requested.",
         ],
     }
+
+
+def create_docker_validation_plan(
+    *,
+    case: dict[str, Any] | None = None,
+    project_dir: str | Path = "",
+    image_name: str = "",
+    tar_path: str | Path = "",
+    ports: list[str] | None = None,
+    dockerfile: str | Path = "",
+    container_command: str = "",
+    validation_level: str = "",
+    container_inference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return create_docker_plan(
+        case=case,
+        project_dir=project_dir,
+        image_name=image_name,
+        tar_path=tar_path,
+        ports=ports,
+        dockerfile=dockerfile,
+        container_command=container_command,
+        operations=None,
+        validation_level=validation_level,
+        container_inference=container_inference,
+    )
 
 
 def execute_docker_workflow(
@@ -117,6 +167,8 @@ def execute_docker_workflow(
     dockerfile: str | Path = "",
     container_command: str = "",
     operations: list[str] | None = None,
+    validation_level: str = "",
+    container_inference: dict[str, Any] | None = None,
     probe_urls: list[str] | None = None,
     startup_wait: float = 2.0,
     command_timeout: int = 60,
@@ -133,6 +185,8 @@ def execute_docker_workflow(
         dockerfile=dockerfile,
         container_command=container_command,
         operations=operations,
+        validation_level=validation_level,
+        container_inference=container_inference,
     )
     evidence: dict[str, Any] = {
         "schema_version": "cloversec.ctf.docker_evidence.v1",
@@ -144,6 +198,7 @@ def execute_docker_workflow(
         "artifacts": {},
         "summary": {
             "status": "fail",
+            "validation_level": plan.get("validation_level", ""),
             "platform": "",
             "run_verified": False,
             "tar_sha256": "",
@@ -160,6 +215,14 @@ def execute_docker_workflow(
 
     if issues:
         evidence["summary"]["issues"] = issues
+        write_evidence(output, evidence)
+        return evidence
+
+    if not selected_operations:
+        evidence["summary"]["status"] = "skip"
+        evidence["summary"]["run_verified"] = False
+        evidence["summary"]["issues"] = []
+        evidence["summary"]["message"] = "no Docker operations selected"
         write_evidence(output, evidence)
         return evidence
 
@@ -242,6 +305,7 @@ def compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
         "schema_version": "cloversec.ctf.docker_evidence.compact.v1",
         "case_id": evidence.get("case_id", ""),
         "status": summary.get("status", ""),
+        "validation_level": summary.get("validation_level", ""),
         "platform": summary.get("platform", ""),
         "run_verified": summary.get("run_verified", False),
         "tar_sha256": summary.get("tar_sha256", ""),
@@ -278,6 +342,7 @@ def render_docker_report(evidence: dict[str, Any]) -> str:
         "",
         f"- 题目 ID：{evidence.get('case_id', '')}",
         f"- 状态：{summary.get('status', '')}",
+        f"- 验证等级：{summary.get('validation_level', '')}",
         f"- 平台：{summary.get('platform', '')}",
         f"- run_verified：{summary.get('run_verified', False)}",
         f"- tar SHA256：{summary.get('tar_sha256', '')}",
@@ -373,6 +438,24 @@ def normalize_operations(operations: list[str]) -> list[str]:
         if value in allowed and value not in output:
             output.append(value)
     return output or list(DEFAULT_OPERATIONS)
+
+
+def normalize_validation_level(value: str) -> str:
+    text = str(value or "").strip().lower().replace("-", "_")
+    return text if text in VALIDATION_LEVELS else "custom"
+
+
+def operations_for_validation_level(level: str, *, tar_path: str = "") -> list[str]:
+    normalized = normalize_validation_level(level)
+    if normalized == "static_only":
+        return []
+    if normalized == "inspect_only":
+        return ["load", "inspect"] if str(tar_path or "").strip() else ["inspect"]
+    if normalized == "build_only":
+        return ["build", "inspect"]
+    if normalized in {"run_probe", "solve_verify"}:
+        return ["build", "inspect", "run", "logs", "stop"]
+    return list(DEFAULT_OPERATIONS)
 
 
 def normalize_ports(value: Any) -> list[str]:
@@ -482,6 +565,8 @@ def main(argv: list[str] | None = None) -> int:
     plan_parser.add_argument("--dockerfile", default="")
     plan_parser.add_argument("--container-command", default="")
     plan_parser.add_argument("--operation", action="append", default=[])
+    plan_parser.add_argument("--validation-level", choices=VALIDATION_LEVELS, default="")
+    plan_parser.add_argument("--container-inference", default="")
     plan_parser.add_argument("--output", required=True)
 
     execute_parser = subparsers.add_parser("execute", help="run controlled Docker operations and write evidence")
@@ -494,6 +579,8 @@ def main(argv: list[str] | None = None) -> int:
     execute_parser.add_argument("--dockerfile", default="")
     execute_parser.add_argument("--container-command", default="")
     execute_parser.add_argument("--operation", action="append", default=[])
+    execute_parser.add_argument("--validation-level", choices=VALIDATION_LEVELS, default="")
+    execute_parser.add_argument("--container-inference", default="")
     execute_parser.add_argument("--probe-url", action="append", default=[])
     execute_parser.add_argument("--startup-wait", type=float, default=2.0)
     execute_parser.add_argument("--command-timeout", type=int, default=60)
@@ -501,6 +588,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     case = json.loads(Path(args.case_json).read_text(encoding="utf-8")) if getattr(args, "case_json", None) else {}
+    container_inference = (
+        json.loads(Path(args.container_inference).read_text(encoding="utf-8"))
+        if getattr(args, "container_inference", "")
+        else {}
+    )
     if args.command == "plan":
         payload = create_docker_plan(
             case=case,
@@ -510,7 +602,9 @@ def main(argv: list[str] | None = None) -> int:
             ports=args.port,
             dockerfile=args.dockerfile,
             container_command=args.container_command,
-            operations=args.operation or DEFAULT_OPERATIONS,
+            operations=args.operation or None,
+            validation_level=args.validation_level,
+            container_inference=container_inference,
         )
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -526,7 +620,9 @@ def main(argv: list[str] | None = None) -> int:
             ports=args.port,
             dockerfile=args.dockerfile,
             container_command=args.container_command,
-            operations=args.operation or DEFAULT_OPERATIONS,
+            operations=args.operation or None,
+            validation_level=args.validation_level,
+            container_inference=container_inference,
             probe_urls=args.probe_url,
             startup_wait=args.startup_wait,
             command_timeout=args.command_timeout,

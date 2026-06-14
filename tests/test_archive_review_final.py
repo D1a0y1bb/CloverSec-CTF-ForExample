@@ -414,9 +414,12 @@ class ArchiveReviewFinalTests(unittest.TestCase):
 
     def test_new_mcp_servers_list_expected_tools(self):
         servers = [
-            ("cloversec_ctf_docker_mcp.py", ["cloversec_ctf_docker_plan", "cloversec_ctf_docker_execute"]),
+            (
+                "cloversec_ctf_docker_mcp.py",
+                ["cloversec_ctf_docker_plan", "cloversec_ctf_docker_validation_plan", "cloversec_ctf_docker_execute"],
+            ),
             ("cloversec_ctf_archive_mcp.py", ["cloversec_ctf_archive_batch"]),
-            ("cloversec_ctf_quality_runner_mcp.py", ["cloversec_ctf_quality_run"]),
+            ("cloversec_ctf_quality_runner_mcp.py", ["cloversec_ctf_quality_run", "cloversec_ctf_proof_pack"]),
         ]
         for script, expected_tools in servers:
             process = subprocess.Popen(
@@ -438,7 +441,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.1")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.2")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

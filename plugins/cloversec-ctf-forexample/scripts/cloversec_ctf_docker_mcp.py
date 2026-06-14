@@ -11,7 +11,7 @@ from typing import Any
 import cloversec_ctf_docker as docker_runner
 
 
-SERVER_VERSION = "0.3.1"
+SERVER_VERSION = "0.3.2"
 
 TOOLS = [
     {
@@ -28,6 +28,26 @@ TOOLS = [
                 "dockerfile": {"type": "string"},
                 "container_command": {"type": "string"},
                 "operations": {"type": "array", "items": {"type": "string", "enum": docker_runner.DEFAULT_OPERATIONS}},
+                "validation_level": {"type": "string", "enum": docker_runner.VALIDATION_LEVELS},
+                "container_inference": {"type": "object"},
+            },
+        },
+    },
+    {
+        "name": "cloversec_ctf_docker_validation_plan",
+        "description": "Create a Docker validation plan from a validation level such as static_only, inspect_only, build_only, run_probe, or solve_verify.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case": {"type": "object"},
+                "project_dir": {"type": "string"},
+                "image_name": {"type": "string"},
+                "tar_path": {"type": "string"},
+                "ports": {"type": "array", "items": {"type": "string"}},
+                "dockerfile": {"type": "string"},
+                "container_command": {"type": "string"},
+                "validation_level": {"type": "string", "enum": docker_runner.VALIDATION_LEVELS},
+                "container_inference": {"type": "object"},
             },
         },
     },
@@ -46,6 +66,8 @@ TOOLS = [
                 "dockerfile": {"type": "string"},
                 "container_command": {"type": "string"},
                 "operations": {"type": "array", "items": {"type": "string", "enum": docker_runner.DEFAULT_OPERATIONS}},
+                "validation_level": {"type": "string", "enum": docker_runner.VALIDATION_LEVELS},
+                "container_inference": {"type": "object"},
                 "probe_urls": {"type": "array", "items": {"type": "string"}},
                 "startup_wait": {"type": "number"},
                 "command_timeout": {"type": "integer", "minimum": 1, "maximum": 600},
@@ -95,7 +117,21 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             ports=[str(item) for item in arguments.get("ports", [])],
             dockerfile=str(arguments.get("dockerfile") or ""),
             container_command=str(arguments.get("container_command") or ""),
-            operations=[str(item) for item in arguments.get("operations", docker_runner.DEFAULT_OPERATIONS)],
+            operations=optional_operations(arguments),
+            validation_level=str(arguments.get("validation_level") or ""),
+            container_inference=arguments.get("container_inference", {}),
+        )
+    if name == "cloversec_ctf_docker_validation_plan":
+        return docker_runner.create_docker_validation_plan(
+            case=arguments.get("case", {}),
+            project_dir=str(arguments.get("project_dir") or ""),
+            image_name=str(arguments.get("image_name") or ""),
+            tar_path=str(arguments.get("tar_path") or ""),
+            ports=[str(item) for item in arguments.get("ports", [])],
+            dockerfile=str(arguments.get("dockerfile") or ""),
+            container_command=str(arguments.get("container_command") or ""),
+            validation_level=str(arguments.get("validation_level") or ""),
+            container_inference=arguments.get("container_inference", {}),
         )
     if name == "cloversec_ctf_docker_execute":
         evidence = docker_runner.execute_docker_workflow(
@@ -107,7 +143,9 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             ports=[str(item) for item in arguments.get("ports", [])],
             dockerfile=str(arguments.get("dockerfile") or ""),
             container_command=str(arguments.get("container_command") or ""),
-            operations=[str(item) for item in arguments.get("operations", docker_runner.DEFAULT_OPERATIONS)],
+            operations=optional_operations(arguments),
+            validation_level=str(arguments.get("validation_level") or ""),
+            container_inference=arguments.get("container_inference", {}),
             probe_urls=[str(item) for item in arguments.get("probe_urls", [])],
             startup_wait=float(arguments.get("startup_wait", 2.0)),
             command_timeout=int(arguments.get("command_timeout", 60)),
@@ -115,6 +153,12 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
         )
         return docker_runner.compact_evidence(evidence)
     raise ValueError(f"unknown tool: {name}")
+
+
+def optional_operations(arguments: dict[str, Any]) -> list[str] | None:
+    if "operations" not in arguments:
+        return None
+    return [str(item) for item in arguments.get("operations", [])]
 
 
 def response(request_id: Any, result: Any) -> dict[str, Any]:

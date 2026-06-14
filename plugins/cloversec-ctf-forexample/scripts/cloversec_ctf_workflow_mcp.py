@@ -10,9 +10,10 @@ from typing import Any
 
 import cloversec_ctf_workflow as workflow
 import cloversec_ctf_resource as resource
+import cloversec_ctf_container as container
 
 
-SERVER_VERSION = "0.3.1"
+SERVER_VERSION = "0.3.2"
 
 TOOLS = [
     {
@@ -142,6 +143,20 @@ TOOLS = [
             "required": ["root"],
         },
     },
+    {
+        "name": "cloversec_ctf_container_infer",
+        "description": "Infer whether a local challenge is a container challenge, extract Docker/compose runtime hints, recommend a Docker validation level, and write container_inference.json.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_dir": {"type": "string"},
+                "resource_classification_path": {"type": "string"},
+                "resource_classification": {"type": "object"},
+                "output_path": {"type": "string"},
+            },
+            "required": ["project_dir"],
+        },
+    },
 ]
 
 
@@ -260,6 +275,18 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             "warnings": payload.get("warnings", []),
             "output_path": str(arguments.get("output_path") or ""),
         }
+    if name == "cloversec_ctf_container_infer":
+        resource_input: dict[str, Any] | str = arguments.get("resource_classification", {})
+        if not resource_input and arguments.get("resource_classification_path"):
+            resource_input = str(arguments.get("resource_classification_path") or "")
+        payload = container.infer_container_project(
+            project_dir=str(arguments.get("project_dir") or ""),
+            resource_classification=resource_input or None,
+            output_path=str(arguments.get("output_path") or "") or None,
+        )
+        compact = container.compact_inference(payload)
+        compact["output_path"] = str(arguments.get("output_path") or "")
+        return compact
     raise ValueError(f"unknown tool: {name}")
 
 

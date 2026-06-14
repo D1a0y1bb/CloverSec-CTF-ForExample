@@ -196,10 +196,10 @@
 - [x] GitHub 配置向导：检测 `gh auth login`、`GITHUB_TOKEN` / `GH_TOKEN`，执行小样本查询，展示限额、失败原因和当前可用搜索源。0.3.0 已实现 `github-doctor`。
 - [x] 下载沙箱：所有外部附件先进入隔离目录，限制协议、大小、重定向、文件名和解压路径，生成安全预览后再进入题目目录。0.3.0 已实现 `download-sandbox`，默认单文件上限 300MB、最多 5 次重定向。
 - [x] 附件智能识别：自动判断源码包、附件题、Docker 项目、compose 项目、writeup、截图、pcap、binary、数据库 dump 等资源类型。0.3.1 已实现 `cloversec_ctf_resource.py classify` 和 `cloversec_ctf_resource_classify`。
-- [ ] 容器题识别：从 Dockerfile、compose、README、端口、启动脚本中推断服务类型、端口、环境变量、构建命令和运行命令。
-- [ ] Docker 验证分级：轻量 inspect、构建验证、启动验证、端口探测、日志采集、HTTP 探测、手册解题验证分层执行。
+- [x] 容器题识别：从 Dockerfile、compose、README、端口、启动脚本中推断服务类型、端口、环境变量、构建命令和运行命令。0.3.2 已实现 `cloversec_ctf_container.py infer` 和 `cloversec_ctf_container_infer`。
+- [x] Docker 验证分级：轻量 inspect、构建验证、启动验证、端口探测、日志采集、HTTP 探测、手册解题验证分层执行。0.3.2 已实现 `static_only`、`inspect_only`、`build_only`、`run_probe`、`solve_verify`。
 - [ ] 手册质量助手：检查字段完整性、题目描述、考点、环境、解题步骤、截图引用、Flag、附件引用和 Hub 表单字段一致性。
-- [ ] 解题证据包：把关键命令、输出摘要、截图、flag 验证记录、容器日志和文件 hash 打包成 `proof/`，供审核复核。
+- [x] 解题证据包：把关键命令、输出摘要、截图、flag 验证记录、容器日志和文件 hash 打包成 `proof/`，供审核复核。0.3.2 已实现 `cloversec_ctf_proof.py` 和 `cloversec_ctf_proof_pack`。
 - [ ] Hub 提交草稿：从 markdown、xlsx 字段和资源目录生成表单草稿、上传清单、截图清单和提交前差异报告。
 - [ ] Hub 审核跟踪：记录已提交题目、审核状态、退回意见、Hub 编号、镜像 tag 计划和重新导出任务。
 - [ ] 镜像命名助手：根据 Hub 编号、题目分类、内部规范生成镜像名、tag、tar 文件名、hash 和归档字段。
@@ -253,3 +253,20 @@
 - [ ] 待后续增强：Medium/InfosecWriteups 等站点可能返回 403，当前会记录为失败证据；需要 Chrome/浏览器辅助或人工提供页面内容。
 - [ ] 待后续增强：LLM 输出精确 skill ID 时需要明确“只能输出精确 ID，不允许前后缀”；未加严格约束时模型可能写成泛称或加 `skill ` 前缀。
 - [ ] 待后续注意：`codex exec` 输出里仍有其他已安装插件的 icon/defaultPrompt warning，以及某个外部 MCP shutdown 阶段 `Auth required` warning；本次 CloverSec 插件验收返回成功。
+
+## v0.3.2 开发与验收记录
+
+- [x] 新增 `cloversec-ctf-container-validator` skill，作为容器题识别、Docker 验证分级和 proof 证据包入口。
+- [x] 新增 `cloversec_ctf_container.py infer`，输出 `container_inference.json`，识别 Dockerfile、compose、README、challenge manifest、端口、镜像名建议、启动命令和推荐验证等级。
+- [x] `cloversec-ctf-workflow` MCP 新增 `cloversec_ctf_container_infer`。
+- [x] `cloversec-ctf-docker` MCP 新增 `cloversec_ctf_docker_validation_plan`，原 plan/execute 支持 `validation_level` 和 `container_inference`。
+- [x] 新增 `cloversec_ctf_proof.py` 和 `cloversec_ctf_proof_pack`，生成 `proof_manifest.json`、`proof_report.md`、`hashes.json` 和 `proof/evidence/`。
+- [x] 发布前本地验证：单元测试 102 个通过、脚本语法检查通过、release 校验通过、官方 plugin 校验通过。
+- [x] 发布前真实 Docker 验收：使用可信临时 `busybox:1.36` Dockerfile 验证 build/inspect/run/logs/stop/save；结果为 `linux/amd64`、`run_verified=true`、tar hash 64 位。
+- [x] 发布前真实 LLM 验收：CloudRouter `gpt-5.4-mini` 确认会先选择 `cloversec-ctf-container-validator` / `cloversec_ctf_container_infer`，再选择 `run_probe` 和 `cloversec_ctf_proof_pack`；禁止未知 solver、Hub 最终提交，完整 Flag 策略通过。
+- [x] 发布前真实验证发现并修复：Docker build plan 中 `-f Dockerfile` 未解析到 `project_dir`，导致真实 Docker 构建找不到 Dockerfile。
+- [x] 发布前真实验证发现并修复：`container_inference.runtime.container_command` 误用 Dockerfile `CMD`，导致 `docker run` 覆盖镜像默认命令；已改为只记录 `dockerfile_cmd`，不作为 run 覆盖命令。
+- [x] 发布前真实验证发现并处理：CloudRouter `gpt-5.4-mini` 在长提示和 `max_tokens=900` 下返回 `finish_reason=length` 且 `content=null`；已用短 JSON 提示和更高输出 token 复测通过。
+- [x] v0.3.2 验证记录已写入 `docs/validation/v0.3.2-container-docker-llm-validation.md`。
+- [ ] v0.3.2 Release 发布。
+- [ ] 本机 Codex 插件更新到 `0.3.2` 后进行安装版真实测试。

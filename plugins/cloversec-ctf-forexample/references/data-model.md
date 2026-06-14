@@ -70,7 +70,7 @@
 ```json
 {
   "schema_version": "cloversec.ctf.workflow.state.v1",
-  "workflow_version": "0.3.1",
+  "workflow_version": "0.3.2",
   "run_id": "",
   "status": "initialized",
   "workdir": "",
@@ -94,12 +94,12 @@
 
 ## 资源识别
 
-0.3.1 起，资源目录使用 `resource_classification.json` 记录识别结果：
+0.3.2 起，资源目录使用 `resource_classification.json` 记录识别结果：
 
 ```json
 {
   "schema_version": "cloversec.ctf.resource_classification.v1",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "root": "",
   "root_classification": {
     "project_type": "container_project|compose_project|source_archive_bundle|attachment_challenge|writeup_only|mixed_resource_bundle",
@@ -125,6 +125,64 @@
 
 资源识别结果是分流建议。进入 Dockerizer、附件题检查、Hub 或最终归档前仍要保留人工确认点。
 
+## 容器推断
+
+0.3.2 起，容器题使用 `container_inference.json` 记录静态推断结果：
+
+```json
+{
+  "schema_version": "cloversec.ctf.container_inference.v1",
+  "version": "0.3.2",
+  "project_dir": "",
+  "summary": {
+    "project_type": "container_project|compose_project|docker_image_delivery|container_instructions|remote_service_challenge|non_container_or_unknown",
+    "confidence": "high|medium|low",
+    "ports": ["18080:80"],
+    "recommended_validation_level": "static_only|inspect_only|build_only|run_probe|solve_verify",
+    "requires_manual_review": false
+  },
+  "runtime": {
+    "image_name": "",
+    "build_context": "",
+    "dockerfile": "",
+    "ports": [],
+    "probe_urls": []
+  },
+  "warnings": [],
+  "next_actions": []
+}
+```
+
+`container_inference.json` 是静态建议，不代表 Docker 已构建或启动成功。真实 Docker 证据必须来自 `docker_evidence.json`。
+
+## Proof 证据包
+
+0.3.2 起，审核证据包使用 `proof/proof_manifest.json`：
+
+```json
+{
+  "schema_version": "cloversec.ctf.proof_pack.v1",
+  "version": "0.3.2",
+  "case_id": "",
+  "copied_evidence": [],
+  "skipped_evidence": [],
+  "summary": {
+    "resource_project_type": "",
+    "container_project_type": "",
+    "docker_status": "",
+    "docker_validation_level": "",
+    "docker_run_verified": false,
+    "quality_status": "",
+    "flag_present": true,
+    "ready_for_review": false,
+    "issues": []
+  },
+  "hashes": []
+}
+```
+
+`proof/` 默认只复制小型 JSON/Markdown 证据和 hash，不执行未知 solver，不点击 Hub 最终提交。
+
 ## 脚本入口
 
 统一数据模型脚本：
@@ -133,6 +191,8 @@
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py init --event "IrisCTF" --year 2025 --category web --limit 20
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py batch --workdir runs/20260614-2025-IrisCTF-web --stage research --mode dry-run --output reports/research_dry_run.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py classify challenge-dir --output classification/resource_classification.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_container.py infer challenge-dir --resource-classification classification/resource_classification.json --output classification/container_inference.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py --output-dir proof --case-json ctf_case.json --container-inference classification/container_inference.json --quality-review quality_review.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl archive.xlsx
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx archive.xlsx

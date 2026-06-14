@@ -136,7 +136,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 
 ## MCP server
 
-插件带有 `cloversec-ctf-search`、`cloversec-ctf-search-plus`、`cloversec-ctf-browser-search`、`cloversec-ctf-docker`、`cloversec-ctf-archive`、`cloversec-ctf-quality-runner` 和 `cloversec-ctf-hub-assistant` MCP server，配置文件为 `.mcp.json`。工具：
+插件带有 `cloversec-ctf-search`、`cloversec-ctf-search-plus`、`cloversec-ctf-browser-search`、`cloversec-ctf-docker`、`cloversec-ctf-archive`、`cloversec-ctf-quality-runner`、`cloversec-ctf-hub-assistant` 和 `cloversec-ctf-workflow` MCP server，配置文件为 `.mcp.json`。工具：
 
 - `cloversec_ctf_search_plus`
 - `cloversec_ctf_discover`
@@ -148,17 +148,41 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 - `cloversec_ctf_browser_search_import_visible`
 - `cloversec_ctf_browser_search_dom_to_visible`
 - `cloversec_ctf_docker_plan`
+- `cloversec_ctf_docker_validation_plan`
 - `cloversec_ctf_docker_execute`
 - `cloversec_ctf_archive_batch`
 - `cloversec_ctf_quality_run`
+- `cloversec_ctf_proof_pack`
 - `cloversec_ctf_hub_browser_plan`
 - `cloversec_ctf_hub_chrome_plan`
 - `cloversec_ctf_hub_validate_manifest`
 - `cloversec_ctf_hub_apply_upload_results`
+- `cloversec_ctf_resource_classify`
+- `cloversec_ctf_container_infer`
+
+## `cloversec_ctf_container.py`
+
+容器题识别工具。它只做静态读取，从 Dockerfile、compose、README、challenge manifest 和 `resource_classification.json` 中提取端口、服务、镜像名建议、启动线索和 Docker 验证等级。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_container.py infer \
+  challenge-dir \
+  --resource-classification resource_classification.json \
+  --output container_inference.json \
+  --compact-output container_inference.compact.json
+```
+
+验证等级：
+
+- `static_only`：只读取文件和 JSON，不执行 Docker。
+- `inspect_only`：load/inspect 已有镜像或镜像 tar。
+- `build_only`：build amd64 镜像并 inspect。
+- `run_probe`：build/inspect/run/logs/stop，并探测端口或 URL。
+- `solve_verify`：表示需要人工确认后按手册验证解题，不自动执行未知 solver。
 
 ## `cloversec_ctf_docker.py`
 
-受控 Docker 执行工具。按显式 operations 执行 `build/load/inspect/run/logs/stop/save`，记录 amd64 平台、端口探测、启动日志、tar SHA256 和失败证据。要求 build 时显式传 `--project-dir`。
+受控 Docker 执行工具。按显式 operations 或 `--validation-level` 执行 `build/load/inspect/run/logs/stop/save`，记录 amd64 平台、端口探测、启动日志、tar SHA256 和失败证据。要求 build 时显式传 `--project-dir` 或通过 `container_inference.json` 提供 build context。
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_docker.py execute \
@@ -174,11 +198,42 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_docker.py execute
   --output-dir docker_evidence
 ```
 
+按验证等级生成计划：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_docker.py plan \
+  --container-inference container_inference.json \
+  --validation-level run_probe \
+  --image-name cloversec/example:local \
+  --output docker_validation_plan.json
+```
+
 输出文件：
 
 - `docker_evidence/docker_evidence.json`
 - `docker_evidence/docker_evidence.md`
 - `docker_evidence/docker_logs.txt`（执行 logs 时生成）
+
+## `cloversec_ctf_proof.py`
+
+审核证据包工具。把资源识别、容器推断、Docker evidence、质量检查报告和其他小文件复制到 `proof/evidence/`，写出 manifest、hashes 和人工复核报告。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py \
+  --output-dir proof \
+  --case-json ctf_case.json \
+  --resource-classification resource_classification.json \
+  --container-inference container_inference.json \
+  --docker-evidence docker_evidence/docker_evidence.json \
+  --quality-review quality_review.json
+```
+
+关键输出：
+
+- `proof/proof_manifest.json`
+- `proof/proof_report.md`
+- `proof/hashes.json`
+- `proof/evidence/`
 
 ## `cloversec_ctf_archive_runner.py`
 
