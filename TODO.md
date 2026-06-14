@@ -162,9 +162,7 @@
 - [x] `v0.2.1` 发布过程中发现并修复搜索问题：`祥云杯 2024 pwn writeup` 会把 `2021/2022 祥云杯` 旧文章当候选；已增加年份冲突识别，错误年份降为 `noise`，缺少年份不计入有效候选。
 - [x] `v0.2.2` App 边界已确认：Workbench、Hub Uploader、Review Dashboard、Archive Browser 四个 App 当前不做；本版本只做 plugin、skills、MCP、脚本和文件化证据。
 
-## MCP / App 后续规划
-
-## 当前版本大白话总结（v0.2.2）
+## 当前版本总结（v0.2.2）
 
 - [x] 现在这个 plugin 已经不是空骨架了，可以按 CloverSec CTF 流程从“找比赛/找题目/找 writeup 和附件线索”一路走到“生成手册、Hub 提交材料、归档包、质量检查、Hub 编号 retag 计划、最终 xlsx/语雀表”。
 - [x] 你原本的两个核心 skill 已保留并迁移进插件：`CloverSec-CTF-Build-Dockerizer` 和 `CloverSec-CTF-Writeup-Scaffold`，没有用简化替代版覆盖。

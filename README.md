@@ -5,8 +5,9 @@
 <h1 align="center">CloverSec CTF For Example</h1>
 
 <p align="center">
-  <strong>Codex-native CTF collection, conversion, writeup, archive, review, and Hub submission workflow plugin.</strong>
+  <strong>The native Codex-compatible four-leaf clover security-specific workflow plugin: CTF competitions, information collection, question conversion, manual writing, question archiving, requirement review, and internal Hub submission</strong>
 </p>
+
 
 <p align="center">
   <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.2.2-2563eb"></a>
@@ -28,17 +29,15 @@
 
 ## Overview
 
-`CloverSec CTF For Example` 是给 Codex 使用的 CTF 工作流插件。它不是一个单一命令，而是一组可被 Codex 自动调用的 skill、脚本和 MCP server。
-
-你可以直接描述目标，例如“收集 2025 年某比赛 Web 题并整理附件和 WP”，Codex 会按场景选择对应能力，生成结构化文件、证据记录、归档目录、质量检查报告、Hub 提交材料和最终 xlsx/语雀表。
+`CloverSec CTF For Example` 是一个 Codex 原生适配的四叶草安全-创研中心专属工作流插件，由一组可被 Codex 自动调用的 skill、脚本和 MCP server 组成。你可以直接描述目标（周期性重复工作目标），例如“收集 2025 年某比赛的 Web 题目并整理附件和 WP”，Codex 会按场景选择对应能力，生成结构化文件、证据记录、归档目录、质量检查报告、Hub 提交材料和最终 xlsx/语雀表。
 
 它覆盖竞赛岗位工程师常见的长流程工作：
 
 | 工作内容 | 插件处理方式 |
 | --- | --- |
-| 赛事和赛题调研 | 多来源搜索、证据评分、结构化 `ctf_cases.jsonl` |
+| 赛事和赛题调研 | 多来源搜索、证据评分、结构化数据 |
 | 附件、源码、WP 收集 | 下载预览、hash、失败原因、来源证据 |
-| 容器题改造 | Docker 交付件、amd64 检查、build/run/save/load 记录 |
+| 容器题改造 | Docker 交付、amd64 检查、build/run/save/load 记录 |
 | 附件题处理 | zip/tar 检查、路径穿越风险、manifest |
 | 手册撰写 | 手册草稿、Hub 字段、xlsx 字段、完整 Flag 字段 |
 | 资源归档 | 归档目录、manifest、索引、语雀表 |
@@ -47,27 +46,17 @@
 | 审核后处理 | Hub 编号回填、镜像 tag 计划、tar 导出记录 |
 | 最终交付 | `archive.xlsx`、`yuque_table.md`、`final_report.md` |
 
-内部归档要求里，`Flag` 必须完整写入 xlsx 字段。这个规则已经放进插件级说明和相关 skill。
+## Amazing
 
-## Amazing Demo
+我们即将准备一个非常 Amazing 的演示视频，用来展示 `CloverSec CTF For Example` 这个全新推出的 Codex Plugin，用于展示 - 如何快速完成过去竞赛岗位工程师的一套完整工作：从历史题目采集、附件和 WP 整理，到镜像构建、手册撰写、质量检查、内部 Hub 浏览器辅助发布，再到归档 xlsx 和语雀表输出。
 
-我们准备了一个非常 Amazing 的演示视频，用来展示 `CloverSec CTF For Example` 这个全新推出的 Codex Plugin，如何快速完成过去竞赛岗位工程师的完整工作：从历史题目采集、附件和 WP 整理，到镜像构建、手册撰写、质量检查、内部 Hub 浏览器辅助发布，再到归档 xlsx 和语雀表输出。
-
-过去这些工作需要在搜索引擎、GitHub、CTF 平台、Docker、Markdown、Excel、Hub 页面之间来回切换。现在可以在 Codex 中用一句话开始：
+过去这些工作需要在搜索引擎、GitHub、CTF 平台、Docker、Markdown、Excel、Hub 页面之间来回切换。需要超过 1-2H 的时间去完成很繁琐机械化的工作，现在只需要在 Codex 中用一句话开始：
 
 ```text
-@cloversec-ctf-forexample 帮我收集 2024-2026 年可复现的 Web/Pwn 赛题，整理附件、WP、镜像构建计划、手册和最终归档表。
+@cloversec-ctf-forexample 帮我收集 2024-2026 年 xxxxx 比赛可复现的 Web/Pwn 赛题，整理附件、WP、镜像构建计划、手册和最终归档表。
 ```
 
 这个插件采用 WorkFlow 工作流编排，把长时间、跨工具、容易漏证据的任务拆成 Codex 能执行和复核的步骤。它不会替代人的最终判断；它把信息收集、文件整理、校验记录和提交前检查尽量自动化，让工程师把时间放在确认质量和处理异常上。
-
-演示视频可以放在仓库文档区，例如：
-
-```text
-docs/demo/cloversec-ctf-forexample-demo.mp4
-```
-
-当前仓库不内置演示视频文件。
 
 ## Quick Start
 
@@ -83,7 +72,7 @@ Git 引用：v0.2.2
 
 然后安装 marketplace 里的 `CloverSec CTF For Example` 插件。
 
-也可以使用命令行：
+当然也可以使用命令行：
 
 ```bash
 codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.2.2
@@ -92,9 +81,7 @@ codex plugin add cloversec-ctf-forexample@cloversec-ctf
 
 ### 2. 新开一个 Codex 会话
 
-安装或更新后建议新开会话，让 Codex 重新加载 skill 和 MCP server。
-
-你可以这样说：
+安装或更新后建议新开会话，让 Codex 重新加载 skill 和 MCP server。你可以这样说：
 
 ```text
 使用 CloverSec CTF For Example，帮我收集 2025 IrisCTF 的 Web 题、writeup 和附件线索。
@@ -112,13 +99,13 @@ codex plugin add cloversec-ctf-forexample@cloversec-ctf
 | --- | --- | --- |
 | `gh auth login` | 推荐 | GitHub 搜索和源码抓取更稳定，不需要单独申请 API key |
 | Docker Desktop | 容器题需要 | Docker 构建、运行、导出 tar、amd64 检查会用到 |
-| Chrome 登录 Hub | Hub 辅助填写需要 | 插件只使用当前浏览器页面，不保存密码、Cookie、token |
+| Chrome 登录 Hub 平台 | Hub 辅助填写需要 | 插件只使用当前浏览器页面，不保存密码、Cookie、token |
 | 题目目录或清单 | 推荐 | 可以是 `ctf_case.json`、`ctf_cases.jsonl`、xlsx、zip 或 URL |
 | 人工入口线索 | 可选 | 冷门比赛、网盘失效、中文站收录差时会很有用 |
 
 ## Usage
 
-这个插件的使用方式是“描述目标”，不是背命令。下面是小白也能直接复制的用法。
+使用这个插件时直接描述目标即可，无需背命令。
 
 ### 收集题目线索
 
@@ -142,9 +129,7 @@ research_report.md
 根据这个 ctf_cases.jsonl 收集附件和 writeup。
 ```
 
-Codex 会使用 `cloversec-ctf-asset-collector`。它会记录来源、hash、下载失败原因，不会把搜索页、登录页、HTTP 错误页当成附件。
-
-常见输出：
+Codex 会使用 `cloversec-ctf-asset-collector`。它会记录来源、hash、下载失败原因，不会把搜索页、登录页、HTTP 错误页当成附件。常见输出：
 
 ```text
 downloads/
@@ -159,9 +144,7 @@ asset_collection_report.md
 把这个题目目录整理成 CloverSec 平台可用 Docker 交付。
 ```
 
-Codex 会使用 `cloversec-ctf-build-dockerizer`。它会先给方案摘要，涉及改文件前需要你确认。
-
-常见输出：
+Codex 会使用 `cloversec-ctf-build-dockerizer`。它会先给方案摘要，涉及改文件前需要你确认。常见输出：
 
 ```text
 Dockerfile
@@ -182,9 +165,7 @@ xlsx_fields.json
 检查这个附件题 zip，生成归档用 manifest。
 ```
 
-Codex 会使用 `cloversec-ctf-attachment-packager`。它会检查能否解压、文件 hash、目录清单、路径穿越风险，并输出可归档字段。
-
-常见输出：
+Codex 会使用 `cloversec-ctf-attachment-packager`。它会检查能否解压、文件 hash、目录清单、路径穿越风险，并输出可归档字段。常见输出：
 
 ```text
 attachment_manifest.json
@@ -198,9 +179,7 @@ xlsx_fields.json
 根据这个题目目录生成手册、Hub 字段和 xlsx 字段。
 ```
 
-Codex 会使用 `cloversec-ctf-writeup-scaffold`。完整 Flag 会保留在字段文件里。
-
-常见输出：
+Codex 会使用 `cloversec-ctf-writeup-scaffold`。完整 Flag 会保留在字段文件里。常见输出：
 
 ```text
 manual_template.md
@@ -216,9 +195,7 @@ xlsx_fields.json
 把这些题目整理成最终 archive 目录。
 ```
 
-Codex 会使用 `cloversec-ctf-archive-packager` 和 `cloversec-ctf-archive` MCP。
-
-常见目录：
+Codex 会使用 `cloversec-ctf-archive-packager` 和 `cloversec-ctf-archive` MCP。常见目录：
 
 ```text
 archive/
@@ -238,9 +215,7 @@ archive_manifest.json
 检查这个题目归档是否能提交。
 ```
 
-Codex 会使用 `cloversec-ctf-quality-review` 和 `cloversec-ctf-quality-runner`。它会把题目资源、Docker 验证、附件检查、手册内容、Flag 字段和归档状态汇总成证据。
-
-常见输出：
+Codex 会使用 `cloversec-ctf-quality-review` 和 `cloversec-ctf-quality-runner`。它会把题目资源、Docker 验证、附件检查、手册内容、Flag 字段和归档状态汇总成证据。常见输出：
 
 ```text
 quality_review.json
@@ -254,14 +229,9 @@ quality_evidence/
 根据 hub_fields.json 和手册生成 Hub 提交包。
 ```
 
-Codex 会使用 `cloversec-ctf-hub-submission`。它可以生成字段 payload、上传清单、浏览器辅助填表计划和提交前检查。
+Codex 会使用 `cloversec-ctf-hub-submission`。它可以生成字段 payload、上传清单、浏览器辅助填表计划和提交前检查。Hub 相关规则：
 
-Hub 相关规则：
-
-- 不保存账号、密码、Cookie、token、localStorage、sessionStorage。
-- 只在用户当前 Chrome 已登录 Hub 后辅助填写。
-- 不自动点击最终提交按钮。
-- 分类不确定、未知附件上传、最终提交都需要人确认。
+不保存账号、密码、Cookie、token、localStorage、sessionStorage。只在用户当前 Chrome 已登录 Hub 后辅助填写。不自动点击最终提交按钮。分类不确定、未知附件上传、最终提交都需要人确认。
 
 ### 审核通过后回填 Hub 编号和镜像 tag
 
@@ -269,9 +239,7 @@ Hub 相关规则：
 HUB 编号是 CTF-2026060001，帮我生成 retag 计划。
 ```
 
-Codex 会使用 `cloversec-ctf-hub-retag`。如果你授权 Docker 操作，可以重新 tag、导出 amd64 tar，并回写归档字段。
-
-常见输出：
+Codex 会使用 `cloversec-ctf-hub-retag`。如果你授权 Docker 操作，可以重新 tag、导出 amd64 tar，并回写归档字段。常见输出：
 
 ```text
 retag_plan.json
@@ -285,9 +253,7 @@ docker_artifacts.json
 基于归档结果生成最终报告、xlsx 和语雀表。
 ```
 
-Codex 会使用 `cloversec-ctf-final-report`。
-
-常见输出：
+Codex 会使用 `cloversec-ctf-final-report`。常见输出：
 
 ```text
 final_report.md
@@ -320,8 +286,6 @@ flowchart LR
   K --> L["Final Report / xlsx / Yuque"]
 ```
 
-每一步都会留下文件证据，方便人复核、返工和归档。
-
 ## Capabilities
 
 ### Skills
@@ -353,9 +317,7 @@ flowchart LR
 
 ## Search Strategy
 
-默认不要求用户申请付费搜索 API key。
-
-推荐配置：
+默认不要求用户申请付费搜索 API key。推荐配置：
 
 ```bash
 gh auth login
@@ -371,13 +333,13 @@ gh auth login
 
 现实边界：
 
-- 搜索不是万能下载器。
+- 搜索能力有边界，无法保证拿到所有附件。
 - 冷门比赛、中文站点收录差、附件下架、网盘失效时，需要 Agent 联网搜索、Chrome 浏览器辅助搜索或人工提供入口。
 - 插件不会绕过验证码、登录限制、付费墙或访问控制。
 
 ## Hub Automation
 
-Hub 自动化的目标是“辅助填写到最终提交前”，不是无人值守提交。
+Hub 自动化的目标是“辅助填写到最终提交前”，最终提交仍由人确认。
 
 它可以做：
 
