@@ -202,6 +202,9 @@ class V033AuditManualHubTests(unittest.TestCase):
             self.assertTrue(confirmation["requires_user_confirmation"])
             self.assertTrue((tmp_path / "batch" / "batch_status_report.xlsx").exists())
             self.assertEqual(batch["summary"]["total"], 1)
+            self.assertEqual(batch["summary"]["can_archive"], 0)
+            self.assertGreaterEqual(batch["summary"]["pending_user"], 1)
+            self.assertTrue(batch["rows"][0]["问题"])
             self.assertGreaterEqual(failure["summary"]["total"], 1)
             self.assertEqual(notification["summary"]["pending_user"], 1)
             self.assertEqual(warnings["summary"]["cloversec_blockers"], 1)
@@ -301,7 +304,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.3")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.4")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

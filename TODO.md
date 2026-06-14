@@ -303,3 +303,35 @@
 - [x] `cloversec-ctf-resource-classifier` 已增加资源分流说明，并在 `resource_classification.json` 写入机器可读的 `platform_delivery` 字段。
 - [x] `cloversec-ctf-container-validator` 已增加平台交付规则，并在 `container_inference.json` 写入 `platform_contract_required`、`must_use_dockerizer` 和 `platform_delivery`。
 - [x] 容器验证输出已明确：Docker build/run/probe 只是证据，不替代 CloverSec 平台交付改造；最终交付仍需要 Dockerizer 产物和质量检查。
+- [x] 旧测试线程 `019ec42b-ee62-7e33-b765-f07935b71e24` 已纳入持续监听；当前已创建 10 分钟一次的检查任务，重点看新增输出、归档状态、Docker/solver/Hub 问题和目录规范。
+- [x] 旧测试线程真实产物审计完成：`work/ctf-2026-collection` 约 2.2GB，混有 `.venv-solver`、`image_tars`、`archive_out`、`downloads_sandbox`、`quality_out`、`solver_verification`、`tools` 等过程文件；`outputs/` 使用英文阶段文件名，人工接手不直观。
+- [x] 已新增中文交付包工具 `cloversec_ctf_delivery.py`：把最终表格、语雀表、归档包、镜像清单、质量报告、Hub 材料、过程证据和待处理问题整理到 `交付包-xxxxxxxxx/` 的中文目录；镜像 tar 默认只记录原路径和 hash，不重复复制大文件。
+- [x] `cloversec-ctf-final-report` 已要求最终交付优先生成中文交付目录；英文 `work/` 目录只作为过程证据和脚本输入，不作为给人看的最终目录。
+- [x] 最终报告待处理事项已修正：`失败`、`未验证`、`部分通过`、缺少 `HUB编号` 都会写入 `remaining_actions`，避免报告显示“待处理事项：0”但实际还有失败题。
+- [x] 最终报告相对路径判断已修正：新增 `--base-dir`，支持 `work/...` 相对路径按线程或项目根目录解析；旧线程真实数据复测后路径误报为 0。
+- [x] 旧测试线程完成版 cases 真实复测通过：当前脚本生成 17 个真实待处理项，路径误报为 0；旧线程原有 `completed_final_report.md` 中“待处理事项：0”属于旧版本脚本输出，不再作为新版本判断依据。
+- [x] 旧测试线程新增体积问题：`work/ctf-2026-collection/image_tars` 已有 1.9GB 镜像 tar，`archive_out_completed` 又复制了一份约 1.9GB，导致 `work/` 约 4.0GB。0.3.4 已把批量归档、Hub package 和中文交付包的默认策略改为引用镜像 tar，只有用户明确要求 `--copy-image-tars` 时才复制大镜像文件；旧线程里已经生成的重复文件不会自动删除。
+- [x] 已创建独立黑盒验收线程 `019ec4a0-bb7b-7b70-9e7a-c987a127bc9b`：使用安装版 `0.3.3` 跑 fixture 归档、质量检查、最终 xlsx/语雀表、批量报告和 Hub 离线提交材料；报告路径为 `/Users/d1a0y1bb/Documents/Codex/2026-06-14/cloversec-plugin-e2e-fixture-033/outputs/cloversec-plugin-e2e-fixture-033-blackbox-0.3.3/e2e_acceptance_report.md`。
+- [x] 黑盒验收确认的有效能力：`archive.xlsx` 可打开，5 行完整 `Flag` 与输入一致；`yuque_table.md` 包含完整 `Flag`；未执行 Docker 时没有写成通过；Hub 草稿和提交前检查全部停在 `needs_input`，没有提交、没有凭证操作。
+- [x] 安装版 `v0.3.3` 黑盒复测确认最终报告缺陷仍存在：同一份 fixture 生成 `remaining_actions=0`；当前工作区脚本复测为 `remaining_actions=8`，说明修复已在本地代码中生效，但需要下一次发布后才会进入安装版。
+- [x] 安装版 `v0.3.3` 黑盒复测发现：`validate-collection` 对 5 题都报 `缺少 evidence`，但输入 JSON 对象已有 `evidence` 字段。0.3.4 已区分缺少 `evidence` 字段、`evidence` 类型错误、`evidence` 为空，并要求至少有一条 `source_url` 或 `local_path`。
+- [x] 安装版 `v0.3.3` 黑盒复测发现：归档阶段把缺手册、缺截图的 case 记成 `issue_count=0`；质量检查能识别缺手册，但没有识别缺截图。0.3.4 已让归档 manifest、质量检查和批量报告都把缺手册、缺截图写入问题和待处理事项。
+- [x] 安装版 `v0.3.3` 黑盒复测发现：`failure_cases.jsonl` 有 5 条问题，但 `batch_status_report.json` 仍显示 `missing_resources=0`、`pending_user=0`、`can_archive=5`，行级 `问题` 为空。0.3.4 已让批量报告读取 case 的真实问题，存在缺失资源、未验证或问题时行级 `可归档=否`。
+- [x] 安装版 `v0.3.3` 黑盒复测发现：归档和 Hub package 仍会复制镜像 tar；fixture tar 只有 19B 没有实际膨胀，但真实镜像会放大目录体积。0.3.4 已把 archive / Hub package / 中文交付包默认改为引用镜像 tar，并保留 `--copy-image-tars` 作为显式复制选项。
+- [x] 已创建独立平台契约验收线程 `019ec4a0-fbf9-7311-b3a8-b9f0e12ce707`：使用安装版 `0.3.3` 的本机 Dockerfile/compose 样例验证流程，不执行 Docker build/run；报告路径为 `/Users/d1a0y1bb/Documents/Codex/2026-06-14/cloversec-plugin-e2e-contract-033/outputs/cloversec-plugin-e2e-contract-report.md`。
+- [x] 平台契约验收结果：安装版 `0.3.3` 没有把上游 Dockerfile 当成 CloverSec 可交付；`workflow.py render` 在未接受 proposal 时返回 `CONFIG_PROPOSAL_NOT_ACCEPTED`，退出码 `2`，没有生成 `challenge.yaml`、`start.sh`、`changeflag.sh` 或 `flag`。
+- [x] 安装版 `v0.3.3` 契约字段复测发现：`container_inference.json` 缺少顶层 `platform_contract_required` / `must_use_dockerizer`，自然语言 Agent 可能漏读平台改造要求；当前工作区已把资源分类和容器推断的顶层字段补齐，并通过脚本复测。
+- [ ] 旧测试线程真实题目问题仍需用户判断：Pasteboard 构建连接中断、Firewall 依赖 eBPF/tc 不适配 Docker Desktop、3 个 pwn/jail privileged 运行出现 `init seccomp: operation canceled`、Vibe Code solver 服务提前断开。0.3.4 的职责是把这些题目标成未通过并写入待处理事项；是否改造、降级验收或剔除需要按题目决定，插件不能替用户决定。
+
+## v0.3.4 开发与验收记录
+
+- [x] 归档目录改为中文：每题目录使用 `源码/`、`附件/`、`镜像/`、`手册/`、`截图/`、`清单/`。
+- [x] 中文交付目录去掉数字前缀：使用 `最终表格/`、`语雀归档表/`、`题目归档包/`、`镜像包清单/`、`质量检查报告/`、`Hub提交材料/`、`过程证据/`、`待处理问题/`。
+- [x] 镜像 tar 默认只引用不复制：archive、Hub package、中文交付包默认记录原路径、大小、平台和 hash；显式传 `--copy-image-tars` 才复制。
+- [x] 缺手册、缺截图、缺 evidence、失败案例和批量状态报告已按真实待处理事项输出，不再把未验证题目写成可归档。
+- [x] 黑盒线程发现 archive manifest 仍会把文件齐但未验证的题目写成 `是否归档=是`；0.3.4 已修复为必须 `验证状态=通过` 且 `是否通过=是` 才能写 `是否归档=是`，并补充回归测试。
+- [x] 发布前完整测试完成：官方 plugin 校验、release 校验、全量 unittest、真实 fixture 流程、8 个 MCP server 初始化/工具列表与安全调用、真实 LLM 大小模型测试、独立 Codex 线程黑盒测试均已执行。
+- [x] 独立黑盒线程 `019ec513-d7ee-7300-aa67-b4360c6020d0` 重跑通过：115 个 unittest、fixture 流程、中文目录、镜像 tar 引用、`是否归档` 修复、xlsx/语雀表、Hub 草稿停止点和 8 个 MCP 安全调用均通过。
+- [x] 黑盒线程非通过状态已确认是输入或人工确认边界：fixture `evidence` 为空导致 `validate-collection --json` 返回 1；Hub draft 缺分类 ID、上传结果和部分字段，所以保持 `needs_input`；delivery 只复制本次 final 目录能识别的材料，不创建空目录。
+- [ ] `v0.3.4` Release 待发布。
+- [ ] 本机 Codex 插件待更新到 `0.3.4`。

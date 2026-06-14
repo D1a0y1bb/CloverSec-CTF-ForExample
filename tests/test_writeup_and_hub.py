@@ -91,9 +91,9 @@ class WriteupAndHubTests(unittest.TestCase):
         plan = hub.default_screenshot_plan()
 
         self.assertEqual([item["filename"] for item in plan], [
-            "01-challenge-page.png",
-            "02-container-running.png",
-            "03-solve-proof.png",
+            "题目页面.png",
+            "容器运行.png",
+            "解题证明.png",
         ])
 
     def test_create_submission_package_writes_expected_structure(self):
@@ -115,9 +115,12 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertTrue((output_dir / "fields" / "hub_fields_preview.json").exists())
             self.assertTrue((output_dir / "manual" / "manual_filled_draft.md").exists())
             self.assertTrue((output_dir / "attachments" / "challenge.zip").exists())
-            self.assertTrue((output_dir / "images" / "web.tar").exists())
+            self.assertFalse((output_dir / "images" / "web.tar").exists())
             self.assertTrue((output_dir / "hub_submission_checklist.md").exists())
             self.assertEqual(manifest["summary"]["total_upload_files"], 2)
+            image_tar = next(item for item in manifest["upload_files"] if item["role"] == "image_tar")
+            self.assertEqual(image_tar["status"], "referenced")
+            self.assertEqual(image_tar["path"], case["docker_artifacts"]["tar_path"])
             self.assertEqual(manifest["hub_fields"]["题目Flag"], "flag{stage-five-full-flag}")
 
     def test_browser_assist_plan_keeps_security_boundaries(self):
@@ -146,7 +149,7 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertIn("answer", plan["validation"]["missing"])
             self.assertIn("classify_id", plan["validation"]["blockers"])
             self.assertIn("upload_results", plan["validation"]["blockers"])
-            self.assertIn("02-container-running.png", plan["validation"]["missing_screenshots"])
+            self.assertIn("容器运行.png", plan["validation"]["missing_screenshots"])
             self.assertTrue(plan["login_state_gate"]["required_before_fill"])
             self.assertEqual(plan["login_state_gate"]["on_unauthenticated"], "stop_before_fill_and_wait_for_user_login")
             self.assertTrue(any("不读取或保存 Cookie" in item for item in plan["security_boundaries"]))

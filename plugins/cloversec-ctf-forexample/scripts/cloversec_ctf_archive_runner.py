@@ -20,18 +20,19 @@ def run_archive_workflow(
     output_cases: str | Path = "",
     final_output_dir: str | Path = "",
     copy_files: bool = True,
+    copy_image_tars: bool = False,
 ) -> dict[str, Any]:
     root = Path(output_root)
     root.mkdir(parents=True, exist_ok=True)
     cases = data.load_cases(cases_path)
-    archive_payload = archive.create_batch_archive(cases, root, copy_files=copy_files)
+    archive_payload = archive.create_batch_archive(cases, root, copy_files=copy_files, copy_image_tars=copy_image_tars)
     archived_cases = archive_payload["updated_cases"]
 
     output_cases_path = Path(output_cases) if str(output_cases).strip() else root / "_batch" / "ctf_cases.archived.jsonl"
     archive.write_cases_jsonl(archived_cases, output_cases_path)
 
     final_dir = Path(final_output_dir) if str(final_output_dir).strip() else root / "_final"
-    final_payload = final.create_final_outputs(archived_cases, final_dir)
+    final_payload = final.create_final_outputs(archived_cases, final_dir, base_dir=Path.cwd())
 
     resource_index = build_resource_index(archive_payload["manifests"])
     missing_report = build_missing_report(archive_payload, final_payload)
@@ -153,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-cases", default="")
     parser.add_argument("--final-output-dir", default="")
     parser.add_argument("--no-copy", action="store_true")
+    parser.add_argument("--copy-image-tars", action="store_true")
     parser.add_argument("--compact-output")
     args = parser.parse_args(argv)
     payload = run_archive_workflow(
@@ -161,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         output_cases=args.output_cases,
         final_output_dir=args.final_output_dir,
         copy_files=not args.no_copy,
+        copy_image_tars=args.copy_image_tars,
     )
     if args.compact_output:
         output = Path(args.compact_output)

@@ -96,8 +96,14 @@ def validate_collection_case(case: dict[str, Any]) -> list[str]:
             issues.append(f"{case.get('case_id', '<unknown>')}: 缺少 {field}")
 
     evidence = case.get("evidence")
-    if not isinstance(evidence, list) or not evidence:
-        issues.append(f"{case.get('case_id', '<unknown>')}: 缺少 evidence")
+    if evidence is None:
+        issues.append(f"{case.get('case_id', '<unknown>')}: 缺少 evidence 字段")
+        return issues
+    if not isinstance(evidence, list):
+        issues.append(f"{case.get('case_id', '<unknown>')}: evidence 必须是数组，每条至少包含 source_url 或 local_path")
+        return issues
+    if not evidence:
+        issues.append(f"{case.get('case_id', '<unknown>')}: evidence 为空；至少需要一条 source_url 或 local_path")
         return issues
 
     for index, item in enumerate(evidence):
@@ -305,6 +311,7 @@ def main(argv: list[str] | None = None) -> int:
 
     validate_parser = subparsers.add_parser("validate-collection", help="validate collection evidence fields")
     validate_parser.add_argument("input")
+    validate_parser.add_argument("--json", action="store_true", help="write a structured validation result to stdout")
 
     args = parser.parse_args(argv)
 
@@ -332,6 +339,9 @@ def main(argv: list[str] | None = None) -> int:
         issues = []
         for case in cases:
             issues.extend(validate_collection_case(case))
+        if args.json:
+            print(json.dumps({"valid": not issues, "case_count": len(cases), "issues": issues}, ensure_ascii=False, indent=2))
+            return 0 if not issues else 1
         if issues:
             print("\n".join(issues), file=sys.stderr)
             return 1

@@ -14,7 +14,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_container as container
 
 
-SERVER_VERSION = "0.3.3"
+SERVER_VERSION = "0.3.4"
 
 TOOLS = [
     {

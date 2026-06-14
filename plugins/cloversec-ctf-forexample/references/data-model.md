@@ -70,7 +70,7 @@
 ```json
 {
   "schema_version": "cloversec.ctf.workflow.state.v1",
-  "workflow_version": "0.3.3",
+  "workflow_version": "0.3.4",
   "run_id": "",
   "status": "initialized",
   "workdir": "",
@@ -183,14 +183,14 @@
 
 `proof/` 默认只复制小型 JSON/Markdown 证据和 hash，不执行未知 solver，不点击 Hub 最终提交。
 
-## 0.3.3 手册质量
+## 0.3.4 手册质量
 
 手册和 Hub 字段检查使用 `manual_quality.json`：
 
 ```json
 {
   "schema_version": "cloversec.ctf.manual_quality.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "case_id": "",
   "summary": {
     "status": "pass|needs_review|fail",
@@ -213,14 +213,14 @@
 
 `xlsx_fields_patch.json` 必须保留完整 `Flag`。Markdown 报告只展示状态、问题和 Flag hash。
 
-## 0.3.3 Hub 草稿与审核状态
+## 0.3.4 Hub 草稿与审核状态
 
 Hub 草稿输出：
 
 ```json
 {
   "schema_version": "cloversec.ctf.hub_draft.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "case_id": "",
   "summary": {
     "status": "ready|needs_review|blocked",
@@ -248,7 +248,7 @@ Hub 审核状态输出：
 ```json
 {
   "schema_version": "cloversec.ctf.hub_review_state.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "case_id": "",
   "review_status": "draft|submitted|reviewing|approved|rejected|needs_changes|unknown",
   "hub_id": "",
@@ -259,14 +259,14 @@ Hub 审核状态输出：
 
 插件不会编造 Hub 编号。`hub_id` 只能来自用户输入、Hub 页面可见内容或已存在的结构化文件。
 
-## 0.3.3 镜像命名计划
+## 0.3.4 镜像命名计划
 
 审核通过后使用 `image_naming_plan.json` 记录镜像命名、tar 文件名和 xlsx 回填字段：
 
 ```json
 {
   "schema_version": "cloversec.ctf.image_naming_plan.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "status": "ready|needs_hub_id",
   "hub_id": "CTF-2026060001",
   "image": {
@@ -281,14 +281,14 @@ Hub 审核状态输出：
 
 没有 Hub 编号时状态必须是 `needs_hub_id`，只生成待处理项。
 
-## 0.3.3 归档预览与锁定
+## 0.3.4 归档预览与锁定
 
 归档写入前使用 `archive_preview.json`：
 
 ```json
 {
   "schema_version": "cloversec.ctf.archive_preview.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "archive_dir": "",
   "would_create": [],
   "missing_items": [],
@@ -306,7 +306,7 @@ Hub 审核状态输出：
 ```json
 {
   "schema_version": "cloversec.ctf.manifest_lock.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "case_id": "",
   "files": [],
   "summary": {
@@ -325,14 +325,14 @@ Hub 审核状态输出：
 
 `manifest.lock.json` 保存完整 Flag 和 hash，用于内部归档复核；不要发布到公开渠道。
 
-## 0.3.3 批量报告、失败案例和阶段通知
+## 0.3.4 批量报告、失败案例和阶段通知
 
 批量状态：
 
 ```json
 {
   "schema_version": "cloversec.ctf.batch_status_report.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "summary": {
     "total": 0,
     "ready_to_archive": 0,
@@ -348,7 +348,7 @@ Hub 审核状态输出：
 ```json
 {
   "schema_version": "cloversec.ctf.failure_case.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "failure_type": "search|download|docker|hub|manual|archive|unknown",
   "case_id": "",
   "evidence": {},
@@ -361,7 +361,7 @@ Hub 审核状态输出：
 ```json
 {
   "schema_version": "cloversec.ctf.stage_notification.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "stage": "",
   "completed": [],
   "failed": [],
@@ -370,14 +370,14 @@ Hub 审核状态输出：
 }
 ```
 
-## 0.3.3 浏览器可见内容证据
+## 0.3.4 浏览器可见内容证据
 
 对 403、登录页、验证码页或站点限制导致的抓取失败，允许用户把确认后的页面可见结果导入：
 
 ```json
 {
   "schema_version": "cloversec.ctf.workflow.visible_content_evidence.v1",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "query": "",
   "provider": "user-visible-content",
   "results": [

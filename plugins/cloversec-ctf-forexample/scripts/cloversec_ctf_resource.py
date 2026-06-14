@@ -15,7 +15,7 @@ import cloversec_ctf_search as search
 
 
 SCHEMA_VERSION = "cloversec.ctf.resource_classification.v1"
-VERSION = "0.3.3"
+VERSION = "0.3.4"
 
 TEXT_EXTENSIONS = {
     ".c",
@@ -117,11 +117,17 @@ def classify_resource_root(
     ]
     root_classification = classify_root(resources)
     summary = summarize(resources, root_classification)
+    platform_delivery = root_classification.get("platform_delivery", {}) if isinstance(root_classification, dict) else {}
     payload = {
         "schema_version": SCHEMA_VERSION,
         "version": VERSION,
         "generated_at": utc_now(),
         "root": base.as_posix(),
+        "platform_delivery": platform_delivery,
+        "platform_contract_required": bool(platform_delivery.get("requires_cloversec_contract")),
+        "must_use_dockerizer": bool(platform_delivery.get("must_use_dockerizer")),
+        "existing_docker_is_reference_only": bool(platform_delivery.get("existing_docker_is_reference_only")),
+        "final_delivery_skill": str(platform_delivery.get("final_delivery_skill") or ""),
         "root_classification": root_classification,
         "resources": resources,
         "summary": summary,
@@ -350,6 +356,7 @@ def build_platform_delivery_policy(project_type: str) -> dict[str, Any]:
         "requires_cloversec_contract": requires_contract,
         "must_use_dockerizer": must_use_dockerizer,
         "existing_docker_is_reference_only": project_type in {"compose_project", "container_project"},
+        "final_delivery_skill": "cloversec-ctf-build-dockerizer" if must_use_dockerizer else "",
         "attachment_only": project_type == "attachment_challenge",
         "writeup_only": project_type == "writeup_only",
         "status": platform_delivery_status(project_type),

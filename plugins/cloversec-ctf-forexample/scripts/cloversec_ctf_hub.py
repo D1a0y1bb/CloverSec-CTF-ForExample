@@ -64,9 +64,9 @@ CLASSIFY_ID_KEYS = ["题目分类ID", "classify_id", "id", "value", "key"]
 
 def default_screenshot_plan() -> list[dict[str, str]]:
     return [
-        {"filename": "01-challenge-page.png", "description": "题目页面或题目信息截图"},
-        {"filename": "02-container-running.png", "description": "容器运行或服务访问截图"},
-        {"filename": "03-solve-proof.png", "description": "解题验证截图"},
+        {"filename": "题目页面.png", "description": "题目页面或题目信息截图"},
+        {"filename": "容器运行.png", "description": "容器运行或服务访问截图"},
+        {"filename": "解题证明.png", "description": "解题验证截图"},
     ]
 
 
@@ -75,6 +75,8 @@ def create_submission_package(
     hub_fields: dict[str, Any],
     manual_markdown: str,
     output_dir: str | Path,
+    *,
+    copy_image_tars: bool = False,
 ) -> dict[str, Any]:
     root = Path(output_dir)
     fields_dir = root / "fields"
@@ -102,9 +104,12 @@ def create_submission_package(
     tar_path = docker_artifacts.get("tar_path")
     if tar_path:
         source = Path(tar_path)
-        copied = _copy_file(source, images_dir / source.name, issues)
-        if copied:
-            upload_files.append(_file_record(copied, "image_tar"))
+        if copy_image_tars:
+            copied = _copy_file(source, images_dir / source.name, issues)
+            if copied:
+                upload_files.append(_file_record(copied, "image_tar", status="copied"))
+        else:
+            upload_files.append(_reference_file(source, "image_tar", issues))
 
     screenshot_records = []
     screenshot_sources = []
@@ -156,10 +161,11 @@ def create_hub_draft(
     output_dir: str | Path,
     *,
     classify_options: list[dict[str, Any]] | None = None,
+    copy_image_tars: bool = False,
 ) -> dict[str, Any]:
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
-    manifest = create_submission_package(case, hub_fields, manual_markdown, root)
+    manifest = create_submission_package(case, hub_fields, manual_markdown, root, copy_image_tars=copy_image_tars)
     form_payload = create_hub_form_payload(hub_fields, manifest=manifest, classify_options=classify_options)
     validation = validate_hub_form_payload(form_payload, manifest=manifest)
     browser_plan = create_browser_assist_plan(manifest, classify_options=classify_options)
@@ -167,7 +173,7 @@ def create_hub_draft(
     diff = create_hub_diff(case, hub_fields, form_payload, validation)
     draft = {
         "schema_version": "cloversec.ctf.hub_draft.v1",
-        "version": "0.3.3",
+        "version": "0.3.4",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -223,7 +229,7 @@ def create_hub_review_state(
         status_notes.append("已获得 Hub 编号，可以进入镜像命名和 retag 计划。")
     state = {
         "schema_version": "cloversec.ctf.hub_review_state.v1",
-        "version": "0.3.3",
+        "version": "0.3.4",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -676,7 +682,7 @@ def create_hub_diff(
         )
     return {
         "schema_version": "cloversec.ctf.hub_diff.v1",
-        "version": "0.3.3",
+        "version": "0.3.4",
         "case_id": str(case.get("case_id") or ""),
         "comparisons": comparisons,
         "validation": validation,
@@ -800,13 +806,25 @@ def _copy_file(source: Path, target: Path, issues: list[str]) -> Path | None:
     return target
 
 
-def _file_record(path: Path, role: str) -> dict[str, Any]:
+def _file_record(path: Path, role: str, *, status: str = "copied") -> dict[str, Any]:
     return {
         "role": role,
+        "status": status,
         "relative_path": path.parent.name + "/" + path.name,
+        "path": path.as_posix(),
         "size": path.stat().st_size,
         "sha256": sha256_file(path),
     }
+
+
+def _reference_file(source: Path, role: str, issues: list[str]) -> dict[str, Any]:
+    if not source.exists() or not source.is_file():
+        issues.append(f"missing file: {source}")
+        return {"role": role, "status": "missing", "relative_path": "", "path": source.as_posix(), "size": 0, "sha256": ""}
+    record = _file_record(source, role, status="referenced")
+    record["relative_path"] = source.as_posix()
+    record["reason"] = "reference_only"
+    return record
 
 
 def sha256_file(path: Path) -> str:
@@ -878,6 +896,7 @@ def main(argv: list[str] | None = None) -> int:
     package_parser.add_argument("--hub-fields", required=True)
     package_parser.add_argument("--manual", required=True)
     package_parser.add_argument("--output-dir", required=True)
+    package_parser.add_argument("--copy-image-tars", action="store_true")
 
     draft_parser = subparsers.add_parser("draft", help="create Hub draft, upload manifest, screenshot checklist, and diff report")
     draft_parser.add_argument("--case-json", required=True)
@@ -885,6 +904,7 @@ def main(argv: list[str] | None = None) -> int:
     draft_parser.add_argument("--manual", required=True)
     draft_parser.add_argument("--output-dir", required=True)
     draft_parser.add_argument("--classify-options", help="JSON file from /ctf/classify/?type=1 or a normalized options list")
+    draft_parser.add_argument("--copy-image-tars", action="store_true")
 
     review_state_parser = subparsers.add_parser("review-state", help="write Hub review state without inventing Hub numbers")
     review_state_parser.add_argument("--case-json", required=True)
@@ -925,7 +945,7 @@ def main(argv: list[str] | None = None) -> int:
         case = json.loads(Path(args.case_json).read_text(encoding="utf-8"))
         fields = json.loads(Path(args.hub_fields).read_text(encoding="utf-8"))
         manual = Path(args.manual).read_text(encoding="utf-8")
-        create_submission_package(case, fields, manual, args.output_dir)
+        create_submission_package(case, fields, manual, args.output_dir, copy_image_tars=args.copy_image_tars)
         print(f"wrote {args.output_dir}")
         return 0
     if args.command == "draft":
@@ -933,7 +953,7 @@ def main(argv: list[str] | None = None) -> int:
         fields = json.loads(Path(args.hub_fields).read_text(encoding="utf-8"))
         manual = Path(args.manual).read_text(encoding="utf-8")
         classify_options = load_classify_options(args.classify_options) if args.classify_options else None
-        create_hub_draft(case, fields, manual, args.output_dir, classify_options=classify_options)
+        create_hub_draft(case, fields, manual, args.output_dir, classify_options=classify_options, copy_image_tars=args.copy_image_tars)
         print(f"wrote {Path(args.output_dir) / 'hub_draft.json'}")
         return 0
     if args.command == "review-state":

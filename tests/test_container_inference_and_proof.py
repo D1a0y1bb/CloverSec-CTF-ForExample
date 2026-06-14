@@ -41,6 +41,10 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["recommended_validation_level"], "run_probe")
         self.assertTrue(payload["summary"]["platform_contract_required"])
         self.assertTrue(payload["summary"]["must_use_dockerizer"])
+        self.assertTrue(payload["platform_contract_required"])
+        self.assertTrue(payload["must_use_dockerizer"])
+        self.assertTrue(payload["existing_docker_is_reference_only"])
+        self.assertEqual(payload["final_delivery_skill"], "cloversec-ctf-build-dockerizer")
         self.assertTrue(payload["platform_delivery"]["existing_docker_is_reference_only"])
         self.assertIn("cloversec-ctf-build-dockerizer", " ".join(payload["next_actions"]))
         self.assertIn("18080:8080", payload["summary"]["ports"])
@@ -176,7 +180,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.3.3")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.3.4")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

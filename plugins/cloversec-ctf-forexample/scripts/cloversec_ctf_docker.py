@@ -19,7 +19,7 @@ from urllib.request import urlopen
 
 TARGET_PLATFORM = "linux/amd64"
 DEFAULT_OPERATIONS = ["build", "load", "inspect", "run", "logs", "stop", "save"]
-VERSION = "0.3.3"
+VERSION = "0.3.4"
 VALIDATION_LEVELS = ["static_only", "inspect_only", "build_only", "run_probe", "solve_verify"]
 
 

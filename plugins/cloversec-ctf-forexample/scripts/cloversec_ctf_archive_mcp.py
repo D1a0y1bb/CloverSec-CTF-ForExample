@@ -12,7 +12,7 @@ import cloversec_ctf_archive_runner as archive_runner
 import cloversec_ctf_audit as audit
 
 
-SERVER_VERSION = "0.3.3"
+SERVER_VERSION = "0.3.4"
 
 TOOLS = [
     {

@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -44,6 +45,51 @@ class CollectWorkflowTests(unittest.TestCase):
         issues = collect.validate_collection_case(case)
 
         self.assertTrue(any("evidence[0].source_url" in issue for issue in issues))
+
+    def test_validate_evidence_reports_empty_list_clearly(self):
+        case = {
+            "case_id": "case-empty",
+            "metadata": {"名称": "No Evidence", "分类": "Web"},
+            "evidence": [],
+        }
+
+        issues = collect.validate_collection_case(case)
+
+        self.assertIn("case-empty: evidence 为空；至少需要一条 source_url 或 local_path", issues)
+
+    def test_validate_collection_json_cli_reports_empty_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_path = Path(tmp) / "cases.jsonl"
+            case_path.write_text(
+                json.dumps(
+                    {
+                        "case_id": "case-empty",
+                        "metadata": {"名称": "No Evidence", "分类": "Web"},
+                        "evidence": [],
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS / "cloversec_ctf_collect.py"),
+                    "validate-collection",
+                    str(case_path),
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(payload["valid"])
+        self.assertIn("case-empty: evidence 为空；至少需要一条 source_url 或 local_path", payload["issues"])
 
     def test_build_asset_inventory_hashes_files(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -393,12 +393,12 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py review-sta
 - `hub_review/hub_review_state.json`
 - `hub_review/hub_review_state.md`
 
-默认截图槽位固定为 `01-challenge-page.png`、`02-container-running.png`、`03-solve-proof.png`。
+默认截图槽位固定为 `题目页面.png`、`容器运行.png`、`解题证明.png`。
 `validate-manifest` 会检查分类 ID、题目内容、题目解答、关键字、上传结果和截图槽位；`apply-upload-results` 只合并显式提供的上传返回 JSON，不读取浏览器 Cookie、token 或 session。`chrome-plan` 约束 Agent 只能使用用户当前浏览器可见状态，最终提交前停止。Chrome 填写必须先确认用户已登录 Hub；未登录状态下即使提交页表单可见也不能填写，因为提交会跳转登录并丢失内容。Chrome 文件上传依赖 Codex 扩展的文件访问权限；如果 `setFiles` 返回 `Not allowed`，需要在 `chrome://extensions` 中给 Codex 扩展开启 `Allow access to file URLs`。
 
 ## `cloversec_ctf_archive.py`
 
-归档目录生成工具。复制源码、附件、镜像 tar、手册和截图，写入每题 manifest 与 xlsx 路径字段。
+归档目录生成工具。复制源码、附件、手册和截图，镜像 tar 默认只记录原路径和 hash，写入每题 manifest 与 xlsx 路径字段。
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py package \
@@ -415,12 +415,12 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py batch 
 
 输出目录：
 
-- `archive/<case_id>-<title>/source/`
-- `archive/<case_id>-<title>/attachments/`
-- `archive/<case_id>-<title>/image/`
-- `archive/<case_id>-<title>/writeup/`
-- `archive/<case_id>-<title>/screenshots/`
-- `archive/<case_id>-<title>/manifests/archive_manifest.json`
+- `archive/<case_id>-<title>/源码/`
+- `archive/<case_id>-<title>/附件/`
+- `archive/<case_id>-<title>/镜像/`
+- `archive/<case_id>-<title>/手册/`
+- `archive/<case_id>-<title>/截图/`
+- `archive/<case_id>-<title>/清单/archive_manifest.json`
 
 ## `cloversec_ctf_manual_quality.py`
 
@@ -547,7 +547,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py image-na
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate \
   --cases ctf_cases.jsonl \
-  --output-dir final_out
+  --output-dir final_out \
+  --base-dir .
 ```
 
 输出文件：
@@ -558,3 +559,5 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate
 - `final_out/final_report.json`
 
 `archive.xlsx` 和 `yuque_table.md` 均按内部归档字段写入完整 `Flag`，不要放到公开渠道。
+
+如果 cases 里保存的是 `work/...` 这类相对路径，`--base-dir` 填线程或项目根目录。否则最终报告可能在不同执行目录下误判归档目录或附件不存在。

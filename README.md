@@ -10,7 +10,7 @@
 
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.3.3-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.3.4-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -79,7 +79,7 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.3.3
+Git 引用：v0.3.4
 稀疏路径：留空
 ```
 
@@ -88,7 +88,7 @@ Git 引用：v0.3.3
 当然也可以使用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.3
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.4
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -149,6 +149,7 @@ codex plugin add cloversec-ctf-forexample@cloversec-ctf
 | 归档质检 | `生成归档目录、proof 包和质量检查报告` | `archive/`、`quality_review.json`、`proof/` |
 | Hub 准备 | `生成 Hub 草稿和 Chrome 填表计划，最终提交前停止` | `hub_draft.json`、`hub_chrome_plan.json` |
 | 最终交付 | `生成最终报告、archive.xlsx 和语雀表` | `final_report.md`、`archive.xlsx`、`yuque_table.md` |
+| 中文交付包 | `把 work 和 outputs 整理成给人看的中文交付目录` | `交付说明.md`、`最终表格/`、`镜像包清单/` |
 
 `workflow_state.json` 是批处理状态文件。中断后可以继续说：
 
@@ -361,12 +362,12 @@ Codex 会使用 `cloversec-ctf-archive-packager` 和 `cloversec-ctf-archive` MCP
 ```text
 archive/
   challenge-name/
-    source/
-    attachments/
-    image/
-    writeup/
-    screenshots/
-    manifests/
+    源码/
+    附件/
+    镜像/
+    手册/
+    截图/
+    清单/
 archive_manifest.json
 ```
 
@@ -517,10 +518,36 @@ yuque_table.md
 final_report.json
 ```
 
+如果归档字段里是 `work/...` 这种相对路径，生成最终报告时会带上 `--base-dir <线程根目录>`。这样换目录执行时也能正确识别归档目录、附件和镜像包。
+
+### 生成中文交付目录
+
+```text
+把这个 work 目录和 outputs 目录整理成给人接手看的中文交付目录。
+```
+
+Codex 会使用 `cloversec_ctf_delivery.py` 生成面向人查看的交付包。内部 `work/` 仍保留机器处理需要的英文目录和过程文件；最终交付目录会按中文分区组织：
+
+```text
+交付包-xxxxxxxxx/
+  交付说明.md
+  交付清单.json
+  最终表格/
+  语雀归档表/
+  题目归档包/
+  镜像包清单/
+  质量检查报告/
+  Hub提交材料/
+  过程证据/
+  待处理问题/
+```
+
+镜像 tar 默认不复制进中文交付包，只在 `镜像包清单/镜像包清单.md` 中记录原路径、镜像名、平台、大小和 hash，避免交付目录被几 GB 的镜像文件撑爆。确实要复制镜像 tar 时，需要明确要求 `--copy-image-tars`。
+
 最常见的一条完整链路：
 
 ```text
-收集线索 -> 下载材料 -> 容器化/附件检查 -> 生成手册 -> 手册质量检查 -> 归档预览/锁定 -> 质量检查 -> Hub 草稿 -> Hub 审核状态/retag -> 最终报告
+收集线索 -> 下载材料 -> 容器化/附件检查 -> 生成手册 -> 手册质量检查 -> 归档预览/锁定 -> 质量检查 -> Hub 草稿 -> Hub 审核状态/retag -> 最终报告 -> 中文交付包
 ```
 
 ## Workflow
@@ -607,7 +634,7 @@ gh auth login
 - zip/tar 先做安全预览，检查路径穿越、文件数量和解压体积。
 - 人工确认后再进入 `downloads_accepted/` 或题目目录。
 - `v0.3.2` 会对本地资源目录生成 `resource_classification.json` 和 `container_inference.json`，识别 Docker/compose/source archive/attachment/writeup/screenshot/pcap/binary/database/Docker image tar，并推荐下一步 skill 和 Docker 验证等级。
-- `v0.3.3` 会把低置信度搜索结果转成带人工确认原因的 `ctf_cases.jsonl`，并支持把用户确认后的浏览器可见内容导入为 evidence。Medium、InfosecWriteups 等返回 403 时，可以把可见页面标题、链接、摘要或正文片段交给浏览器辅助导入工具。
+- `v0.3.4` 会把低置信度搜索结果转成带人工确认原因的 `ctf_cases.jsonl`，并支持把用户确认后的浏览器可见内容导入为 evidence。Medium、InfosecWriteups 等返回 403 时，可以把可见页面标题、链接、摘要或正文片段交给浏览器辅助导入工具。
 
 现实边界：
 
@@ -695,7 +722,7 @@ python3 scripts/package_plugin_release.py
 发布到 GitHub Release 后，Codex 可以按 tag 安装：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.3
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.4
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 

@@ -62,6 +62,12 @@ def create_quality_review(
     else:
         _add_check(checks, "attachment-files", "附件文件", "skip", "attachments 为空")
 
+    screenshots = _screenshot_paths(case)
+    if screenshots:
+        _check_paths(checks, "screenshot-files", "截图文件", screenshots, archive_dir=archive_dir)
+    else:
+        _add_check(checks, "screenshot-files", "截图文件", "fail", "archive.screenshots 为空，缺少截图")
+
     source_files = [item.get("path") or item.get("local_path") for item in case.get("source_files", []) if isinstance(item, dict)]
     if source_files:
         _check_paths(checks, "source-files", "源码文件", source_files, archive_dir=archive_dir)
@@ -458,6 +464,19 @@ def _manual_paths(writeup: dict[str, Any]) -> list[str]:
     for key in ["manual_path", "manual_filled_draft", "manual_template"]:
         if _text(writeup.get(key)):
             paths.append(str(writeup[key]))
+    return paths
+
+
+def _screenshot_paths(case: dict[str, Any]) -> list[str]:
+    archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
+    paths = []
+    for item in archive_info.get("screenshots", []) if isinstance(archive_info.get("screenshots"), list) else []:
+        if isinstance(item, dict):
+            value = str(item.get("path") or item.get("local_path") or "").strip()
+        else:
+            value = str(item).strip()
+        if value:
+            paths.append(value)
     return paths
 
 

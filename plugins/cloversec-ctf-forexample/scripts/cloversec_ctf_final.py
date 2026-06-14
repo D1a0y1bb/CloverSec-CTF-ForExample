@@ -33,8 +33,14 @@ YUQUE_FIELDS = [
 ]
 
 
-def create_final_outputs(cases: list[dict[str, Any]], output_dir: str | Path) -> dict[str, Any]:
+def create_final_outputs(
+    cases: list[dict[str, Any]],
+    output_dir: str | Path,
+    *,
+    base_dir: str | Path | None = None,
+) -> dict[str, Any]:
     output = Path(output_dir)
+    path_base = Path(base_dir).expanduser().resolve() if base_dir else None
     output.mkdir(parents=True, exist_ok=True)
     xlsx_path = output / "archive.xlsx"
     yuque_path = output / "yuque_table.md"
@@ -48,7 +54,7 @@ def create_final_outputs(cases: list[dict[str, Any]], output_dir: str | Path) ->
     data.write_xlsx(cases, xlsx_path)
     read_back = data.read_xlsx(xlsx_path)
 
-    entries = [_final_entry(case, row) for case, row in zip(cases, rows)]
+    entries = [_final_entry(case, row, path_base) for case, row in zip(cases, rows)]
     remaining_actions = []
     for entry in entries:
         remaining_actions.extend(entry["remaining_actions"])
@@ -121,23 +127,32 @@ def render_final_report(payload: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _final_entry(case: dict[str, Any], row: dict[str, str]) -> dict[str, Any]:
+def _final_entry(case: dict[str, Any], row: dict[str, str], base_dir: Path | None = None) -> dict[str, Any]:
     archive_dir = row.get("归档目录", "")
     resource_path = row.get("环境包/附件包路径", "")
+    name = row.get("名称") or str(case.get("case_id") or "unknown")
+    validation_status = row.get("验证状态", "").strip()
     actions = []
     for field in ["名称", "分类", "题目类型", "Flag类型", "Flag", "验证状态"]:
         if not row.get(field, "").strip():
-            actions.append(f"{row.get('名称') or case.get('case_id') or 'unknown'} 缺少 {field}")
-    if archive_dir and not Path(archive_dir).exists():
-        actions.append(f"{row.get('名称') or case.get('case_id')} 归档目录不存在：{archive_dir}")
+            actions.append(f"{name} 缺少 {field}")
+    if validation_status in {"失败", "未验证"}:
+        actions.append(f"{name} 验证状态为 {validation_status}，需要复核后再交付")
+    elif validation_status == "部分通过":
+        actions.append(f"{name} 验证状态为部分通过，需要查看质量检查报告和未执行项")
+    if not row.get("HUB编号", "").strip():
+        actions.append(f"{name} 缺少 HUB编号，Hub 审核通过后需要回填")
+    archive_exists = any(path.exists() for path in _path_candidates(archive_dir, base_dir)) if archive_dir else False
+    if archive_dir and not archive_exists:
+        actions.append(f"{name} 归档目录不存在：{archive_dir}")
     elif not archive_dir:
-        actions.append(f"{row.get('名称') or case.get('case_id')} 缺少归档目录")
+        actions.append(f"{name} 缺少归档目录")
 
     for path in _split_paths(resource_path):
-        if not _resource_exists(path, archive_dir):
-            actions.append(f"{row.get('名称') or case.get('case_id')} 资源路径不存在：{path}")
+        if not _resource_exists(path, archive_dir, base_dir):
+            actions.append(f"{name} 资源路径不存在：{path}")
     if not resource_path.strip():
-        actions.append(f"{row.get('名称') or case.get('case_id')} 缺少环境包/附件包路径")
+        actions.append(f"{name} 缺少环境包/附件包路径")
 
     return {
         "case_id": str(case.get("case_id") or ""),
@@ -154,13 +169,33 @@ def _split_paths(value: str) -> list[str]:
     return [item.strip() for item in value.split(";") if item.strip()]
 
 
-def _resource_exists(value: str, archive_dir: str) -> bool:
-    path = Path(value)
-    if path.exists():
-        return True
-    if archive_dir and (Path(archive_dir) / value).exists():
-        return True
+def _resource_exists(value: str, archive_dir: str, base_dir: Path | None = None) -> bool:
+    for path in _resource_candidates(value, archive_dir, base_dir):
+        if path.exists():
+            return True
     return False
+
+
+def _path_candidates(value: str, base_dir: Path | None = None) -> list[Path]:
+    if not value:
+        return []
+    path = Path(value)
+    candidates = [path]
+    if base_dir and not path.is_absolute():
+        candidates.append(base_dir / path)
+    return candidates
+
+
+def _resource_candidates(value: str, archive_dir: str, base_dir: Path | None = None) -> list[Path]:
+    path = Path(value)
+    if path.is_absolute():
+        return [path]
+    candidates = [path]
+    for archive_path in _path_candidates(archive_dir, base_dir):
+        candidates.append(archive_path / path)
+    if base_dir:
+        candidates.append(base_dir / path)
+    return candidates
 
 
 def _escape_table(value: Any) -> str:
@@ -174,11 +209,12 @@ def main(argv: list[str] | None = None) -> int:
     generate_parser = subparsers.add_parser("generate", help="write final xlsx, Yuque table, and report")
     generate_parser.add_argument("--cases", required=True)
     generate_parser.add_argument("--output-dir", required=True)
+    generate_parser.add_argument("--base-dir", help="base directory for relative archive/resource paths")
 
     args = parser.parse_args(argv)
     if args.command == "generate":
         cases = data.load_cases(args.cases)
-        payload = create_final_outputs(cases, args.output_dir)
+        payload = create_final_outputs(cases, args.output_dir, base_dir=args.base_dir)
         print(f"wrote {payload['summary']['report_path']}")
         return 0
 

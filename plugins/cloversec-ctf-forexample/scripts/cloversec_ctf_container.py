@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "0.3.3"
+VERSION = "0.3.4"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}
@@ -83,6 +83,10 @@ def infer_container_project(
         "version": VERSION,
         "generated_at": utc_now(),
         "project_dir": root.as_posix(),
+        "platform_contract_required": platform_delivery["requires_cloversec_contract"],
+        "must_use_dockerizer": platform_delivery["must_use_dockerizer"],
+        "existing_docker_is_reference_only": platform_delivery["existing_docker_is_reference_only"],
+        "final_delivery_skill": platform_delivery["final_delivery_skill"],
         "summary": {
             "project_type": project_type,
             "confidence": confidence,

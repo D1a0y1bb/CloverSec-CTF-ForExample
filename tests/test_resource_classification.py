@@ -26,15 +26,19 @@ class ResourceClassificationTests(unittest.TestCase):
 
             payload = resource.classify_resource_root(root)
 
-        self.assertEqual(payload["root_classification"]["project_type"], "compose_project")
-        self.assertEqual(payload["root_classification"]["recommended_next_skill"], "cloversec-ctf-build-dockerizer")
-        self.assertTrue(payload["root_classification"]["platform_delivery"]["must_use_dockerizer"])
-        self.assertTrue(payload["root_classification"]["platform_delivery"]["existing_docker_is_reference_only"])
-        self.assertIn("platform_conversion", {item["type"] for item in payload["recommendations"]})
-        by_name = {item["name"]: item for item in payload["resources"]}
-        self.assertEqual(by_name["docker-compose.yml"]["resource_type"], "compose_file")
-        self.assertEqual(by_name["Dockerfile"]["resource_type"], "dockerfile")
-        self.assertEqual(by_name["writeup.md"]["resource_type"], "writeup")
+            self.assertEqual(payload["root_classification"]["project_type"], "compose_project")
+            self.assertEqual(payload["root_classification"]["recommended_next_skill"], "cloversec-ctf-build-dockerizer")
+            self.assertTrue(payload["platform_contract_required"])
+            self.assertTrue(payload["must_use_dockerizer"])
+            self.assertTrue(payload["existing_docker_is_reference_only"])
+            self.assertEqual(payload["final_delivery_skill"], "cloversec-ctf-build-dockerizer")
+            self.assertTrue(payload["root_classification"]["platform_delivery"]["must_use_dockerizer"])
+            self.assertTrue(payload["root_classification"]["platform_delivery"]["existing_docker_is_reference_only"])
+            self.assertIn("platform_conversion", {item["type"] for item in payload["recommendations"]})
+            by_name = {item["name"]: item for item in payload["resources"]}
+            self.assertEqual(by_name["docker-compose.yml"]["resource_type"], "compose_file")
+            self.assertEqual(by_name["Dockerfile"]["resource_type"], "dockerfile")
+            self.assertEqual(by_name["writeup.md"]["resource_type"], "writeup")
 
     def test_classifies_attachment_archive_with_source_hint(self):
         with tempfile.TemporaryDirectory() as tmp:

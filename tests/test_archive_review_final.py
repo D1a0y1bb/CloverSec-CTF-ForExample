@@ -15,6 +15,7 @@ sys.path.insert(0, str(SCRIPTS))
 import cloversec_ctf_archive as archive
 import cloversec_ctf_archive_runner as archive_runner
 import cloversec_ctf_data as data
+import cloversec_ctf_delivery as delivery
 import cloversec_ctf_docker as docker_runner
 import cloversec_ctf_final as final
 import cloversec_ctf_quality_runner as quality_runner
@@ -111,21 +112,50 @@ class ArchiveReviewFinalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
+            case["metadata"]["验证状态"] = "通过"
+            case["metadata"]["是否通过"] = "是"
             manifest = archive.create_archive_package(case, tmp_path / "archive")
 
             archive_dir = Path(manifest["archive_dir"])
             updated = archive.apply_archive_outputs(case, manifest)
 
-            self.assertTrue((archive_dir / "source" / "src.py").exists())
-            self.assertTrue((archive_dir / "attachments" / "challenge.zip").exists())
-            self.assertTrue((archive_dir / "image" / "web.tar").exists())
-            self.assertTrue((archive_dir / "writeup" / "manual_filled_draft.md").exists())
-            self.assertTrue((archive_dir / "screenshots" / "solve.png").exists())
-            self.assertTrue((archive_dir / "manifests" / "archive_manifest.json").exists())
+            self.assertTrue((archive_dir / "源码" / "src.py").exists())
+            self.assertTrue((archive_dir / "附件" / "challenge.zip").exists())
+            self.assertFalse((archive_dir / "镜像" / "web.tar").exists())
+            self.assertTrue((archive_dir / "手册" / "manual_filled_draft.md").exists())
+            self.assertTrue((archive_dir / "截图" / "solve.png").exists())
+            self.assertTrue((archive_dir / "清单" / "archive_manifest.json").exists())
             self.assertEqual(manifest["xlsx_fields"]["是否归档"], "是")
             self.assertEqual(updated["metadata"]["是否归档"], "是")
             self.assertEqual(updated["metadata"]["归档目录"], archive_dir.as_posix())
-            self.assertEqual(updated["metadata"]["环境包/附件包路径"], "image/web.tar")
+            self.assertEqual(updated["metadata"]["环境包/附件包路径"], case["docker_artifacts"]["tar_path"])
+            image_records = [item for item in manifest["files"] if item["role"] == "image_tar"]
+            self.assertEqual(image_records[0]["status"], "referenced")
+
+    def test_archive_package_does_not_mark_unverified_case_archived(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            manifest = archive.create_archive_package(case, tmp_path / "archive")
+            updated = archive.apply_archive_outputs(case, manifest)
+
+            self.assertEqual(manifest["xlsx_fields"]["是否归档"], "否")
+            self.assertEqual(updated["metadata"]["是否归档"], "否")
+            self.assertTrue(any("验证状态为未验证" in issue for issue in manifest["issues"]))
+            self.assertTrue(any("是否通过为否" in issue for issue in manifest["issues"]))
+
+    def test_archive_package_can_copy_image_tars_when_explicitly_requested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            manifest = archive.create_archive_package(case, tmp_path / "archive", copy_image_tars=True)
+
+            archive_dir = Path(manifest["archive_dir"])
+
+            self.assertTrue((archive_dir / "镜像" / "web.tar").exists())
+            image_records = [item for item in manifest["files"] if item["role"] == "image_tar"]
+            self.assertEqual(image_records[0]["status"], "copied")
+            self.assertEqual(manifest["xlsx_fields"]["环境包/附件包路径"], "镜像/web.tar")
 
     def test_quality_review_keeps_unexecuted_docker_and_solve_checks_as_skip(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -205,7 +235,32 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertEqual(payload["summary"]["xlsx_readback_rows"], 1)
             self.assertEqual(rows[0]["Flag"], "flag{stage-six-full-flag}")
             self.assertIn("flag{stage-six-full-flag}", yuque)
-            self.assertEqual(payload["summary"]["remaining_actions"], 0)
+            self.assertGreater(payload["summary"]["remaining_actions"], 0)
+            self.assertTrue(
+                any("验证状态为部分通过" in item for item in payload["remaining_actions"])
+            )
+            self.assertTrue(any("缺少 HUB编号" in item for item in payload["remaining_actions"]))
+
+    def test_final_outputs_resolves_relative_archive_paths_from_base_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            manifest = archive.create_archive_package(case, tmp_path / "archive")
+            case = archive.apply_archive_outputs(case, manifest)
+            archive_dir = Path(case["metadata"]["归档目录"])
+            case["metadata"]["归档目录"] = archive_dir.relative_to(tmp_path).as_posix()
+            case["metadata"]["HUB编号"] = "CTF-2026060001"
+            case["metadata"]["验证状态"] = "通过"
+            case["metadata"]["是否通过"] = "是"
+
+            payload = final.create_final_outputs([case], tmp_path / "final", base_dir=tmp_path)
+
+            self.assertFalse(
+                any("归档目录不存在" in item for item in payload["remaining_actions"])
+            )
+            self.assertFalse(
+                any("资源路径不存在" in item for item in payload["remaining_actions"])
+            )
 
     def test_quality_review_cli_writes_report_and_updated_case(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -343,6 +398,91 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue(Path(payload["summary"]["final_xlsx"]).exists())
             self.assertTrue(Path(payload["summary"]["yuque_table"]).exists())
 
+    def test_fixture_missing_screenshot_is_reported_by_archive_and_quality(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cases = data.load_cases(ROOT / "tests" / "fixtures" / "ctf_cases.jsonl")
+            selected = [case for case in cases if case["case_id"] == "fixture-missing-screenshot"]
+            cases_path = tmp_path / "ctf_cases.jsonl"
+            cases_path.write_text("".join(json.dumps(case, ensure_ascii=False) + "\n" for case in selected), encoding="utf-8")
+
+            archive_payload = archive_runner.run_archive_workflow(
+                cases_path=cases_path,
+                output_root=tmp_path / "archive",
+                output_cases=tmp_path / "ctf_cases.archived.jsonl",
+                final_output_dir=tmp_path / "final",
+            )
+            quality_payload = quality_runner.run_quality_batch(
+                cases_path=tmp_path / "ctf_cases.archived.jsonl",
+                output_dir=tmp_path / "quality",
+                output_cases=tmp_path / "ctf_cases.reviewed.jsonl",
+            )
+            reviewed_case = data.load_cases(tmp_path / "ctf_cases.reviewed.jsonl")[0]
+            review_checks = {item["id"]: item for item in reviewed_case["review"]["checks"]}
+            archive_summary = json.loads((tmp_path / "archive" / "_batch" / "batch_archive_summary.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(archive_payload["archive_summary"]["with_issues"], 1)
+            self.assertTrue(any("missing screenshot" in issue for issue in archive_summary["manifests"][0]["issues"]))
+            self.assertEqual(review_checks["screenshot-files"]["status"], "fail")
+            self.assertIn("缺少截图", review_checks["screenshot-files"]["message"])
+            self.assertGreaterEqual(quality_payload["summary"]["with_failures"], 1)
+
+    def test_delivery_package_writes_chinese_handoff_without_copying_large_image_tars(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work" / "ctf-2026-collection"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir(parents=True)
+            outputs.mkdir()
+            (outputs / "ctf_2026_10_after_docker_final_archive.xlsx").write_bytes(b"xlsx")
+            (outputs / "ctf_2026_10_completed_final_archive.xlsx").write_bytes(b"completed-xlsx")
+            (outputs / "ctf_2026_10_after_docker_yuque_table.md").write_text("| 题目 |\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_completed_yuque_table.md").write_text("| 完成版 |\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_after_docker_final_report.md").write_text("# 最终归档报告\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_after_docker_final_report.json").write_text("{}", encoding="utf-8")
+            (outputs / "ctf_2026_10_after_docker_archive_package.zip").write_bytes(b"zip")
+            (outputs / "ctf_2026_10_completed_archive_package_no_tars.zip").write_bytes(b"completed-zip")
+            (outputs / "ctf_2026_10_after_docker_missing_report.md").write_text("# 缺失项报告\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_docker_execution_summary.md").write_text("# Docker\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_completion_report.md").write_text("# 完成报告\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_solver_verification_summary.md").write_text("# solver\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_after_docker_archived_cases.jsonl").write_text("{}\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_completed_archived_cases.jsonl").write_text('{"done": true}\n', encoding="utf-8")
+            image_tar = workdir / "image_tars" / "web.tar"
+            image_tar.parent.mkdir()
+            image_tar.write_bytes(b"tar")
+            (workdir / "image_tars_manifest.md").write_text(
+                "\n".join(
+                    [
+                        "# Image Tar Manifest",
+                        "",
+                        "| Challenge | Image | Status | Platform | Size | SHA256 | Tar |",
+                        "|---|---|---|---|---:|---|---|",
+                        f"| web | `cloversec/web:local` | saved | linux/amd64 | 3 | `abc` | `{image_tar}` |",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertTrue((delivery_dir / "交付说明.md").exists())
+            self.assertTrue((delivery_dir / "交付清单.json").exists())
+            self.assertTrue((delivery_dir / "最终表格" / "最终归档表.xlsx").exists())
+            self.assertTrue((delivery_dir / "语雀归档表" / "语雀粘贴表.md").exists())
+            self.assertTrue((delivery_dir / "题目归档包" / "题目归档包.zip").exists())
+            self.assertTrue((delivery_dir / "质量检查报告" / "完成报告.md").exists())
+            self.assertTrue((delivery_dir / "质量检查报告" / "solver验证汇总.md").exists())
+            self.assertTrue((delivery_dir / "镜像包清单" / "镜像包清单.md").exists())
+            self.assertEqual((delivery_dir / "最终表格" / "最终归档表.xlsx").read_bytes(), b"completed-xlsx")
+            self.assertEqual((delivery_dir / "题目归档包" / "题目归档包.zip").read_bytes(), b"completed-zip")
+            self.assertEqual((delivery_dir / "过程证据" / "最终题目数据.jsonl").read_text(encoding="utf-8"), '{"done": true}\n')
+            self.assertFalse((delivery_dir / "镜像包清单" / "web.tar").exists())
+            self.assertFalse(any(path.name.startswith(("01-", "02-", "03-", "04-", "05-", "06-", "07-", "99-")) for path in delivery_dir.iterdir()))
+            self.assertTrue(any(item["status"] == "referenced" and item["key"] == "image_tar" for item in manifest["files"]))
+
     def test_quality_runner_writes_batch_evidence_and_updated_cases(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -441,7 +581,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.3")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.4")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

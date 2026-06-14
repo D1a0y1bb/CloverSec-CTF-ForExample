@@ -16,7 +16,7 @@ import cloversec_ctf_archive as archive
 import cloversec_ctf_data as data
 
 
-VERSION = "0.3.3"
+VERSION = "0.3.4"
 CONFIRMATION_SCHEMA = "cloversec.ctf.confirmation_request.v1"
 LOCK_SCHEMA = "cloversec.ctf.manifest_lock.v1"
 PREVIEW_SCHEMA = "cloversec.ctf.archive_preview.v1"
@@ -27,11 +27,11 @@ WARNING_SCHEMA = "cloversec.ctf.codex_warning_report.v1"
 
 CONFIRMATION_ACTIONS = {"download", "extract", "docker", "hub", "retag", "archive", "final"}
 ARCHIVE_ROLES = {
-    "source": "source",
-    "attachment": "attachments",
-    "image_tar": "image",
-    "writeup": "writeup",
-    "screenshot": "screenshots",
+    "source": "源码",
+    "attachment": "附件",
+    "image_tar": "镜像",
+    "writeup": "手册",
+    "screenshot": "截图",
 }
 BATCH_REPORT_FIELDS = [
     "赛事来源",
@@ -341,7 +341,8 @@ def batch_row(case: dict[str, Any], *, workflow_state: dict[str, Any] | None = N
     evidence = case.get("evidence") if isinstance(case.get("evidence"), list) else []
     missing = missing_resources(case)
     pending = pending_confirmations(case, workflow_state=workflow_state)
-    ready = not missing and str(metadata.get("验证状态") or "") in {"通过", "部分通过"}
+    problems = case_problem_messages(case)
+    ready = not missing and not pending and not problems and str(metadata.get("验证状态") or "") == "通过"
     archived = str(metadata.get("是否归档") or "") == "是"
     return {
         "赛事来源": str(metadata.get("赛事来源") or metadata.get("题目来源") or ""),
@@ -359,7 +360,7 @@ def batch_row(case: dict[str, Any], *, workflow_state: dict[str, Any] | None = N
         "可归档": "是" if ready else "否",
         "已归档": "是" if archived else "否",
         "归档目录": str(metadata.get("归档目录") or ""),
-        "问题": ";".join(str(item.get("summary") or item.get("message") or "") for item in evidence if item.get("status") in {"missing", "inaccessible", "failed"}),
+        "问题": ";".join(problems),
     }
 
 
@@ -446,6 +447,10 @@ def missing_resources(case: dict[str, Any]) -> list[str]:
     for item in iter_case_paths(case):
         if not Path(item["path"]).is_file():
             missing.append(f"{item['role']}:{item['path']}")
+    if not _manual_paths(case):
+        missing.append("手册文件")
+    if not _screenshot_paths(case):
+        missing.append("截图文件")
     metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
     if not str(data.case_to_xlsx_row(case).get("Flag") or "").strip():
         missing.append("Flag")
@@ -454,6 +459,40 @@ def missing_resources(case: dict[str, Any]) -> list[str]:
     if not str(metadata.get("分类") or "").strip():
         missing.append("分类")
     return missing
+
+
+def case_problem_messages(case: dict[str, Any]) -> list[str]:
+    problems: list[str] = []
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    if str(metadata.get("问题") or "").strip():
+        problems.append(str(metadata["问题"]))
+    validation_status = str(metadata.get("验证状态") or "").strip()
+    if validation_status and validation_status != "通过":
+        problems.append(f"验证状态为{validation_status}")
+    if str(metadata.get("是否通过") or "").strip() == "否":
+        problems.append("是否通过为否")
+
+    archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
+    for item in archive_info.get("issues", []) if isinstance(archive_info.get("issues"), list) else []:
+        problems.append(str(item))
+
+    review_info = case.get("review") if isinstance(case.get("review"), dict) else {}
+    checks = review_info.get("checks") if isinstance(review_info.get("checks"), list) else []
+    for item in checks:
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") != "pass":
+            problems.append(f"{item.get('name', item.get('id', '检查项'))}: {item.get('message', '')}")
+
+    evidence = case.get("evidence") if isinstance(case.get("evidence"), list) else []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") in {"missing", "inaccessible", "failed", "broken"}:
+            message = str(item.get("summary") or item.get("message") or item.get("error") or "").strip()
+            if message:
+                problems.append(message)
+    return dedupe_strings(problems)
 
 
 def pending_confirmations(case: dict[str, Any], *, workflow_state: dict[str, Any] | None = None) -> list[str]:
@@ -469,6 +508,8 @@ def pending_confirmations(case: dict[str, Any], *, workflow_state: dict[str, Any
                 for stage, status in (row.get("stages") or {}).items():
                     if status == "pending_user":
                         pending.append(str(stage))
+    if case_problem_messages(case):
+        pending.append("问题待人工复核")
     return pending
 
 
@@ -518,6 +559,19 @@ def extract_failures_from_case(case: dict[str, Any]) -> list[dict[str, Any]]:
                     "message": missing,
                     "retryable": True,
                     "suggested_action": "补齐资源后重新执行预览和质量检查",
+                }
+            )
+        )
+    for problem in case_problem_messages(case):
+        failures.append(
+            normalize_failure_case(
+                {
+                    "case_id": case_id(case),
+                    "stage": "review",
+                    "category": "case_problem",
+                    "message": problem,
+                    "retryable": False,
+                    "suggested_action": "复核问题后重新执行质量检查和最终报告",
                 }
             )
         )
@@ -679,19 +733,54 @@ def render_batch_status_report(payload: dict[str, Any]) -> str:
         f"- 可归档：{summary.get('can_archive', 0)}",
         f"- 已归档：{summary.get('archived', 0)}",
         "",
-        "| 赛事 | 年份 | 分类 | 题目 ID | 名称 | 验证状态 | 缺失资源 | 待人工确认 | 可归档 | 已归档 |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| 赛事 | 年份 | 分类 | 题目 ID | 名称 | 验证状态 | 缺失资源 | 待人工确认 | 问题 | 可归档 | 已归档 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in payload.get("rows", []):
         lines.append(
             "| "
             + " | ".join(
                 escape_table(row.get(field, ""))
-                for field in ["赛事来源", "年份", "分类", "题目 ID", "名称", "验证状态", "缺失资源", "待人工确认", "可归档", "已归档"]
+                for field in ["赛事来源", "年份", "分类", "题目 ID", "名称", "验证状态", "缺失资源", "待人工确认", "问题", "可归档", "已归档"]
             )
             + " |"
         )
     return "\n".join(lines) + "\n"
+
+
+def _manual_paths(case: dict[str, Any]) -> list[str]:
+    writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
+    paths = []
+    for key in ["manual_path", "manual_filled_draft", "manual_template"]:
+        value = str(writeup.get(key) or "").strip()
+        if value:
+            paths.append(value)
+    return paths
+
+
+def _screenshot_paths(case: dict[str, Any]) -> list[str]:
+    archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
+    output = []
+    for item in archive_info.get("screenshots", []) if isinstance(archive_info.get("screenshots"), list) else []:
+        if isinstance(item, dict):
+            path = str(item.get("path") or item.get("local_path") or "").strip()
+        else:
+            path = str(item).strip()
+        if path:
+            output.append(path)
+    return output
+
+
+def dedupe_strings(values: list[str]) -> list[str]:
+    output = []
+    seen = set()
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text)
+    return output
 
 
 def render_stage_notification(payload: dict[str, Any]) -> str:

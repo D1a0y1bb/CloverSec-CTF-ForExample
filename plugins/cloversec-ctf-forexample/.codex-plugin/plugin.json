@@ -1,6 +1,6 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "CloverSec CTF collection, conversion, platform Docker delivery, writeup, archive, review, and Hub submission workflows for Codex.",
   "author": {
     "name": "CloverSec",
@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "CloverSec CTF For Example",
     "shortDescription": "CTF 收集、构建、手册、归档和 Hub 提交流程",
-    "longDescription": "CloverSec CTF For Example packages Codex skills for workflow task intake, contest research, challenge resource classification, container inference, Docker validation, asset collection, platform Docker delivery, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting. Existing upstream Dockerfile or compose files are treated as evidence and migration inputs; container challenges must still pass through cloversec-ctf-build-dockerizer before they can be considered CloverSec platform deliverables. Version 0.3.3 adds manual quality review, Hub draft packages, Hub review tracking, image naming plans, archive preview, manifest.lock.json, confirmation requests, batch status reports, failure_cases.jsonl, stage notifications, visible-content evidence import for blocked pages, and exact skill/MCP ID guidance. Internal xlsx and Yuque outputs must keep the complete Flag field.",
+    "longDescription": "CloverSec CTF For Example packages Codex skills for workflow task intake, contest research, challenge resource classification, container inference, Docker validation, asset collection, platform Docker delivery, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting. Existing upstream Dockerfile or compose files are treated as evidence and migration inputs; container challenges must still pass through cloversec-ctf-build-dockerizer before they can be considered CloverSec platform deliverables. Version 0.3.4 adds manual quality review, Hub draft packages, Hub review tracking, image naming plans, archive preview, manifest.lock.json, confirmation requests, batch status reports, failure_cases.jsonl, stage notifications, visible-content evidence import for blocked pages, and exact skill/MCP ID guidance. Internal xlsx and Yuque outputs must keep the complete Flag field.",
     "developerName": "CloverSec",
     "category": "Developer Tools",
     "websiteURL": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample",
