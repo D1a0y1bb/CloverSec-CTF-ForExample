@@ -290,6 +290,6 @@
 - [x] 发布前官方插件校验：`python3 /Users/d1a0y1bb/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/cloversec-ctf-forexample` 通过。
 - [x] 发布前真实样本工作流测试：公网样本 `/tmp/cloversec-v033-real-20260614120431` 和本地样本 `/tmp/cloversec-v033-local-20260614121235` 通过，记录见 `docs/validation/v0.3.3-automation-llm-validation.md`。
 - [x] 发布前真实 LLM 测试：CloudRouter `gpt-5.4-mini` 和 `gpt-5.5` 通过，第一轮 ID 暴露问题已修复，记录见 `docs/validation/v0.3.3-automation-llm-validation.md`。
-- [ ] `v0.3.3` Release 发布。
-- [ ] 本机 Codex 插件更新到 `0.3.3`。
-- [ ] 安装版真实测试和新会话可见性验收。
+- [x] `v0.3.3` Release 发布：Git tag 指向 `11409f3`，GitHub Actions run `27488274475` 成功，Release 标题为 `v0.3.3`，资产包含 repo marketplace zip、plugin zip、tar.gz 和 release notes。
+- [x] 本机 Codex 插件已更新到 `0.3.3`：重新添加 `D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.3` 后安装，cache 路径为 `/Users/d1a0y1bb/.codex/plugins/cache/cloversec-ctf/cloversec-ctf-forexample/0.3.3`。
+- [x] 安装版真实测试和新会话可见性验收：安装版 manifest 为 `0.3.3`、15 个 skills、8 个 MCP server；安装版脚本保留完整 Flag、Hub 不自动提交；`codex exec` 新会话返回 `pass=true`。
