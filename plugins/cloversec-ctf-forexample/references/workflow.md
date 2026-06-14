@@ -2,16 +2,17 @@
 
 ## 阶段
 
-1. `cloversec-ctf-research-intake`：收集赛事和赛题信息。
-2. `cloversec-ctf-asset-collector`：收集题目源码、附件、WP、复现资料。
-3. `cloversec-ctf-build-dockerizer`：容器题目构建转换。
-4. `cloversec-ctf-attachment-packager`：附件题目检查和打包。
-5. `cloversec-ctf-writeup-scaffold`：手册和 Hub 字段草稿。
-6. `cloversec-ctf-archive-packager`：归档目录、镜像 tar、hash 清单。
-7. `cloversec-ctf-quality-review`：题目、手册、附件、镜像一致性检查。
-8. `cloversec-ctf-hub-submission`：Hub 提交材料生成。
-9. `cloversec-ctf-hub-retag`：审核通过后按 HUB 编号重打镜像 tag。
-10. `cloversec-ctf-final-report`：最终位置、xlsx 和后续动作报告。
+1. `cloversec-ctf-workflow-orchestrator`：从年份、赛事、方向和数量创建批量采集任务。
+2. `cloversec-ctf-research-intake`：收集赛事和赛题信息。
+3. `cloversec-ctf-asset-collector`：收集题目源码、附件、WP、复现资料。
+4. `cloversec-ctf-build-dockerizer`：容器题目构建转换。
+5. `cloversec-ctf-attachment-packager`：附件题目检查和打包。
+6. `cloversec-ctf-writeup-scaffold`：手册和 Hub 字段草稿。
+7. `cloversec-ctf-archive-packager`：归档目录、镜像 tar、hash 清单。
+8. `cloversec-ctf-quality-review`：题目、手册、附件、镜像一致性检查。
+9. `cloversec-ctf-hub-submission`：Hub 提交材料生成。
+10. `cloversec-ctf-hub-retag`：审核通过后按 HUB 编号重打镜像 tag。
+11. `cloversec-ctf-final-report`：最终位置、xlsx 和后续动作报告。
 
 ## 全局原则
 
@@ -21,6 +22,8 @@
 - 当前 Agent 有联网搜索工具时，优先使用 Agent 搜索 Google/Baidu/全网结果，再导入插件数据模型。
 - GitHub code search 优先使用本机 `gh auth login` 或 `GITHUB_TOKEN` / `GH_TOKEN`；默认不要求付费搜索 API key。
 - 搜索、抓取、下载必须写入来源 URL、访问时间、hash、HTTP 状态和失败原因。
+- 批量任务必须维护 `workflow_state.json`，支持 `dry-run`、`apply` 和 `resume`。
+- 外部附件必须先进入 `downloads_sandbox/` 做安全预览，确认后再进入题目目录。
 - Hub 自动化第一版不提交，只生成材料。
 - 涉及镜像导出时必须检查 `linux/amd64`。
 - 内部 xlsx、语雀归档表和相关字段草稿必须保留完整 `Flag`，不能替换成摘要或脱敏值。
@@ -31,12 +34,25 @@
 脚本入口：
 
 ```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py init --event "IrisCTF" --year 2025 --category web --limit 20
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py github-doctor --sample-query "IrisCTF 2025 writeup" --output github_sources_status.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py strategy --event "IrisCTF" --year 2025 --category web --output search_strategy.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discover --query "<赛事/题目/年份/分类>" --year 2025 --output search_results.json --cases-jsonl ctf_cases.jsonl
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py download-from-manifest --manifest search_results.json --output-dir downloads --output asset_downloads.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py source-evidence --manifest search_results.json --evidence-dir evidence --snapshots-dir snapshots
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py download-sandbox --manifest search_results.json --output-dir .
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py dedupe --cases ctf_cases.jsonl --output dedupe_candidates.json
 ```
 
 MCP 入口：
 
+- `cloversec_ctf_workflow_init`
+- `cloversec_ctf_workflow_batch`
+- `cloversec_ctf_search_strategy`
+- `cloversec_ctf_github_doctor`
+- `cloversec_ctf_source_evidence`
+- `cloversec_ctf_dedupe_candidates`
+- `cloversec_ctf_dedupe_apply`
+- `cloversec_ctf_download_sandbox`
 - `cloversec_ctf_search_plus`
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
@@ -85,3 +101,42 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan --c
 ```
 
 受控 Docker 执行会写入 JSON 证据，包含命令、退出码、平台、日志路径、端口探测和 tar SHA256。
+
+## 0.3.0 工作流状态
+
+标准工作目录：
+
+```text
+workflow_state.json
+task_plan.json
+ctf_cases.jsonl
+next_steps.md
+logs/
+evidence/
+snapshots/
+downloads_sandbox/
+downloads_accepted/
+reports/
+```
+
+`workflow_state.json` 必须记录：
+
+- `run_id`
+- 当前阶段状态
+- 每个 `case_id` 的阶段状态
+- 错误和失败原因
+- `resume.last_stage`
+- `resume.last_case_id`
+
+阶段状态只接受清楚的事实：`pending`、`planned`、`completed`、`failed`。dry-run 只生成预览和计划；apply 才写完成状态。
+
+## 0.3.0 下载沙箱
+
+默认规则：
+
+- 单文件上限 300MB。
+- 禁止 `file://`、`ftp://`、localhost、127.0.0.1、内网 IP。
+- 文件名强制清洗。
+- zip/tar 预览路径穿越、文件数量和解压体积。
+- 输出 `download_preview.json` 和 `download_safety_report.md`。
+- `accept=true` 且安全状态为 `safe` 时才复制到 `downloads_accepted/`。

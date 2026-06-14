@@ -1,0 +1,92 @@
+{
+  "schema_version": "cloversec.ctf.search_strategies.v1",
+  "defaults": {
+    "templates": [
+      "{event} {year} {category} CTF writeup",
+      "{event} {year} {category} challenge attachment",
+      "{event} {year} {category} site:github.com",
+      "{event} {year} {category} site:ctftime.org"
+    ]
+  },
+  "categories": {
+    "web": {
+      "aliases": ["web", "web安全", "web渗透"],
+      "templates": [
+        "{event} {year} web writeup",
+        "{event} {year} web WP",
+        "{event} {year} web challenge source",
+        "{event} {year} web Dockerfile",
+        "{event} {year} web site:github.com",
+        "{event} {year} web site:blog.csdn.net",
+        "{event} {year} web site:cnblogs.com",
+        "{event} {year} web site:yuque.com"
+      ]
+    },
+    "pwn": {
+      "aliases": ["pwn", "binary", "二进制", "pwnable"],
+      "templates": [
+        "{event} {year} pwn writeup",
+        "{event} {year} pwn exploit.py",
+        "{event} {year} pwn libc",
+        "{event} {year} pwn chall",
+        "{event} {year} pwn attachment",
+        "{event} {year} pwn site:github.com",
+        "{event} {year} pwn site:blog.csdn.net"
+      ]
+    },
+    "reverse": {
+      "aliases": ["reverse", "rev", "re", "逆向"],
+      "templates": [
+        "{event} {year} reverse writeup",
+        "{event} {year} rev writeup",
+        "{event} {year} reverse attachment",
+        "{event} {year} reverse ida",
+        "{event} {year} reverse site:github.com",
+        "{event} {year} reverse site:blog.csdn.net"
+      ]
+    },
+    "crypto": {
+      "aliases": ["crypto", "cryptography", "密码", "密码学"],
+      "templates": [
+        "{event} {year} crypto writeup",
+        "{event} {year} cryptography writeup",
+        "{event} {year} crypto sage",
+        "{event} {year} crypto solve.py",
+        "{event} {year} crypto site:github.com",
+        "{event} {year} crypto site:blog.csdn.net"
+      ]
+    },
+    "misc": {
+      "aliases": ["misc", "杂项"],
+      "templates": [
+        "{event} {year} misc writeup",
+        "{event} {year} misc attachment",
+        "{event} {year} misc solve",
+        "{event} {year} misc site:github.com",
+        "{event} {year} misc site:blog.csdn.net"
+      ]
+    },
+    "forensics": {
+      "aliases": ["forensics", "forensic", "取证"],
+      "templates": [
+        "{event} {year} forensics writeup",
+        "{event} {year} forensic writeup",
+        "{event} {year} pcap writeup",
+        "{event} {year} memory forensics",
+        "{event} {year} forensics site:github.com",
+        "{event} {year} forensics site:blog.csdn.net"
+      ]
+    },
+    "ai": {
+      "aliases": ["ai", "ml", "machine learning", "人工智能", "大模型"],
+      "templates": [
+        "{event} {year} AI CTF writeup",
+        "{event} {year} machine learning CTF writeup",
+        "{event} {year} prompt injection CTF",
+        "{event} {year} AI challenge source",
+        "{event} {year} AI site:github.com",
+        "{event} {year} AI site:blog.csdn.net"
+      ]
+    }
+  }
+}

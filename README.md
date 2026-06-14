@@ -10,11 +10,11 @@
 
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.2.2-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.3.0-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
-  <img alt="Skills" src="https://img.shields.io/badge/skills-10-f59e0b">
-  <img alt="MCP" src="https://img.shields.io/badge/MCP-7-8b5cf6">
+  <img alt="Skills" src="https://img.shields.io/badge/skills-11-f59e0b">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-8-8b5cf6">
 </p>
 
 <p align="center">
@@ -31,20 +31,18 @@
 
 `CloverSec CTF For Example` 是一个 Codex 原生适配的四叶草安全-创研中心专属工作流插件，由一组可被 Codex 自动调用的 skill、脚本和 MCP server 组成。你可以直接描述目标（周期性重复工作目标），例如“收集 2025 年某比赛的 Web 题目并整理附件和 WP”，Codex 会按场景选择对应能力，生成结构化文件、证据记录、归档目录、质量检查报告、Hub 提交材料和最终 xlsx/语雀表。
 
-以前竞赛岗工程师或者（实习生）花很长时间去学习去做的都是执行型工作：收集题目材料、整理附件、写 Dockerfile、调启动脚本、验证 flag、补 writeup、打包归档、填提交表。
-
-**为什么不把这些工作交给 AGENT？上帝说：要有好用的AGENT！就有了Codex**
-
-**上帝说：要速度、格式一致性、可复现性都更好！就有了CloverSec CTF For Example**
-
-值得深思的是，Agent 时代下，如果实习的价值只停在这些杂活上，就会被替代得很快。我们需要的是判断型工作人才：题目有没有新意，难度是否合理，漏洞链是否前沿，选手体验是否顺畅，环境有没有安全风险，writeup 是否讲清楚关键思路。**这种插件会把“CTF 题目工程化整理实习生”的需求大幅压低**。把低价值工作拿走，逼着岗位往题目设计、质量审查和赛事运营判断上升级。
+以前竞赛岗工程师（实习生）花很长时间去学习去做的都是执行型工作：收集题目材料、整理附件、写 Dockerfile、调启动脚本、验证 flag、补 writeup、打包归档、填提交表。**为什么不把这些工作交给 AGENT？上帝说：要有好用的AGENT！就有了Codex**，**上帝说：要速度、格式一致性、可复现性都更好！就有了CloverSec CTF For Example**。值得深思的是，Agent 时代下如果只停在这些杂活上，就会被替代得很快。把低价值工作拿走，逼着岗位往题目设计、质量审查和赛事运营上升级，这是我希望所看到的未来。
 
 它覆盖竞赛岗位工程师常见的长流程工作：
 
 | 工作内容 | 插件处理方式 |
 | --- | --- |
+| 任务向导 | 按年份、赛事、方向、数量创建工作目录、任务计划和状态文件 |
 | 赛事和赛题调研 | 多来源搜索、证据评分、结构化数据 |
+| 批处理编排 | `dry-run`、`apply`、`resume` 和 `workflow_state.json` |
 | 附件、源码、WP 收集 | 下载预览、hash、失败原因、来源证据 |
+| 来源可信度 | 多来源证据、置信度、页面快照、下载 URL、hash、抓取时间和缺失原因 |
+| 去重合并 | 按赛事、题名、分类、URL、附件 hash 和 writeup 标题生成合并候选 |
 | 容器题改造 | Docker 交付、amd64 检查、build/run/save/load 记录 |
 | 附件题处理 | zip/tar 检查、路径穿越风险、manifest |
 | 手册撰写 | 手册草稿、Hub 字段、xlsx 字段、完整 Flag 字段 |
@@ -74,7 +72,7 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.2.2
+Git 引用：v0.3.0
 稀疏路径：留空
 ```
 
@@ -83,7 +81,7 @@ Git 引用：v0.2.2
 当然也可以使用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.2.2
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.0
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -114,6 +112,26 @@ codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ## Usage
 
 使用这个插件时直接描述目标即可，无需背命令。
+
+### 创建批量采集任务
+
+```text
+帮我创建 2025 IrisCTF Web 方向 20 道题的采集任务。
+```
+
+Codex 会使用 `cloversec-ctf-workflow-orchestrator`。常见输出：
+
+```text
+task_plan.json
+workflow_state.json
+ctf_cases.jsonl
+next_steps.md
+logs/
+evidence/
+snapshots/
+downloads_sandbox/
+downloads_accepted/
+```
 
 ### 收集题目线索
 
@@ -280,18 +298,20 @@ final_report.json
 
 ```mermaid
 flowchart LR
-  A["竞赛/赛题线索"] --> B["Research Intake"]
-  B --> C["Asset Collector"]
-  C --> D{"题目类型"}
-  D -->|"容器题"| E["Build Dockerizer"]
-  D -->|"附件题"| F["Attachment Packager"]
-  E --> G["Writeup Scaffold"]
-  F --> G
-  G --> H["Archive Packager"]
-  H --> I["Quality Review"]
-  I --> J["Hub Submission Prep"]
-  J --> K["Hub Retag"]
-  K --> L["Final Report / xlsx / Yuque"]
+  A["年份/赛事/方向/数量"] --> B["Workflow Orchestrator"]
+  B --> C["Research Intake"]
+  C --> D["Source Evidence / Dedupe / Download Sandbox"]
+  D --> E["Asset Collector"]
+  E --> F{"题目类型"}
+  F -->|"容器题"| G["Build Dockerizer"]
+  F -->|"附件题"| H["Attachment Packager"]
+  G --> I["Writeup Scaffold"]
+  H --> I
+  I --> J["Archive Packager"]
+  J --> K["Quality Review"]
+  K --> L["Hub Submission Prep"]
+  L --> M["Hub Retag"]
+  M --> N["Final Report / xlsx / Yuque"]
 ```
 
 ## Capabilities
@@ -300,6 +320,7 @@ flowchart LR
 
 | Skill | 作用 |
 | --- | --- |
+| `cloversec-ctf-workflow-orchestrator` | 创建批量采集任务、状态机、搜索策略、证据、去重和下载沙箱 |
 | `cloversec-ctf-research-intake` | 收集赛事、赛题、writeup、附件线索和证据 |
 | `cloversec-ctf-asset-collector` | 下载和整理源码、附件、WP、截图、hash 与失败原因 |
 | `cloversec-ctf-build-dockerizer` | 将容器题整理成 Docker 交付件 |
@@ -322,6 +343,7 @@ flowchart LR
 | `cloversec-ctf-archive` | 批量读取 `ctf_cases.jsonl`，生成归档目录、manifest、xlsx 和缺失项报告 |
 | `cloversec-ctf-quality-runner` | 汇总资源、Docker、手册、Flag 和归档质量证据 |
 | `cloversec-ctf-hub-assistant` | 生成 Hub 页面字段计划和浏览器辅助填写数据 |
+| `cloversec-ctf-workflow` | 创建工作流任务、GitHub 检测、搜索策略、证据快照、去重、下载沙箱 |
 
 ## Search Strategy
 
@@ -333,11 +355,21 @@ gh auth login
 
 搜索策略：
 
-1. 如果当前 Codex 会话有联网搜索工具，先让 Agent 查 Google/Baidu/全网结果，再把结果写入插件的数据模型。
-2. 插件脚本使用默认免费源：GitHub、CTFTime、公开 writeup 仓库、公开归档站、DuckDuckGo HTML、CSDN、博客园、语雀 site 搜索、CTF 平台入口线索。
-3. 浏览器辅助搜索用于 Google/Baidu/CSDN/语雀/博客园等页面，只读取页面可见标题、URL、摘要和排名。
-4. 搜索结果分层：`confirmed_challenge`、`writeup_candidate`、`attachment_candidate`、`platform_lead`、`noise`。
-5. 赛事名、年份、题目名、分类和附件类型会分开评分，平台首页和搜索首页会被降级或剔除。
+1. `cloversec-ctf-workflow-orchestrator` 先按 Web/Pwn/Reverse/Crypto/Misc/Forensics/AI 生成专用 query。
+2. 如果当前 Codex 会话有联网搜索工具，先让 Agent 查 Google/Baidu/全网结果，再把结果写入插件的数据模型。
+3. 插件脚本使用默认免费源：GitHub、CTFTime、公开 writeup 仓库、公开归档站、DuckDuckGo HTML、CSDN、博客园、语雀 site 搜索、CTF 平台入口线索。
+4. 浏览器辅助搜索用于 Google/Baidu/CSDN/语雀/博客园等页面，只读取页面可见标题、URL、摘要和排名。
+5. 搜索结果分层：`confirmed_challenge`、`writeup_candidate`、`attachment_candidate`、`platform_lead`、`noise`。
+6. 赛事名、年份、题目名、分类和附件类型会分开评分，平台首页和搜索首页会被降级或剔除。
+
+0.3.0 增加的安全下载流程：
+
+- 外部附件先进入 `downloads_sandbox/`。
+- 默认单文件上限 300MB。
+- 默认最多跟随 5 次重定向，跳转到 localhost 或内网地址会停止。
+- 禁止 `file://`、`ftp://`、localhost 和内网 IP。
+- zip/tar 先做安全预览，检查路径穿越、文件数量和解压体积。
+- 人工确认后再进入 `downloads_accepted/` 或题目目录。
 
 现实边界：
 
@@ -425,7 +457,7 @@ python3 scripts/package_plugin_release.py
 发布到 GitHub Release 后，Codex 可以按 tag 安装：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.2.2
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.0
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 

@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""Minimal stdio MCP server for CloverSec CTF workflow orchestration."""
+
+from __future__ import annotations
+
+import json
+import sys
+import traceback
+from typing import Any
+
+import cloversec_ctf_workflow as workflow
+
+
+SERVER_VERSION = "0.3.0"
+
+TOOLS = [
+    {
+        "name": "cloversec_ctf_workflow_init",
+        "description": "Create a workflow run directory from year/event/category/limit with task_plan, ctf_cases.jsonl, logs, evidence, snapshots, sandbox, and next steps.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "event": {"type": "string"},
+                "years": {"type": "array", "items": {"type": "integer"}},
+                "categories": {"type": "array", "items": {"type": "string"}},
+                "limit": {"type": "integer"},
+                "out_dir": {"type": "string"},
+                "allow_browser_search": {"type": "boolean"},
+                "dry_run": {"type": "boolean"},
+            },
+            "required": ["event"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_workflow_batch",
+        "description": "Preview or apply a workflow stage update with dry-run/apply, resume, and per-case state tracking.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workdir": {"type": "string"},
+                "stage": {"type": "string", "enum": workflow.STAGES},
+                "mode": {"type": "string", "enum": ["dry-run", "apply"]},
+                "cases_path": {"type": "string"},
+                "resume": {"type": "boolean"},
+            },
+            "required": ["workdir", "stage"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_search_strategy",
+        "description": "Generate category-specific search queries for CTF research.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "event": {"type": "string"},
+                "years": {"type": "array", "items": {"type": "integer"}},
+                "categories": {"type": "array", "items": {"type": "string"}},
+                "limit": {"type": "integer"},
+            },
+            "required": ["event"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_github_doctor",
+        "description": "Check gh auth login, token source, sample GitHub repository/code search, rate limit, failures, and available sources.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sample_query": {"type": "string"},
+                "output_path": {"type": "string"},
+            },
+        },
+    },
+    {
+        "name": "cloversec_ctf_source_evidence",
+        "description": "Create source evidence records, confidence fields, and optional raw page snapshots from a search manifest.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "manifest_path": {"type": "string"},
+                "evidence_dir": {"type": "string"},
+                "snapshots_dir": {"type": "string"},
+                "limit": {"type": "integer"},
+                "fetch_snapshots": {"type": "boolean"},
+            },
+            "required": ["manifest_path", "evidence_dir", "snapshots_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_dedupe_candidates",
+        "description": "Group duplicate candidate challenges by event, title, category, attachment hash, writeup title, and URL.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cases_path": {"type": "string"},
+                "output_path": {"type": "string"},
+            },
+            "required": ["cases_path", "output_path"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_dedupe_apply",
+        "description": "Apply only human-approved duplicate merge groups and write merged ctf_cases.jsonl.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cases_path": {"type": "string"},
+                "candidates_path": {"type": "string"},
+                "output_path": {"type": "string"},
+            },
+            "required": ["cases_path", "candidates_path", "output_path"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_download_sandbox",
+        "description": "Download external attachment URLs into an isolated sandbox with protocol, size, filename, redirect, and archive-path preview checks.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "urls": {"type": "array", "items": {"type": "string"}},
+                "manifest_path": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "accept": {"type": "boolean"},
+                "max_file_size": {"type": "integer"},
+                "max_redirects": {"type": "integer"},
+            },
+            "required": ["output_dir"],
+        },
+    },
+]
+
+
+def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
+    method = request.get("method")
+    request_id = request.get("id")
+    try:
+        if method == "initialize":
+            return response(
+                request_id,
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "cloversec-ctf-workflow", "version": SERVER_VERSION},
+                },
+            )
+        if method == "tools/list":
+            return response(request_id, {"tools": TOOLS})
+        if method == "tools/call":
+            params = request.get("params") if isinstance(request.get("params"), dict) else {}
+            name = params.get("name")
+            arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            payload = call_tool(str(name or ""), arguments)
+            return response(request_id, {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}]})
+        if request_id is None:
+            return None
+        return error_response(request_id, -32601, f"unknown method: {method}")
+    except Exception as exc:  # noqa: BLE001
+        return error_response(request_id, -32000, str(exc), {"traceback": traceback.format_exc(limit=5)})
+
+
+def call_tool(name: str, arguments: dict[str, Any]) -> Any:
+    if name == "cloversec_ctf_workflow_init":
+        return compact(
+            workflow.init_workflow(
+                event=str(arguments.get("event") or ""),
+                years=[int(item) for item in arguments.get("years", [])],
+                categories=[str(item) for item in arguments.get("categories", [])],
+                limit=int(arguments.get("limit", 20)),
+                out_dir=str(arguments.get("out_dir") or "") or None,
+                allow_browser_search=bool(arguments.get("allow_browser_search", False)),
+                dry_run=bool(arguments.get("dry_run", False)),
+            )
+        )
+    if name == "cloversec_ctf_workflow_batch":
+        return workflow.batch_orchestrate(
+            workdir=str(arguments.get("workdir") or ""),
+            stage=str(arguments.get("stage") or ""),
+            mode=str(arguments.get("mode") or "dry-run"),
+            cases_path=str(arguments.get("cases_path") or "") or None,
+            resume=bool(arguments.get("resume", False)),
+        )
+    if name == "cloversec_ctf_search_strategy":
+        return {
+            "queries": workflow.build_search_queries(
+                event=str(arguments.get("event") or ""),
+                years=[int(item) for item in arguments.get("years", [])],
+                categories=[str(item) for item in arguments.get("categories", [])],
+                limit=int(arguments.get("limit", 20)),
+            )
+        }
+    if name == "cloversec_ctf_github_doctor":
+        return workflow.github_doctor(
+            sample_query=str(arguments.get("sample_query") or "ctf writeup"),
+            output_path=str(arguments.get("output_path") or "") or None,
+        )
+    if name == "cloversec_ctf_source_evidence":
+        return workflow.record_source_evidence(
+            manifest_path=str(arguments.get("manifest_path") or ""),
+            evidence_dir=str(arguments.get("evidence_dir") or ""),
+            snapshots_dir=str(arguments.get("snapshots_dir") or ""),
+            limit=int(arguments.get("limit", 50)),
+            fetch_snapshots=bool(arguments.get("fetch_snapshots", True)),
+        )
+    if name == "cloversec_ctf_dedupe_candidates":
+        return workflow.dedupe_cases(
+            cases_path=str(arguments.get("cases_path") or ""),
+            output_path=str(arguments.get("output_path") or ""),
+        )
+    if name == "cloversec_ctf_dedupe_apply":
+        return workflow.apply_dedupe(
+            cases_path=str(arguments.get("cases_path") or ""),
+            candidates_path=str(arguments.get("candidates_path") or ""),
+            output_path=str(arguments.get("output_path") or ""),
+        )
+    if name == "cloversec_ctf_download_sandbox":
+        if arguments.get("manifest_path"):
+            return workflow.download_sandbox_from_manifest(
+                manifest_path=str(arguments.get("manifest_path") or ""),
+                output_dir=str(arguments.get("output_dir") or ""),
+                accept=bool(arguments.get("accept", False)),
+                max_file_size=int(arguments.get("max_file_size", workflow.DEFAULT_MAX_FILE_SIZE)),
+                max_redirects=int(arguments.get("max_redirects", workflow.DEFAULT_MAX_REDIRECTS)),
+            )
+        return workflow.download_sandbox(
+            urls=[str(item) for item in arguments.get("urls", [])],
+            output_dir=str(arguments.get("output_dir") or ""),
+            accept=bool(arguments.get("accept", False)),
+            max_file_size=int(arguments.get("max_file_size", workflow.DEFAULT_MAX_FILE_SIZE)),
+            max_redirects=int(arguments.get("max_redirects", workflow.DEFAULT_MAX_REDIRECTS)),
+        )
+    raise ValueError(f"unknown tool: {name}")
+
+
+def compact(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": payload.get("schema_version", ""),
+        "dry_run": payload.get("dry_run", False),
+        "workdir": payload.get("workdir", ""),
+        "created_files": payload.get("created_files", []),
+        "search_task_count": len(payload.get("task_plan", {}).get("search_tasks", [])),
+        "next_steps": payload.get("task_plan", {}).get("next_steps", []),
+    }
+
+
+def response(request_id: Any, result: Any) -> dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
+
+def error_response(request_id: Any, code: int, message: str, data: Any | None = None) -> dict[str, Any]:
+    error = {"code": code, "message": message}
+    if data is not None:
+        error["data"] = data
+    return {"jsonrpc": "2.0", "id": request_id, "error": error}
+
+
+def main() -> int:
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        try:
+            request = json.loads(line)
+        except json.JSONDecodeError:
+            sys.stdout.write(json.dumps(error_response(None, -32700, "parse error")) + "\n")
+            sys.stdout.flush()
+            continue
+        result = handle_request(request)
+        if result is not None:
+            sys.stdout.write(json.dumps(result, ensure_ascii=False, separators=(",", ":")) + "\n")
+            sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

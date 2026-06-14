@@ -1,6 +1,6 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "CloverSec CTF collection, conversion, writeup, archive, review, and Hub submission workflows for Codex.",
   "author": {
     "name": "CloverSec",
@@ -21,8 +21,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "CloverSec CTF For Example",
-    "shortDescription": "CTF \u6536\u96c6\u3001\u6784\u5efa\u3001\u624b\u518c\u3001\u5f52\u6863\u548c Hub \u63d0\u4ea4\u6d41\u7a0b",
-    "longDescription": "CloverSec CTF For Example packages Codex skills for contest research, challenge asset collection, container and attachment conversion, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting. Internal xlsx and Yuque outputs must keep the complete Flag field.",
+    "shortDescription": "CTF 收集、构建、手册、归档和 Hub 提交流程",
+    "longDescription": "CloverSec CTF For Example packages Codex skills for workflow task intake, contest research, challenge asset collection, container and attachment conversion, writeup drafting, archive packaging, quality review, Hub submission preparation, post-review retagging, and final reporting. Version 0.3.0 adds workflow state, GitHub setup checks, category search strategies, source evidence snapshots, dedupe planning, and download sandbox previews. Internal xlsx and Yuque outputs must keep the complete Flag field.",
     "developerName": "CloverSec",
     "category": "Developer Tools",
     "websiteURL": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample",
@@ -35,10 +35,9 @@
       "Interactive"
     ],
     "defaultPrompt": [
-      "\u6309 CloverSec CTF \u6d41\u7a0b\u5904\u7406\u8fd9\u6279\u8d5b\u9898",
-      "\u751f\u6210 Hub \u63d0\u4ea4\u6750\u6599\u548c\u5f52\u6863\u6e05\u5355",
-      "\u68c0\u67e5\u9898\u76ee\u3001\u624b\u518c\u3001\u9644\u4ef6\u548c\u955c\u50cf",
-      "\u5185\u90e8 xlsx \u548c\u8bed\u96c0\u5f52\u6863\u8f93\u51fa\u5fc5\u987b\u4fdd\u7559\u5b8c\u6574 Flag"
+      "从年份、赛事、方向和数量创建 CloverSec CTF 批量采集任务",
+      "按 CloverSec CTF 流程生成 Hub 提交材料、归档清单和语雀表",
+      "检查题目、手册、附件和镜像；xlsx 必须保留完整 Flag"
     ]
   }
 }

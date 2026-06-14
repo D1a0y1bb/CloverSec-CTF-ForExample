@@ -6,6 +6,8 @@ Search results must keep `source_url`, `title`, `snippet`, `provider`, `confiden
 
 Default MCP entrypoint:
 
+- Use `cloversec_ctf_workflow_init` first when the user gives year/event/category/count and needs a new batch task.
+- Use `cloversec_ctf_search_strategy` to create category-specific query combinations for Web/Pwn/Reverse/Crypto/Misc/Forensics/AI.
 - Use `cloversec_ctf_search_plus` first when available.
 - It merges default free sources, Agent web-search results, Chrome/Codex browser visible results, direct attachment URLs, explicit GitHub repositories, evidence scoring, and safe URL preview.
 - It returns short JSON by default. Pass `output_path` to write the full result manifest, or `compact=false` only when the caller can handle long JSON.
@@ -66,7 +68,28 @@ When the default free sources return fewer than three candidate results, `discov
 
 Recovery hits are leads, not confirmations. They can improve recall for queries such as `祥云杯 2024 pwn writeup`, but the Agent must still use evidence before claiming the requested year, exact challenge, attachment, or writeup exists. If recovery is still weak, use Agent web search or browser-assisted Google/Baidu search and import visible results.
 
-Search is not a universal downloader. Cold contests, removed attachments, expired netdisk links, and poorly indexed Chinese pages still require Agent web search, Chrome browser-assisted review, or user-provided entry URLs.
+Cold contests, removed attachments, expired netdisk links, and poorly indexed Chinese pages still require Agent web search, Chrome browser-assisted review, or user-provided entry URLs.
+
+## Source Evidence And Download Sandbox
+
+After `search-plus`, write evidence records:
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py source-evidence \
+  --manifest search_results.json \
+  --evidence-dir evidence \
+  --snapshots-dir snapshots
+```
+
+Direct attachment URLs must go through the sandbox:
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py download-sandbox \
+  --manifest search_results.json \
+  --output-dir .
+```
+
+The sandbox blocks unsupported schemes, localhost/private IP targets, suspicious filenames, oversized files, and unsafe archive paths. It writes `download_preview.json` and `download_safety_report.md`.
 
 ## Commands
 

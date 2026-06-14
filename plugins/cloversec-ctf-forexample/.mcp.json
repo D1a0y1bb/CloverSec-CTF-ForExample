@@ -69,6 +69,16 @@
       "env": {
         "PYTHONUNBUFFERED": "1"
       }
+    },
+    "cloversec-ctf-workflow": {
+      "cwd": ".",
+      "command": "python3",
+      "args": [
+        "./scripts/cloversec_ctf_workflow_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
     }
   }
 }

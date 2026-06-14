@@ -96,8 +96,8 @@ def validate_plugin_manifest(errors: list[str]) -> None:
 def validate_skills(errors: list[str]) -> None:
     skills_dir = PLUGIN / "skills"
     skill_dirs = sorted(path for path in skills_dir.iterdir() if path.is_dir())
-    if len(skill_dirs) != 10:
-        errors.append(f"expected 10 skills, found {len(skill_dirs)}")
+    if len(skill_dirs) != 11:
+        errors.append(f"expected 11 skills, found {len(skill_dirs)}")
     for skill_dir in skill_dirs:
         skill_md = skill_dir / "SKILL.md"
         openai_yaml = skill_dir / "agents" / "openai.yaml"
@@ -137,6 +137,7 @@ def validate_mcp(errors: list[str]) -> None:
         "cloversec-ctf-archive",
         "cloversec-ctf-quality-runner",
         "cloversec-ctf-hub-assistant",
+        "cloversec-ctf-workflow",
     ]:
         if name not in servers:
             errors.append(f".mcp.json missing {name}")

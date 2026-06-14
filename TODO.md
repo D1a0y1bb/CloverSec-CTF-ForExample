@@ -188,13 +188,13 @@
 
 ## 体验与自动化增强池
 
-- [ ] 任务向导：从“年份/赛事/方向/数量”生成采集任务，自动创建工作目录、`ctf_cases.jsonl`、日志目录、证据目录和下一步清单。
-- [ ] 批处理编排：支持 dry-run/apply、断点继续、单题失败不影响整批、阶段状态写入 `workflow_state.json`。
-- [ ] 来源可信度：对每个题目记录多来源证据、置信度、原始页面快照、下载 URL、hash、抓取时间和缺失原因。
-- [ ] 去重合并：按赛事名、题目名、分类、附件 hash、writeup 标题和 URL 聚合重复题目，人工确认后合并字段。
-- [ ] 搜索策略库：为 Web/Pwn/Reverse/Crypto/Misc/Forensics/AI 等分类生成专用 query 组合，提高公开资料命中率。
-- [ ] GitHub 配置向导：检测 `gh auth login`、`GITHUB_TOKEN` / `GH_TOKEN`，执行小样本查询，展示限额、失败原因和当前可用搜索源。
-- [ ] 下载沙箱：所有外部附件先进入隔离目录，限制协议、大小、重定向、文件名和解压路径，生成安全预览后再进入题目目录。
+- [x] 任务向导：从“年份/赛事/方向/数量”生成采集任务，自动创建工作目录、`ctf_cases.jsonl`、日志目录、证据目录和下一步清单。0.3.0 已实现 `cloversec_ctf_workflow_init`。
+- [x] 批处理编排：支持 dry-run/apply、断点继续、单题失败不影响整批、阶段状态写入 `workflow_state.json`。0.3.0 已实现 `cloversec_ctf_workflow_batch`。
+- [x] 来源可信度：对每个题目记录多来源证据、置信度、原始页面快照、下载 URL、hash、抓取时间和缺失原因。0.3.0 已实现 `source-evidence`。
+- [x] 去重合并：按赛事名、题目名、分类、附件 hash、writeup 标题和 URL 聚合重复题目，人工确认后合并字段。0.3.0 已实现 `dedupe` / `apply-dedupe`，默认只合并 `approved=true` 的组。
+- [x] 搜索策略库：为 Web/Pwn/Reverse/Crypto/Misc/Forensics/AI 等分类生成专用 query 组合，提高公开资料命中率。0.3.0 已实现 `references/search-strategies.json` 和 `strategy` 命令。
+- [x] GitHub 配置向导：检测 `gh auth login`、`GITHUB_TOKEN` / `GH_TOKEN`，执行小样本查询，展示限额、失败原因和当前可用搜索源。0.3.0 已实现 `github-doctor`。
+- [x] 下载沙箱：所有外部附件先进入隔离目录，限制协议、大小、重定向、文件名和解压路径，生成安全预览后再进入题目目录。0.3.0 已实现 `download-sandbox`，默认单文件上限 300MB、最多 5 次重定向。
 - [ ] 附件智能识别：自动判断源码包、附件题、Docker 项目、compose 项目、writeup、截图、pcap、binary、数据库 dump 等资源类型。
 - [ ] 容器题识别：从 Dockerfile、compose、README、端口、启动脚本中推断服务类型、端口、环境变量、构建命令和运行命令。
 - [ ] Docker 验证分级：轻量 inspect、构建验证、启动验证、端口探测、日志采集、HTTP 探测、手册解题验证分层执行。
@@ -210,3 +210,21 @@
 - [ ] 失败案例库：记录搜索失败、下载失败、构建失败、Hub 退回、手册不一致等案例，沉淀成后续自动修复建议。
 - [ ] 多 Agent 分工模板：Research、Asset、Docker、Writeup、Review、Hub、Archive 角色分工，适配大批量题目处理。
 - [ ] 通知输出：每个阶段结束生成“已完成、失败、待人工处理、下一阶段输入”的短报告，方便接手继续处理。
+
+## v0.3.0 开发与验收记录
+
+- [x] 新增 `cloversec-ctf-workflow-orchestrator` skill，作为批量采集和状态编排入口。
+- [x] 新增 `cloversec-ctf-workflow` MCP server，提供 workflow init/batch、search strategy、GitHub doctor、source evidence、dedupe、download sandbox 工具。
+- [x] 新增 `cloversec_ctf_workflow.py`，覆盖任务向导、批处理状态、GitHub 配置检查、来源证据、去重合并和下载沙箱。
+- [x] 新增 `references/search-strategies.json`，覆盖 Web/Pwn/Reverse/Crypto/Misc/Forensics/AI 分类 query 模板。
+- [x] 本地验证已完成：`validate_release.py`、官方 `validate_plugin.py`、脚本语法检查和 86 个单元测试通过。
+- [x] 下载沙箱重定向限制已做真实本地测试：允许 2 次重定向时 zip 可进入沙箱；限制 1 次时返回 blocked，并记录 `max_redirects=1`。
+- [x] 真实公网小样本测试已完成：`IrisCTF 2025 web` 跑通 workflow init、GitHub doctor、search strategy、search-plus、source-evidence、results-to-cases、dedupe、download-sandbox 和 batch apply。
+- [x] 真实公网小样本暴露并修复 `github-doctor` 问题：`gh api` 小样本查询需要显式 `--method GET`；修复后 repo search 和 code search 均可用。
+- [x] 新增 `cloversec-ctf-workflow` MCP stdio 验收通过：serverInfo 为 `0.3.0`，可列出 8 个 workflow 工具。
+- [x] 发布前真实 LLM 测试已完成：CloudRouter `/v1/models` 和 `/v1/chat/completions` 可用，`gpt-5.4-mini` 最终通过 v0.3.0 流程短 JSON 验收。
+- [x] 发布前真实 LLM 测试暴露的问题已记录并处理：900 token 长 JSON 第一次截断；第二次模型把 `json_mitigation` 写成布尔值；已把 workflow skill 输出约束改为短 JSON 和字符串枚举后复测通过。
+- [x] 发布前真实公网小样本测试：已用公开赛事执行 workflow init、strategy、search-plus、source-evidence、dedupe、download-sandbox。
+- [ ] `v0.3.0` Release 发布。
+- [ ] 本机 Codex 插件更新到 `0.3.0`。
+- [ ] 安装后真实测试：确认新会话能发现 11 个 skills 和 8 个 MCP server，`cloversec-ctf-workflow` 能正常初始化和列出工具。

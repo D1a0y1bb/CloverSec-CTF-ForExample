@@ -63,11 +63,42 @@
 
 `Flag` 是 xlsx 必填字段。脚本在日志、错误输出、公开报告中避免打印完整 Flag。
 
+## 批处理状态
+
+0.3.0 起，批量采集任务使用 `workflow_state.json` 记录状态：
+
+```json
+{
+  "schema_version": "cloversec.ctf.workflow.state.v1",
+  "workflow_version": "0.3.0",
+  "run_id": "",
+  "status": "initialized",
+  "workdir": "",
+  "request": {
+    "event": "",
+    "years": [],
+    "categories": [],
+    "limit": 0
+  },
+  "stages": {},
+  "cases": [],
+  "resume": {
+    "last_stage": "",
+    "last_case_id": "",
+    "can_resume": true
+  }
+}
+```
+
+`cases[].stages` 记录单题阶段状态。单题失败只能影响该题，不能把整批直接写成失败。
+
 ## 脚本入口
 
 统一数据模型脚本：
 
 ```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py init --event "IrisCTF" --year 2025 --category web --limit 20
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py batch --workdir runs/20260614-2025-IrisCTF-web --stage research --mode dry-run --output reports/research_dry_run.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl archive.xlsx
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx archive.xlsx
