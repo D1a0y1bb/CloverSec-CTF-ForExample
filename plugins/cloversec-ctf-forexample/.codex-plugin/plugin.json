@@ -1,7 +1,7 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "0.4.1",
-  "description": "CloverSec CTF For Example 帮 Codex 执行 CTF 题目收集、材料下载、资源识别、平台镜像改造、手册、Hub 辅助和中文交付。",
+  "version": "0.4.3",
+  "description": "The process of CloverSec regarding the collection and conversion of CTF questions, the construction and deployment of the platform using Docker, report writing, archiving, review, and submission to Codex.",
   "author": {
     "name": "CloverSec-D1a0y1bb",
     "url": "https://github.com/D1a0y1bb"
@@ -21,8 +21,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "CloverSec CTF For Example",
-    "shortDescription": "让 Codex 直接处理 CTF 收集、改造、手册、Hub 和中文交付",
-    "longDescription": "你描述目标，Codex 会创建工作目录，查公开来源和 GitHub，整理 WP、附件、源码线索，下载预览材料，识别资源类型。容器题会交给 cloversec-ctf-build-dockerizer 做平台改造；手册、归档、质量检查、Hub 草稿和中文交付包也会按流程生成。需要写 Docker 文件、运行危险容器或 Hub 最终提交时会停下让人确认。",
+    "shortDescription": "The periodic work plugin for the Clover Security Competition covers various aspects, including the collection of competition questions, the construction of images, the writing of question manuals and reports, and the archiving and review processes.",
+    "longDescription": "The CloverSec CTF For Example plugin is primarily utilized for a series of periodic workflow tasks, including task reception, competition research, question resource classification, container inference, image asset verification, question information collection, standardized Docker construction on the platform, report writing, archiving and packaging, quality review, preparation for submission to the internal Hub platform, re - tagging after review, and the generation of the final report. Existing external question Dockerfiles or compose files are regarded as known assets and migration inputs. Container questions must first pass through cloversec - ctf - build - dockerizer before they can be considered as CloverSec - standardized image deliverables.",
     "developerName": "CloverSec-D1a0y1bb",
     "category": "Developer Tools",
     "websiteURL": "https://github.com/D1a0y1bb/CloverSec-CTF-ForExample",
@@ -36,9 +36,9 @@
       "CTF"
     ],
     "defaultPrompt": [
-      "收集 2025 年某比赛 10 道 Web 题，优先能复现，最后给中文交付包",
-      "识别这个题目材料目录，判断走 Dockerizer、附件检查还是手册",
-      "根据这个题目目录生成手册、Hub 提交材料和中文交付包"
+      "帮我收集 10 道 2026 年的 CTF 竞赛题目",
+      "把这个包含了很多外部题目源码的目录整理成内部规范的手册、交付包",
+      "帮我收集 2024 LA CTF 的 Web 题、WP 和附件线索"
     ]
   }
 }
