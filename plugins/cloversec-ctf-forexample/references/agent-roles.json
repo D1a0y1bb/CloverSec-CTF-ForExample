@@ -33,16 +33,16 @@
     {
       "role": "Review",
       "skills": ["cloversec-ctf-quality-review", "cloversec-ctf-batch-reporter"],
-      "mcp_tools": ["cloversec_ctf_quality_run", "cloversec_ctf_proof_pack", "cloversec_ctf_failure_cases"],
+      "mcp_tools": ["cloversec_ctf_quality_run", "cloversec_ctf_proof_pack", "cloversec_ctf_failure_cases", "cloversec_ctf_confirmation_request"],
       "inputs": ["归档目录", "Docker 证据", "手册质量结果"],
-      "outputs": ["quality_review.json", "proof/", "failure_cases.jsonl"]
+      "outputs": ["quality_review.json", "proof/", "failure_cases.jsonl", "confirmation_request.json"]
     },
     {
       "role": "Hub",
       "skills": ["cloversec-ctf-hub-submission", "cloversec-ctf-hub-retag"],
-      "mcp_tools": ["cloversec_ctf_hub_draft", "cloversec_ctf_hub_chrome_plan", "cloversec_ctf_hub_review_state", "cloversec_ctf_image_naming_plan"],
+      "mcp_tools": ["cloversec_ctf_hub_draft", "cloversec_ctf_hub_chrome_plan", "cloversec_ctf_hub_review_state", "cloversec_ctf_image_naming_plan", "cloversec_ctf_confirmation_request"],
       "inputs": ["hub_fields.json", "manual", "上传资源", "Hub 可见页面信息"],
-      "outputs": ["hub_draft.json", "hub_upload_manifest.json", "hub_review_state.json", "image_naming_plan.json"]
+      "outputs": ["hub_draft.json", "hub_upload_manifest.json", "hub_review_state.json", "image_naming_plan.json", "confirmation_request.json"]
     },
     {
       "role": "Archive",

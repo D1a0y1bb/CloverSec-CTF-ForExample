@@ -35,12 +35,9 @@
       "Interactive"
     ],
     "defaultPrompt": [
-      "从年份、赛事、方向和数量创建 CloverSec CTF 批量采集任务",
-      "按 CloverSec CTF 流程生成 Hub 提交材料、归档清单和语雀表",
-      "遇到 Dockerfile/compose 时使用 cloversec-ctf-container-validator，生成 container_inference.json、Docker 验证等级和 proof 证据包；xlsx 必须保留完整 Flag",
-      "v0.3.3 常用 skill ID：cloversec-ctf-manual-quality、cloversec-ctf-batch-reporter、cloversec-ctf-hub-submission、cloversec-ctf-hub-retag、cloversec-ctf-archive-packager",
-      "v0.3.3 常用 MCP tool ID：cloversec_ctf_manual_quality、cloversec_ctf_hub_draft、cloversec_ctf_hub_review_state、cloversec_ctf_image_naming_plan、cloversec_ctf_archive_preview、cloversec_ctf_manifest_lock、cloversec_ctf_batch_status_report、cloversec_ctf_failure_cases、cloversec_ctf_visible_content_evidence、cloversec_ctf_results_to_cases、cloversec_ctf_confirmation_request、cloversec_ctf_stage_notification、cloversec_ctf_codex_warning_report",
-      "输出 skill/MCP ID 时只能写精确 ID，不加 skill、mcp__、tool 前缀"
+      "完整 Flag 必须写入 xlsx/语雀字段；公开报告只写状态和 hash。",
+      "Hub 只生成草稿、上传清单、浏览器计划和审核状态；不自动最终提交。",
+      "输出 ID 必须精确，不加 skill、mcp__、tool 前缀；完整 ID 表见 agent-roles.json。"
     ]
   }
 }

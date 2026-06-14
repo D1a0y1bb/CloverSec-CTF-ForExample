@@ -88,6 +88,18 @@ def validate_plugin_manifest(errors: list[str]) -> None:
             errors.append(f"plugin interface missing {field}")
     if interface.get("websiteURL") and not str(interface["websiteURL"]).startswith("https://"):
         errors.append("websiteURL must be https")
+    default_prompt = interface.get("defaultPrompt")
+    if default_prompt is not None:
+        if not isinstance(default_prompt, list):
+            errors.append("interface.defaultPrompt must be a list")
+        elif len(default_prompt) > 3:
+            errors.append("interface.defaultPrompt supports at most 3 prompts")
+        else:
+            for index, prompt in enumerate(default_prompt):
+                if not isinstance(prompt, str):
+                    errors.append(f"interface.defaultPrompt[{index}] must be a string")
+                elif len(prompt) > 128:
+                    errors.append(f"interface.defaultPrompt[{index}] exceeds 128 characters")
     for phrase in PLACEHOLDER_PHRASES:
         if phrase in json.dumps(data, ensure_ascii=False):
             errors.append(f"plugin manifest still contains placeholder: {phrase}")
