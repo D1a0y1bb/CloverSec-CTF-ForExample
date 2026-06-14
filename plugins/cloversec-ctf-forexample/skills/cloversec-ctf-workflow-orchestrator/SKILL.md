@@ -212,4 +212,4 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py class
 - 去重只生成候选，默认不合并；只有人工把 `approved` 改成 `true` 才合并。
 - 外部附件先进入 `downloads_sandbox/`，安全预览通过后才能进入 `downloads_accepted/`。
 - 下载沙箱默认单文件上限 300MB、最多 5 次重定向，禁止 `file://`、`ftp://`、localhost、内网 IP 和路径穿越压缩包。
-- 不确定来源、分类、附件和题目对应关系时，把问题写入报告或 TODO，不写成已确认。
+- 不确定来源、分类、附件和题目对应关系时，把问题写入当前任务目录的报告、`stage_notification.json/md` 或 `failure_cases.jsonl`，不写成已确认。根目录 `TODO.md` 是维护者本地计划，不作为插件运行产物。

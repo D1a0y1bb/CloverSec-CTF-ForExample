@@ -35,7 +35,8 @@
 - Hub 自动化第一版只生成提交材料和核对清单，不做自动提交。
 - xlsx 输出必须包含完整 `Flag` 字段，这是内部归档要求。
 - 不得自造 Hub API、镜像 tag 规则、审核编号来源。
-- 每个阶段结束前更新 `TODO.md`：已完成打勾，未完成继续留在后续计划，真实测试发现的问题写进待处理问题。
+- `TODO.md` 是本地工作计划，不提交、不推送。每个阶段结束前仍可在本地更新：已完成打勾，未完成继续留在后续计划，真实测试发现的问题写进待处理问题。
+- `docs/` 是本地验证记录和草稿资料，不提交、不推送。公开仓库只保留可分发插件、脚本、测试、README、AGENTS、LICENSE、marketplace、`.github/workflows/` 和 `.github/release-notes/`。
 
 ## 插件发布规范
 
@@ -44,13 +45,15 @@
 - Release 页面格式沿用 `v0.1.8` 样式：
   - GitHub Release 标题使用 tag，例如 `v0.2.0`。
   - Release 正文第一行写 `# CloverSec CTF For Example 0.2.0`。
-  - Release assets 上传 `dist/*`，保留 `release-notes.md`。
+  - Release assets 上传 `dist/*`，保留生成后的 `dist/release-notes.md`。
+- 需要写入公开 Release 的详细说明，源文件放在 `.github/release-notes/vX.Y.Z.md`；`scripts/package_plugin_release.py` 会把它渲染为 `dist/release-notes.md`。
 - 发布新版本前先执行：
   - `python3 /Users/d1a0y1bb/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/cloversec-ctf-forexample`
   - `python3 scripts/validate_release.py`
   - `python3 -m unittest discover -s tests -p 'test_*.py'`
   - `python3 scripts/package_plugin_release.py`
 - 打 tag 后必须等待 GitHub Actions Release 完成，并用 `gh release view <tag>` 复核标题、正文第一行和资产列表。
+- 发布记录、LLM 验证记录和临时草稿可以写在本机 `docs/`，但不得随 commit 推送；需要进入公开 release 的内容放入 `.github/release-notes/vX.Y.Z.md`。
 - 本机 Codex 更新时，如果 `codex plugin marketplace upgrade cloversec-ctf` 仍安装旧版本，说明 marketplace 固定在旧 ref。此时按需执行：
   - `codex plugin marketplace remove cloversec-ctf`
   - `codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref vX.Y.Z`

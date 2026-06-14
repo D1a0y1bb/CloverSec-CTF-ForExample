@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_NAME = "cloversec-ctf-forexample"
 PLUGIN = ROOT / "plugins" / PLUGIN_NAME
 DIST = ROOT / "dist"
-RELEASE_NOTES = ROOT / "docs" / "release-notes"
+RELEASE_NOTES = ROOT / ".github" / "release-notes"
 
 
 def main() -> int:

@@ -31,7 +31,7 @@
 - Hub 自动化第一版不提交，只生成材料。
 - 涉及镜像导出时必须检查 `linux/amd64`。
 - 内部 xlsx、语雀归档表和相关字段草稿必须保留完整 `Flag`，不能替换成摘要或脱敏值。
-- 阶段结束前更新 `TODO.md`。
+- 阶段结束前更新当前任务目录内的 `workflow_state.json`、`stage_notification.json/md` 和 `failure_cases.jsonl`。根目录 `TODO.md` 仅作为维护者本地计划，不作为插件运行产物。
 
 ## 搜索与采集能力
 

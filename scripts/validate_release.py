@@ -27,6 +27,7 @@ def main() -> int:
     validate_plugin_manifest(errors)
     validate_skills(errors)
     validate_mcp(errors)
+    validate_public_docs_policy(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)
@@ -153,6 +154,18 @@ def validate_mcp(errors: list[str]) -> None:
     ]:
         if name not in servers:
             errors.append(f".mcp.json missing {name}")
+
+
+def validate_public_docs_policy(errors: list[str]) -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    forbidden_readme_links = ["(TODO.md)", "(docs/", "file+.vscode-resource"]
+    for marker in forbidden_readme_links:
+        if marker in readme:
+            errors.append(f"README must not link local-only docs/TODO marker: {marker}")
+
+    package_script = (ROOT / "scripts" / "package_plugin_release.py").read_text(encoding="utf-8")
+    if 'ROOT / "docs" / "release-notes"' in package_script:
+        errors.append("package_plugin_release.py must not depend on ignored docs/release-notes")
 
 
 def frontmatter_value(text: str, key: str) -> str:
