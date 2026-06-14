@@ -243,9 +243,13 @@
 - [x] 证据抓取修复：HTTP 4xx/5xx 现在计入 `source-evidence` 的 `errors`，并写入 `missing_reason`。
 - [x] 资源识别修复：`challenge.yaml`、`.sage`、`flag.txt` 已能识别为题目清单、源码/解题脚本和 flag 文件。
 - [x] 发布前真实 LLM 测试：CloudRouter `gpt-5.4-mini` 通过精确 ID 验收，会选择 `cloversec-ctf-resource-classifier` / `cloversec_ctf_resource_classify`，低置信度 unknown 资源要求人工确认，完整 Flag 写入 xlsx，Hub 不自动最终提交。
-- [ ] `v0.3.1` Release 发布。
-- [ ] 本机 Codex 插件更新到 `0.3.1`。
-- [ ] 安装后真实测试：确认新会话能发现 12 个 skills，`cloversec-ctf-workflow` 能列出 `cloversec_ctf_resource_classify`。
+- [x] `v0.3.1` Release 已发布：Git tag 指向 `84b8a9b`，GitHub Actions run `27486030274` 成功，Release 标题为 `v0.3.1`，资产包含 repo marketplace zip、plugin zip、tar.gz 和 release notes。
+- [x] 本机 Codex 插件已更新到 `0.3.1`：移除旧 plugin 和旧 marketplace 后重新添加 `D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.1`，cache 路径为 `/Users/d1a0y1bb/.codex/plugins/cache/cloversec-ctf/cloversec-ctf-forexample/0.3.1`。
+- [x] 安装后真实测试：cache manifest 为 `0.3.1`，实际 skills 目录为 12 个，`.mcp.json` 为 8 个 MCP server，安装版 `cloversec_ctf_resource.py classify` 能识别真实 LA CTF 样本为 `container_project`。
+- [x] 安装版 workflow MCP 验收：serverInfo 为 `0.3.1`，工具数量 9，包含 `cloversec_ctf_resource_classify`。
+- [x] 新 Codex 会话可见性验收：`codex exec` 只读新会话确认插件可见、`cloversec-ctf-resource-classifier` 可见、`cloversec-ctf-workflow` 可见、期望 skill 数为 12。
+- [x] 发布后发现并处理旧缓存问题：`codex plugin list` 一度显示 `0.3.1`，但旧安装路径 manifest 仍是 `0.3.0` 且没有资源识别脚本；已通过移除旧 plugin 与旧 marketplace 后重新安装解决。
 - [ ] 待后续增强：`results-to-cases` 目前仍是调研草稿，不自动把赛事、分类、题目名拆成最终内部字段；这一步交给 Agent 归并或人工确认。
 - [ ] 待后续增强：Medium/InfosecWriteups 等站点可能返回 403，当前会记录为失败证据；需要 Chrome/浏览器辅助或人工提供页面内容。
 - [ ] 待后续增强：LLM 输出精确 skill ID 时需要明确“只能输出精确 ID，不允许前后缀”；未加严格约束时模型可能写成泛称或加 `skill ` 前缀。
+- [ ] 待后续注意：`codex exec` 输出里仍有其他已安装插件的 icon/defaultPrompt warning，以及某个外部 MCP shutdown 阶段 `Auth required` warning；本次 CloverSec 插件验收返回成功。
