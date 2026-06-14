@@ -6,13 +6,17 @@ from __future__ import annotations
 import json
 import sys
 import traceback
+from pathlib import Path
 from typing import Any
 
+import cloversec_ctf_audit as audit
+import cloversec_ctf_data as data
+import cloversec_ctf_manual_quality as manual_quality
 import cloversec_ctf_quality_runner as quality_runner
 import cloversec_ctf_proof as proof
 
 
-SERVER_VERSION = "0.3.2"
+SERVER_VERSION = "0.3.3"
 
 TOOLS = [
     {
@@ -51,6 +55,51 @@ TOOLS = [
                 "notes": {"type": "string"},
             },
             "required": ["output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_manual_quality",
+        "description": "Check manual fields, sections, steps, screenshots, Flag, attachments, and Hub field consistency.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case": {"type": "object"},
+                "manual_markdown": {"type": "string"},
+                "manual_path": {"type": "string"},
+                "hub_fields": {"type": "object"},
+                "archive_manifest": {"type": "object"},
+                "resource_manifest": {"type": "object"},
+                "output_dir": {"type": "string"},
+            },
+            "required": ["case", "output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_batch_status_report",
+        "description": "Create batch_status_report.json/md/xlsx grouped by event, year, category, state, missing resources, and human confirmations.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cases": {"type": "array", "items": {"type": "object"}},
+                "cases_path": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "workflow_state": {"type": "object"},
+            },
+            "required": ["output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_failure_cases",
+        "description": "Create failure_cases.jsonl from search, download, build, Hub return, manual mismatch, and missing-resource evidence.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cases": {"type": "array", "items": {"type": "object"}},
+                "cases_path": {"type": "string"},
+                "output_path": {"type": "string"},
+                "extra_failures": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["output_path"],
         },
     },
 ]
@@ -111,6 +160,36 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             notes=str(arguments.get("notes") or ""),
         )
         return proof.compact_proof_payload(payload)
+    if name == "cloversec_ctf_manual_quality":
+        manual = str(arguments.get("manual_markdown") or "")
+        if not manual and arguments.get("manual_path"):
+            manual = Path(str(arguments.get("manual_path") or "")).read_text(encoding="utf-8")
+        return manual_quality.check_manual_quality(
+            case=arguments.get("case", {}),
+            manual_markdown=manual,
+            hub_fields=arguments.get("hub_fields") if isinstance(arguments.get("hub_fields"), dict) else None,
+            archive_manifest=arguments.get("archive_manifest") if isinstance(arguments.get("archive_manifest"), dict) else None,
+            resource_manifest=arguments.get("resource_manifest") if isinstance(arguments.get("resource_manifest"), dict) else None,
+            output_dir=str(arguments.get("output_dir") or ""),
+        )
+    if name == "cloversec_ctf_batch_status_report":
+        cases = arguments.get("cases") if isinstance(arguments.get("cases"), list) else []
+        if not cases and arguments.get("cases_path"):
+            cases = data.load_cases(str(arguments.get("cases_path") or ""))
+        return audit.create_batch_status_report(
+            cases,
+            str(arguments.get("output_dir") or ""),
+            workflow_state=arguments.get("workflow_state") if isinstance(arguments.get("workflow_state"), dict) else None,
+        )
+    if name == "cloversec_ctf_failure_cases":
+        cases = arguments.get("cases") if isinstance(arguments.get("cases"), list) else []
+        if not cases and arguments.get("cases_path"):
+            cases = data.load_cases(str(arguments.get("cases_path") or ""))
+        return audit.create_failure_library(
+            cases,
+            str(arguments.get("output_path") or ""),
+            extra_failures=arguments.get("extra_failures") if isinstance(arguments.get("extra_failures"), list) else None,
+        )
     raise ValueError(f"unknown tool: {name}")
 
 

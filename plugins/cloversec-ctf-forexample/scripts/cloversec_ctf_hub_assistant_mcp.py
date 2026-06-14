@@ -9,6 +9,10 @@ import traceback
 from typing import Any
 
 import cloversec_ctf_hub as hub
+import cloversec_ctf_retag as retag
+
+
+SERVER_VERSION = "0.3.3"
 
 
 TOOLS = [
@@ -62,6 +66,54 @@ TOOLS = [
             "required": ["manifest", "upload_results"],
         },
     },
+    {
+        "name": "cloversec_ctf_hub_draft",
+        "description": "Create Hub draft, upload manifest, screenshot checklist, browser/chrome plans, and diff report without final submit.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case": {"type": "object"},
+                "hub_fields": {"type": "object"},
+                "manual_markdown": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "classify_options": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["case", "hub_fields", "manual_markdown", "output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_hub_review_state",
+        "description": "Record Hub submission/review state, returned comments, visible Hub id, and retag task without inventing Hub numbers.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case": {"type": "object"},
+                "output_dir": {"type": "string"},
+                "submission_status": {"type": "string"},
+                "review_status": {"type": "string"},
+                "hub_id": {"type": "string"},
+                "reviewer": {"type": "string"},
+                "review_comment": {"type": "string"},
+                "visible_page": {"type": "object"},
+            },
+            "required": ["case", "output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_image_naming_plan",
+        "description": "Create image_naming_plan.json and retag_inputs.json from Hub id, case metadata, image source, and tag rules.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case": {"type": "object"},
+                "hub_id": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "registry_prefix": {"type": "string"},
+                "tag_template": {"type": "string"},
+            },
+            "required": ["case", "output_dir"],
+        },
+    },
 ]
 
 
@@ -75,7 +127,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-hub-assistant", "version": "0.3.2"},
+                    "serverInfo": {"name": "cloversec-ctf-hub-assistant", "version": SERVER_VERSION},
                 },
             )
         if method == "tools/list":
@@ -108,6 +160,33 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name == "cloversec_ctf_hub_apply_upload_results":
         upload_results = arguments.get("upload_results") if isinstance(arguments.get("upload_results"), list) else []
         return hub.apply_upload_results(manifest, upload_results)
+    if name == "cloversec_ctf_hub_draft":
+        return hub.create_hub_draft(
+            arguments.get("case", {}),
+            arguments.get("hub_fields", {}),
+            str(arguments.get("manual_markdown") or ""),
+            str(arguments.get("output_dir") or ""),
+            classify_options=classify_options,
+        )
+    if name == "cloversec_ctf_hub_review_state":
+        return hub.create_hub_review_state(
+            arguments.get("case", {}),
+            str(arguments.get("output_dir") or ""),
+            submission_status=str(arguments.get("submission_status") or "draft"),
+            review_status=str(arguments.get("review_status") or "not_submitted"),
+            hub_id=str(arguments.get("hub_id") or ""),
+            reviewer=str(arguments.get("reviewer") or ""),
+            review_comment=str(arguments.get("review_comment") or ""),
+            visible_page=arguments.get("visible_page") if isinstance(arguments.get("visible_page"), dict) else None,
+        )
+    if name == "cloversec_ctf_image_naming_plan":
+        return retag.create_image_naming_plan(
+            arguments.get("case", {}),
+            str(arguments.get("hub_id") or ""),
+            str(arguments.get("output_dir") or ""),
+            registry_prefix=str(arguments.get("registry_prefix") or ""),
+            tag_template=str(arguments.get("tag_template") or "{hub_id}"),
+        )
     raise ValueError(f"unknown tool: {name}")
 
 

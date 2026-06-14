@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -92,8 +93,8 @@ def create_submission_package(
     upload_files: list[dict[str, Any]] = []
     issues: list[str] = []
     for item in case.get("attachments", []) if isinstance(case.get("attachments"), list) else []:
-        source = Path(item.get("path", ""))
-        copied = _copy_file(source, attachments_dir / (item.get("name") or source.name), issues)
+        source = Path(item_path(item))
+        copied = _copy_file(source, attachments_dir / item_name(item, source), issues)
         if copied:
             upload_files.append(_file_record(copied, "attachment"))
 
@@ -109,7 +110,7 @@ def create_submission_package(
     screenshot_sources = []
     archive = case.get("archive") if isinstance(case.get("archive"), dict) else {}
     if isinstance(archive.get("screenshots"), list):
-        screenshot_sources = [Path(item) for item in archive["screenshots"]]
+        screenshot_sources = [Path(item_path(item)) for item in archive["screenshots"]]
     for index, plan in enumerate(default_screenshot_plan()):
         record = dict(plan)
         if index < len(screenshot_sources):
@@ -134,6 +135,120 @@ def create_submission_package(
     (manifests_dir / "upload_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (root / "hub_submission_checklist.md").write_text(render_checklist(manifest), encoding="utf-8")
     return manifest
+
+
+def item_path(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("path") or item.get("local_path") or item.get("file") or "")
+    return str(item or "")
+
+
+def item_name(item: Any, source: Path) -> str:
+    if isinstance(item, dict):
+        return str(item.get("name") or item.get("filename") or source.name)
+    return source.name
+
+
+def create_hub_draft(
+    case: dict[str, Any],
+    hub_fields: dict[str, Any],
+    manual_markdown: str,
+    output_dir: str | Path,
+    *,
+    classify_options: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    root = Path(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = create_submission_package(case, hub_fields, manual_markdown, root)
+    form_payload = create_hub_form_payload(hub_fields, manifest=manifest, classify_options=classify_options)
+    validation = validate_hub_form_payload(form_payload, manifest=manifest)
+    browser_plan = create_browser_assist_plan(manifest, classify_options=classify_options)
+    chrome_plan = create_chrome_assist_plan(manifest, classify_options=classify_options)
+    diff = create_hub_diff(case, hub_fields, form_payload, validation)
+    draft = {
+        "schema_version": "cloversec.ctf.hub_draft.v1",
+        "version": "0.3.3",
+        "created_at": utc_now(),
+        "case_id": str(case.get("case_id") or ""),
+        "case_title": case_title(case),
+        "auto_submit": False,
+        "stop_before_submit": True,
+        "summary": {
+            "status": "ready" if validation.get("status") == "ready" else "needs_review",
+            "can_fill_browser": True,
+            "can_submit": False,
+            "validation_status": validation.get("status", ""),
+            "blockers": validation.get("blockers", []),
+            "pending_uploads": validation.get("pending_uploads", []),
+        },
+        "hub_fields": hub_fields,
+        "form_payload": form_payload,
+        "validation": validation,
+        "upload_manifest_path": (root / "hub_upload_manifest.json").as_posix(),
+        "manual_path": (root / "manual" / "manual_filled_draft.md").as_posix(),
+        "browser_plan_path": (root / "hub_browser_plan.json").as_posix(),
+        "chrome_plan_path": (root / "hub_chrome_plan.json").as_posix(),
+        "diff_report_path": (root / "hub_diff_report.md").as_posix(),
+        "security_boundaries": browser_plan.get("security_boundaries", []),
+    }
+    write_json(root / "hub_draft.json", draft)
+    write_json(root / "hub_upload_manifest.json", manifest)
+    write_json(root / "hub_browser_plan.json", browser_plan)
+    write_json(root / "hub_chrome_plan.json", chrome_plan)
+    write_text(root / "hub_screenshot_checklist.md", render_screenshot_checklist(manifest))
+    write_text(root / "hub_diff_report.md", render_hub_diff(diff))
+    return draft
+
+
+def create_hub_review_state(
+    case: dict[str, Any],
+    output_dir: str | Path,
+    *,
+    submission_status: str = "draft",
+    review_status: str = "not_submitted",
+    hub_id: str = "",
+    reviewer: str = "",
+    review_comment: str = "",
+    visible_page: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    root = Path(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    visible_page = visible_page or {}
+    visible_hub_id = first_nonempty(visible_page, ["hub_id", "HUB编号", "编号", "id"])
+    final_hub_id = hub_id or visible_hub_id
+    status_notes = []
+    if not final_hub_id and review_status in {"approved", "passed", "通过"}:
+        status_notes.append("审核状态显示通过，但缺少 Hub 编号，需要人工补充可见编号。")
+    if final_hub_id:
+        status_notes.append("已获得 Hub 编号，可以进入镜像命名和 retag 计划。")
+    state = {
+        "schema_version": "cloversec.ctf.hub_review_state.v1",
+        "version": "0.3.3",
+        "created_at": utc_now(),
+        "case_id": str(case.get("case_id") or ""),
+        "case_title": case_title(case),
+        "submission_status": submission_status,
+        "review_status": review_status,
+        "hub_id": final_hub_id,
+        "reviewer": reviewer,
+        "review_comment": review_comment,
+        "visible_page": {
+            "url": str(visible_page.get("url") or ""),
+            "title": str(visible_page.get("title") or ""),
+            "captured_at": str(visible_page.get("captured_at") or ""),
+        },
+        "retag_required": bool(final_hub_id),
+        "retag_task": {
+            "status": "ready" if final_hub_id else "needs_hub_id",
+            "hub_id": final_hub_id,
+            "required_outputs": ["image_naming_plan.json", "retag_inputs.json", "tar_name", "image_tag", "xlsx_fields"],
+        },
+        "notes": status_notes,
+        "forbidden_actions": ["invent_hub_id", "click_final_submit_without_user", "read_browser_secrets"],
+    }
+    write_json(root / "hub_review_state.json", state)
+    write_text(root / "hub_review_state.md", render_hub_review_state(state))
+    return state
 
 
 def render_checklist(manifest: dict[str, Any]) -> str:
@@ -528,6 +643,154 @@ def render_browser_assist_plan(plan: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def create_hub_diff(
+    case: dict[str, Any],
+    hub_fields: dict[str, Any],
+    form_payload: dict[str, Any],
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    comparisons = []
+    mapping = [
+        ("题目标题", "name", metadata.get("名称", "")),
+        ("题目分类", "classify_label", metadata.get("分类", "")),
+        ("Flag类型", "flag_type", metadata.get("Flag类型", "")),
+        ("题目类型", "test_type", metadata.get("题目类型", "")),
+        ("题目分值", "score", metadata.get("分值", "")),
+        ("资源等级", "resource_level", metadata.get("资源等级", "")),
+    ]
+    for hub_key, payload_key, case_value in mapping:
+        hub_value = hub_fields.get(hub_key, "")
+        payload_value = form_payload.get(payload_key, "")
+        consistent = normalized(hub_value) == normalized(case_value) if hub_value and case_value else False
+        comparisons.append(
+            {
+                "hub_key": hub_key,
+                "payload_key": payload_key,
+                "hub_value": hub_value,
+                "payload_value": payload_value,
+                "case_value": case_value,
+                "consistent_with_case": consistent,
+                "status": "pass" if consistent else "needs_review",
+            }
+        )
+    return {
+        "schema_version": "cloversec.ctf.hub_diff.v1",
+        "version": "0.3.3",
+        "case_id": str(case.get("case_id") or ""),
+        "comparisons": comparisons,
+        "validation": validation,
+        "summary": {
+            "needs_review": sum(1 for item in comparisons if item["status"] != "pass"),
+            "validation_status": validation.get("status", ""),
+            "blockers": validation.get("blockers", []),
+        },
+    }
+
+
+def render_hub_diff(diff: dict[str, Any]) -> str:
+    summary = diff.get("summary", {})
+    lines = [
+        "# Hub 提交草稿差异报告",
+        "",
+        f"- 表单校验：{summary.get('validation_status', '')}",
+        f"- 需复核字段：{summary.get('needs_review', 0)}",
+        f"- 阻断项：{', '.join(summary.get('blockers', []))}",
+        "",
+        "| Hub 字段 | Payload 字段 | Hub 值 | Case 值 | 状态 |",
+        "|---|---|---|---|---|",
+    ]
+    for item in diff.get("comparisons", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                _escape_table(value)
+                for value in [
+                    item.get("hub_key", ""),
+                    item.get("payload_key", ""),
+                    item.get("hub_value", ""),
+                    item.get("case_value", ""),
+                    item.get("status", ""),
+                ]
+            )
+            + " |"
+        )
+    if diff.get("validation", {}).get("missing"):
+        lines.extend(["", "## 缺失字段", ""])
+        lines.extend(f"- `{item}`" for item in diff["validation"]["missing"])
+    return "\n".join(lines) + "\n"
+
+
+def render_screenshot_checklist(manifest: dict[str, Any]) -> str:
+    lines = ["# Hub 截图清单", ""]
+    for item in manifest.get("screenshots", []):
+        if not isinstance(item, dict):
+            continue
+        lines.append(f"- {item.get('filename', '')}：{item.get('description', '')}")
+        if item.get("relative_path"):
+            lines.append(f"  - 文件：{item.get('relative_path', '')}")
+        else:
+            lines.append("  - 状态：待补充或待页面上传确认")
+    return "\n".join(lines) + "\n"
+
+
+def render_hub_review_state(state: dict[str, Any]) -> str:
+    lines = [
+        "# Hub 审核状态",
+        "",
+        f"- 题目：{state.get('case_title', '') or state.get('case_id', '')}",
+        f"- 提交状态：{state.get('submission_status', '')}",
+        f"- 审核状态：{state.get('review_status', '')}",
+        f"- Hub 编号：{state.get('hub_id', '')}",
+        f"- 需要 retag：{'是' if state.get('retag_required') else '否'}",
+        "",
+        "## 退回/审核意见",
+        "",
+        state.get("review_comment", "") or "无",
+        "",
+        "## 下一步",
+        "",
+    ]
+    retag_task = state.get("retag_task", {}) if isinstance(state.get("retag_task"), dict) else {}
+    if retag_task.get("status") == "ready":
+        lines.append("- 使用 Hub 编号生成镜像命名计划和 retag 输入。")
+    else:
+        lines.append("- 等待人工提供 Hub 编号或可见页面编号。")
+    if state.get("notes"):
+        lines.extend(["", "## 说明", ""])
+        lines.extend(f"- {item}" for item in state["notes"])
+    return "\n".join(lines) + "\n"
+
+
+def case_title(case: dict[str, Any]) -> str:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    return str(metadata.get("名称") or metadata.get("题目标题") or "").strip()
+
+
+def normalized(value: Any) -> str:
+    return "".join(str(value or "").strip().lower().split())
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def write_json(path: str | Path, payload: Any) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def write_text(path: str | Path, text: str) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(text, encoding="utf-8")
+
+
+def _escape_table(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
 def _copy_file(source: Path, target: Path, issues: list[str]) -> Path | None:
     if not source.exists() or not source.is_file():
         issues.append(f"missing file: {source}")
@@ -616,6 +879,23 @@ def main(argv: list[str] | None = None) -> int:
     package_parser.add_argument("--manual", required=True)
     package_parser.add_argument("--output-dir", required=True)
 
+    draft_parser = subparsers.add_parser("draft", help="create Hub draft, upload manifest, screenshot checklist, and diff report")
+    draft_parser.add_argument("--case-json", required=True)
+    draft_parser.add_argument("--hub-fields", required=True)
+    draft_parser.add_argument("--manual", required=True)
+    draft_parser.add_argument("--output-dir", required=True)
+    draft_parser.add_argument("--classify-options", help="JSON file from /ctf/classify/?type=1 or a normalized options list")
+
+    review_state_parser = subparsers.add_parser("review-state", help="write Hub review state without inventing Hub numbers")
+    review_state_parser.add_argument("--case-json", required=True)
+    review_state_parser.add_argument("--output-dir", required=True)
+    review_state_parser.add_argument("--submission-status", default="draft")
+    review_state_parser.add_argument("--review-status", default="not_submitted")
+    review_state_parser.add_argument("--hub-id", default="")
+    review_state_parser.add_argument("--reviewer", default="")
+    review_state_parser.add_argument("--review-comment", default="")
+    review_state_parser.add_argument("--visible-page")
+
     browser_parser = subparsers.add_parser("browser-plan", help="create Hub browser-assisted filling plan")
     browser_parser.add_argument("--manifest", required=True)
     browser_parser.add_argument("--output", required=True)
@@ -647,6 +927,29 @@ def main(argv: list[str] | None = None) -> int:
         manual = Path(args.manual).read_text(encoding="utf-8")
         create_submission_package(case, fields, manual, args.output_dir)
         print(f"wrote {args.output_dir}")
+        return 0
+    if args.command == "draft":
+        case = json.loads(Path(args.case_json).read_text(encoding="utf-8"))
+        fields = json.loads(Path(args.hub_fields).read_text(encoding="utf-8"))
+        manual = Path(args.manual).read_text(encoding="utf-8")
+        classify_options = load_classify_options(args.classify_options) if args.classify_options else None
+        create_hub_draft(case, fields, manual, args.output_dir, classify_options=classify_options)
+        print(f"wrote {Path(args.output_dir) / 'hub_draft.json'}")
+        return 0
+    if args.command == "review-state":
+        case = json.loads(Path(args.case_json).read_text(encoding="utf-8"))
+        visible_page = json.loads(Path(args.visible_page).read_text(encoding="utf-8")) if args.visible_page else {}
+        create_hub_review_state(
+            case,
+            args.output_dir,
+            submission_status=args.submission_status,
+            review_status=args.review_status,
+            hub_id=args.hub_id,
+            reviewer=args.reviewer,
+            review_comment=args.review_comment,
+            visible_page=visible_page,
+        )
+        print(f"wrote {Path(args.output_dir) / 'hub_review_state.json'}")
         return 0
     if args.command == "browser-plan":
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))

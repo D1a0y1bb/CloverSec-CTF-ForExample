@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Workflow Orchestrator"
   short_description: "创建批量采集任务、状态机、搜索策略、证据、资源识别、去重和下载沙箱"
-  default_prompt: "使用 $cloversec-ctf-workflow-orchestrator 从年份、赛事、方向和数量创建 CloverSec CTF 批量工作流，维护 workflow_state.json，并生成搜索策略、GitHub 检测、来源证据、资源识别、去重候选和下载沙箱预览。"
+  default_prompt: "使用 $cloversec-ctf-workflow-orchestrator 从年份、赛事、方向和数量创建 CloverSec CTF 批量工作流，维护 workflow_state.json，并生成搜索策略、GitHub 检测、来源证据、资源识别、去重候选、下载沙箱预览、确认请求和阶段通知。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-workflow-orchestrator、cloversec_ctf_workflow_init、cloversec_ctf_results_to_cases、cloversec_ctf_visible_content_evidence、cloversec_ctf_confirmation_request、cloversec_ctf_stage_notification。"

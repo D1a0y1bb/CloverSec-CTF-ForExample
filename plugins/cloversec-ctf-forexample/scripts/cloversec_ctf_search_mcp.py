@@ -83,6 +83,17 @@ TOOLS = [
             "required": ["query", "results"],
         },
     },
+    {
+        "name": "cloversec_ctf_results_to_cases",
+        "description": "Convert a scored search manifest into structured ctf_cases draft rows with confidence, candidates, and missing reasons.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "manifest": {"type": "object"},
+            },
+            "required": ["manifest"],
+        },
+    },
 ]
 
 
@@ -96,7 +107,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-search", "version": "0.3.2"},
+                    "serverInfo": {"name": "cloversec-ctf-search", "version": "0.3.3"},
                 },
             )
         if method == "tools/list":
@@ -153,6 +164,14 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             provider=str(arguments.get("provider", "agent-web-search")),
             limit=int(arguments.get("limit", 50)),
         )
+    if name == "cloversec_ctf_results_to_cases":
+        cases = search.results_to_cases(arguments.get("manifest", {}))
+        return {
+            "schema_version": "cloversec.ctf.results_to_cases.compact.v1",
+            "case_count": len(cases),
+            "cases": cases[:20],
+            "response_note": "短 JSON 默认返回。需要写入 ctf_cases.jsonl 时使用脚本 results-to-cases。",
+        }
     raise ValueError(f"unknown tool: {name}")
 
 

@@ -180,17 +180,22 @@ def write_xlsx(cases: list[dict[str, Any]], path: str | Path) -> None:
 
 
 def write_rows_xlsx(rows: list[dict[str, Any]], path: str | Path) -> None:
+    write_table_xlsx(rows, path, fields=XLSX_FIELDS, sheet_name="归档表")
+
+
+def write_table_xlsx(rows: list[dict[str, Any]], path: str | Path, *, fields: list[str] | None = None, sheet_name: str = "归档表") -> None:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    matrix = [XLSX_FIELDS]
+    headers = fields or infer_table_fields(rows)
+    matrix = [headers]
     for row in rows:
-        matrix.append([_string(row.get(field, "")) for field in XLSX_FIELDS])
+        matrix.append([_string(row.get(field, "")) for field in headers])
 
     sheet_xml = _worksheet_xml(matrix)
     files = {
         "[Content_Types].xml": _content_types_xml(),
         "_rels/.rels": _root_rels_xml(),
-        "xl/workbook.xml": _workbook_xml(),
+        "xl/workbook.xml": _workbook_xml(sheet_name=sheet_name),
         "xl/_rels/workbook.xml.rels": _workbook_rels_xml(),
         "xl/worksheets/sheet1.xml": sheet_xml,
         "docProps/core.xml": _core_xml(),
@@ -199,6 +204,15 @@ def write_rows_xlsx(rows: list[dict[str, Any]], path: str | Path) -> None:
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in files.items():
             archive.writestr(name, content)
+
+
+def infer_table_fields(rows: list[dict[str, Any]]) -> list[str]:
+    fields: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in fields:
+                fields.append(str(key))
+    return fields or ["结果"]
 
 
 def read_xlsx(path: str | Path) -> list[dict[str, str]]:
@@ -369,11 +383,11 @@ def _root_rels_xml() -> str:
 </Relationships>"""
 
 
-def _workbook_xml() -> str:
+def _workbook_xml(*, sheet_name: str = "归档表") -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         f'<workbook xmlns="{NS_MAIN}" xmlns:r="{NS_REL}">'
-        '<sheets><sheet name="归档表" sheetId="1" r:id="rId1"/></sheets>'
+        f'<sheets><sheet name="{_xml_escape(sheet_name)}" sheetId="1" r:id="rId1"/></sheets>'
         "</workbook>"
     )
 

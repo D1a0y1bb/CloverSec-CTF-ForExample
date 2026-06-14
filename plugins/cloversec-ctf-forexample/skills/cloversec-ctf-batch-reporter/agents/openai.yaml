@@ -1,0 +1,4 @@
+interface:
+  display_name: "CloverSec CTF Batch Reporter"
+  short_description: "生成批量状态报告、确认请求、失败案例库和阶段通知"
+  default_prompt: "使用 $cloversec-ctf-batch-reporter 汇总 ctf_cases.jsonl 和 workflow_state.json，生成 batch_status_report.json/md/xlsx、confirmation_request.json、failure_cases.jsonl 和 stage_notification.json。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-batch-reporter、cloversec_ctf_batch_status_report、cloversec_ctf_failure_cases、cloversec_ctf_confirmation_request、cloversec_ctf_stage_notification。"

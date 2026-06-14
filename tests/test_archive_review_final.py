@@ -441,7 +441,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.2")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.3.3")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

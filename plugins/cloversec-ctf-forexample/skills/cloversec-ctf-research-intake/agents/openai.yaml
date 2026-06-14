@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Research Intake"
   short_description: "搜索 CTF 赛事、赛题、writeup 与公开归档来源"
-  default_prompt: "使用 $cloversec-ctf-research-intake 调用 search-plus 搜索 CTF 赛题、writeup、公开归档、Chrome 可见结果和直接附件 URL，输出短 JSON 摘要和证据文件。"
+  default_prompt: "使用 $cloversec-ctf-research-intake 调用 search-plus 搜索 CTF 赛题、writeup、公开归档、Chrome 可见结果和直接附件 URL，输出短 JSON 摘要和证据文件；搜索结果转题目草稿用 cloversec_ctf_results_to_cases。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-research-intake、cloversec_ctf_search_plus、cloversec_ctf_discover、cloversec_ctf_results_to_cases、cloversec_ctf_browser_search_dom_to_visible。"

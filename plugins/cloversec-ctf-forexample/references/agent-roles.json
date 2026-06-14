@@ -1,0 +1,55 @@
+{
+  "schema_version": "cloversec.ctf.agent_roles.v1",
+  "version": "0.3.3",
+  "roles": [
+    {
+      "role": "Research",
+      "skills": ["cloversec-ctf-research-intake", "cloversec-ctf-workflow-orchestrator"],
+      "mcp_tools": ["cloversec_ctf_discover", "cloversec_ctf_results_to_cases", "cloversec_ctf_visible_content_evidence"],
+      "inputs": ["年份", "赛事", "方向", "数量", "用户提供入口"],
+      "outputs": ["search_results.json", "ctf_cases.jsonl", "source_evidence.json", "visible_content_evidence.json"]
+    },
+    {
+      "role": "Asset",
+      "skills": ["cloversec-ctf-asset-collector", "cloversec-ctf-resource-classifier"],
+      "mcp_tools": ["cloversec_ctf_download_sandbox", "cloversec_ctf_resource_classify"],
+      "inputs": ["ctf_cases.jsonl", "下载 URL", "用户提供资源目录"],
+      "outputs": ["download_preview.json", "resource_classification.json", "缺失原因"]
+    },
+    {
+      "role": "Docker",
+      "skills": ["cloversec-ctf-build-dockerizer", "cloversec-ctf-container-validator"],
+      "mcp_tools": ["cloversec_ctf_container_infer", "cloversec_ctf_docker_validation_plan", "cloversec_ctf_docker_execute"],
+      "inputs": ["题目目录", "resource_classification.json", "用户授权"],
+      "outputs": ["container_inference.json", "docker_evidence.json", "proof_manifest.json"]
+    },
+    {
+      "role": "Writeup",
+      "skills": ["cloversec-ctf-writeup-scaffold", "cloversec-ctf-manual-quality"],
+      "mcp_tools": ["cloversec_ctf_manual_quality"],
+      "inputs": ["ctf_case.json", "题目目录", "writeup 线索"],
+      "outputs": ["manual_filled_draft.md", "hub_fields.json", "manual_quality.json", "xlsx_fields_patch.json"]
+    },
+    {
+      "role": "Review",
+      "skills": ["cloversec-ctf-quality-review", "cloversec-ctf-batch-reporter"],
+      "mcp_tools": ["cloversec_ctf_quality_run", "cloversec_ctf_proof_pack", "cloversec_ctf_failure_cases"],
+      "inputs": ["归档目录", "Docker 证据", "手册质量结果"],
+      "outputs": ["quality_review.json", "proof/", "failure_cases.jsonl"]
+    },
+    {
+      "role": "Hub",
+      "skills": ["cloversec-ctf-hub-submission", "cloversec-ctf-hub-retag"],
+      "mcp_tools": ["cloversec_ctf_hub_draft", "cloversec_ctf_hub_chrome_plan", "cloversec_ctf_hub_review_state", "cloversec_ctf_image_naming_plan"],
+      "inputs": ["hub_fields.json", "manual", "上传资源", "Hub 可见页面信息"],
+      "outputs": ["hub_draft.json", "hub_upload_manifest.json", "hub_review_state.json", "image_naming_plan.json"]
+    },
+    {
+      "role": "Archive",
+      "skills": ["cloversec-ctf-archive-packager", "cloversec-ctf-final-report", "cloversec-ctf-batch-reporter"],
+      "mcp_tools": ["cloversec_ctf_archive_preview", "cloversec_ctf_manifest_lock", "cloversec_ctf_archive_batch", "cloversec_ctf_batch_status_report"],
+      "inputs": ["reviewed cases", "Hub 编号", "镜像 tar", "手册和附件"],
+      "outputs": ["archive_preview.json", "manifest.lock.json", "archive.xlsx", "yuque_table.md", "batch_status_report.xlsx"]
+    }
+  ]
+}

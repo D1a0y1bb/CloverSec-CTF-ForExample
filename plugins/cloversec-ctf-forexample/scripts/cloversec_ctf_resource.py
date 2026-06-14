@@ -15,7 +15,7 @@ import cloversec_ctf_search as search
 
 
 SCHEMA_VERSION = "cloversec.ctf.resource_classification.v1"
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 
 TEXT_EXTENSIONS = {
     ".c",

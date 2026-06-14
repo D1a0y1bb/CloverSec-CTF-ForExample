@@ -151,14 +151,27 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 - `cloversec_ctf_docker_validation_plan`
 - `cloversec_ctf_docker_execute`
 - `cloversec_ctf_archive_batch`
+- `cloversec_ctf_archive_preview`
+- `cloversec_ctf_manifest_lock`
 - `cloversec_ctf_quality_run`
+- `cloversec_ctf_manual_quality`
+- `cloversec_ctf_batch_status_report`
+- `cloversec_ctf_failure_cases`
 - `cloversec_ctf_proof_pack`
 - `cloversec_ctf_hub_browser_plan`
 - `cloversec_ctf_hub_chrome_plan`
+- `cloversec_ctf_hub_draft`
+- `cloversec_ctf_hub_review_state`
+- `cloversec_ctf_image_naming_plan`
 - `cloversec_ctf_hub_validate_manifest`
 - `cloversec_ctf_hub_apply_upload_results`
 - `cloversec_ctf_resource_classify`
 - `cloversec_ctf_container_infer`
+- `cloversec_ctf_results_to_cases`
+- `cloversec_ctf_visible_content_evidence`
+- `cloversec_ctf_confirmation_request`
+- `cloversec_ctf_stage_notification`
+- `cloversec_ctf_codex_warning_report`
 
 ## `cloversec_ctf_container.py`
 
@@ -321,7 +334,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_writeup.py render
 
 ## `cloversec_ctf_hub.py`
 
-Hub 提交材料整理工具。生成材料包、浏览器计划、Chrome 计划、提交前检查和上传结果回写；不读取凭证，不点击最终提交。
+Hub 提交材料整理工具。生成材料包、Hub 草稿、浏览器计划、Chrome 计划、提交前检查、上传结果回写和审核状态；不读取凭证，不点击最终提交。
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package \
@@ -348,6 +361,18 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-uplo
   --manifest hub_submission_package/manifests/upload_manifest.json \
   --upload-results hub_upload_results.json \
   --output hub_submission_package/manifests/upload_manifest.with_uploads.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft \
+  --case-json ctf_case.json \
+  --hub-fields writeup_out/hub_fields.json \
+  --manual writeup_out/manual_filled_draft.md \
+  --output-dir hub_draft
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py review-state \
+  --case-json ctf_case.json \
+  --submission-status submitted \
+  --review-status reviewing \
+  --output-dir hub_review
 ```
 
 输出目录：
@@ -359,6 +384,14 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-uplo
 - `hub_submission_package/screenshots/`
 - `hub_submission_package/manifests/upload_manifest.json`
 - `hub_submission_package/hub_submission_checklist.md`
+- `hub_draft/hub_draft.json`
+- `hub_draft/hub_upload_manifest.json`
+- `hub_draft/hub_browser_plan.json`
+- `hub_draft/hub_chrome_plan.json`
+- `hub_draft/hub_screenshot_checklist.md`
+- `hub_draft/hub_diff_report.md`
+- `hub_review/hub_review_state.json`
+- `hub_review/hub_review_state.md`
 
 默认截图槽位固定为 `01-challenge-page.png`、`02-container-running.png`、`03-solve-proof.png`。
 `validate-manifest` 会检查分类 ID、题目内容、题目解答、关键字、上传结果和截图槽位；`apply-upload-results` 只合并显式提供的上传返回 JSON，不读取浏览器 Cookie、token 或 session。`chrome-plan` 约束 Agent 只能使用用户当前浏览器可见状态，最终提交前停止。Chrome 填写必须先确认用户已登录 Hub；未登录状态下即使提交页表单可见也不能填写，因为提交会跳转登录并丢失内容。Chrome 文件上传依赖 Codex 扩展的文件访问权限；如果 `setFiles` 返回 `Not allowed`，需要在 `chrome://extensions` 中给 Codex 扩展开启 `Allow access to file URLs`。
@@ -388,6 +421,68 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py batch 
 - `archive/<case_id>-<title>/writeup/`
 - `archive/<case_id>-<title>/screenshots/`
 - `archive/<case_id>-<title>/manifests/archive_manifest.json`
+
+## `cloversec_ctf_manual_quality.py`
+
+手册质量检查工具。检查题目字段、手册段落、解题步骤、截图引用、附件引用、完整 Flag 和 Hub 字段一致性。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_manual_quality.py \
+  --case-json ctf_case.json \
+  --manual writeup_out/manual_filled_draft.md \
+  --hub-fields writeup_out/hub_fields.json \
+  --output-dir manual_quality
+```
+
+输出文件：
+
+- `manual_quality/manual_quality.json`
+- `manual_quality/manual_quality_report.md`
+- `manual_quality/xlsx_fields_patch.json`
+
+`xlsx_fields_patch.json` 保留完整 `Flag`，用于内部归档字段修正。
+
+## `cloversec_ctf_audit.py`
+
+归档预览、锁定文件、人工确认、批量报告、失败案例库、阶段通知和 Codex warning 分类工具。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py archive-preview \
+  --case-json ctf_case.json \
+  --output-dir archive_preview \
+  --archive-root archive
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py lock \
+  --case-json ctf_case.json \
+  --output-dir manifest_lock
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py confirmation \
+  --action hub \
+  --case-json ctf_case.json \
+  --output-dir confirmation
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py batch-report \
+  --cases ctf_cases.jsonl \
+  --output-dir batch_report
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py failure-library \
+  --cases ctf_cases.jsonl \
+  --output batch_report/failure_cases.jsonl
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py warning-report \
+  --log codex_exec.log \
+  --output warnings/codex_warning_report.json
+```
+
+输出文件：
+
+- `archive_preview.json` / `archive_preview.md`
+- `manifest.lock.json` / `manifest.lock.md`
+- `confirmation_request.json` / `confirmation_request.md`
+- `batch_status_report.json` / `batch_status_report.md` / `batch_status_report.xlsx`
+- `failure_cases.jsonl`
+- `stage_notification.json` / `stage_notification.md`
+- `codex_warning_report.json` / `codex_warning_report.md`
 
 ## `cloversec_ctf_review.py`
 
@@ -434,9 +529,16 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan \
   --output retag_plan.json \
   --execute \
   --output-case ctf_case.retagged.json
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py image-naming \
+  --case-json ctf_case.json \
+  --hub-id CTF-2026060001 \
+  --output-dir hub_review
 ```
 
 默认只生成命令计划。只有显式传入 `--execute` 时，才会执行 Docker tag、save、load、inspect，并记录 tar SHA256 与平台。
+
+`image-naming` 只生成 `image_naming_plan.json`、`retag_inputs.json` 和 `image_naming_plan.md`。没有 Hub 编号时状态为 `needs_hub_id`，不会自造编号。
 
 ## `cloversec_ctf_final.py`
 

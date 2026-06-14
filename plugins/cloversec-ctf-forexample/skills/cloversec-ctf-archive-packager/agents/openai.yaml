@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Archive Packager"
   short_description: "整理题目归档目录、资源清单、manifest 与 xlsx 路径字段"
-  default_prompt: "使用 $cloversec-ctf-archive-packager 整理 ctf_case.json 的题目归档目录、manifest 和 xlsx 路径字段。"
+  default_prompt: "使用 $cloversec-ctf-archive-packager 整理 ctf_case.json 的题目归档目录、manifest 和 xlsx 路径字段；写入前可调用 cloversec_ctf_archive_preview，归档后可调用 cloversec_ctf_manifest_lock。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-archive-packager、cloversec_ctf_archive_preview、cloversec_ctf_manifest_lock、cloversec_ctf_archive_batch。"

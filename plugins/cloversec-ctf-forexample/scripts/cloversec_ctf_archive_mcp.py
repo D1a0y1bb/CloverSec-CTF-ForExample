@@ -9,9 +9,10 @@ import traceback
 from typing import Any
 
 import cloversec_ctf_archive_runner as archive_runner
+import cloversec_ctf_audit as audit
 
 
-SERVER_VERSION = "0.3.2"
+SERVER_VERSION = "0.3.3"
 
 TOOLS = [
     {
@@ -28,7 +29,35 @@ TOOLS = [
             },
             "required": ["cases_path", "output_root"],
         },
-    }
+    },
+    {
+        "name": "cloversec_ctf_archive_preview",
+        "description": "Preview archive directories, missing files, duplicates, oversize files, naming issues, and output paths before writing.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case": {"type": "object"},
+                "output_dir": {"type": "string"},
+                "archive_root": {"type": "string"},
+                "max_file_size": {"type": "integer"},
+            },
+            "required": ["case", "output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_manifest_lock",
+        "description": "Create manifest.lock.json with file hashes, full internal Flag value, Hub id, image tar, and xlsx fields.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case": {"type": "object"},
+                "output_dir": {"type": "string"},
+                "archive_manifest": {"type": "object"},
+                "extra_files": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["case", "output_dir"],
+        },
+    },
 ]
 
 
@@ -70,6 +99,20 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             copy_files=bool(arguments.get("copy_files", True)),
         )
         return archive_runner.compact_archive_payload(payload)
+    if name == "cloversec_ctf_archive_preview":
+        return audit.create_archive_preview(
+            arguments.get("case", {}),
+            str(arguments.get("output_dir") or ""),
+            archive_root=str(arguments.get("archive_root") or ""),
+            max_file_size=int(arguments.get("max_file_size", 500 * 1024 * 1024)),
+        )
+    if name == "cloversec_ctf_manifest_lock":
+        return audit.create_manifest_lock(
+            arguments.get("case", {}),
+            str(arguments.get("output_dir") or ""),
+            archive_manifest=arguments.get("archive_manifest") if isinstance(arguments.get("archive_manifest"), dict) else None,
+            extra_files=[str(item) for item in arguments.get("extra_files", [])],
+        )
     raise ValueError(f"unknown tool: {name}")
 
 

@@ -8,12 +8,13 @@ import sys
 import traceback
 from typing import Any
 
+import cloversec_ctf_audit as audit
 import cloversec_ctf_workflow as workflow
 import cloversec_ctf_resource as resource
 import cloversec_ctf_container as container
 
 
-SERVER_VERSION = "0.3.2"
+SERVER_VERSION = "0.3.3"
 
 TOOLS = [
     {
@@ -157,6 +158,65 @@ TOOLS = [
             "required": ["project_dir"],
         },
     },
+    {
+        "name": "cloversec_ctf_visible_content_evidence",
+        "description": "Import user-confirmed Chrome/Codex visible page content into evidence for 403/login-blocked writeup pages without bypassing controls.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "visible_content_path": {"type": "string"},
+                "evidence_dir": {"type": "string"},
+                "output_path": {"type": "string"},
+            },
+            "required": ["visible_content_path", "evidence_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_confirmation_request",
+        "description": "Create confirmation_request.json/md before download, extract, Docker, Hub, retag, archive, or final output.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": sorted(audit.CONFIRMATION_ACTIONS)},
+                "output_dir": {"type": "string"},
+                "case": {"type": "object"},
+                "inputs": {"type": "array", "items": {"type": "string"}},
+                "planned_outputs": {"type": "array", "items": {"type": "string"}},
+                "risks": {"type": "array", "items": {"type": "string"}},
+                "checks": {"type": "array", "items": {"type": "string"}},
+                "risk_level": {"type": "string"},
+            },
+            "required": ["action", "output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_stage_notification",
+        "description": "Create stage_notification.json/md with completed, failed, pending-user, next-input, and artifact sections.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stage": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "completed": {"type": "array", "items": {"type": "string"}},
+                "failed": {"type": "array", "items": {"type": "string"}},
+                "pending_user": {"type": "array", "items": {"type": "string"}},
+                "next_inputs": {"type": "array", "items": {"type": "string"}},
+                "artifacts": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["stage", "output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_codex_warning_report",
+        "description": "Classify codex exec warnings into CloverSec blockers, CloverSec warnings, and external plugin warnings.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "log_text": {"type": "string"},
+            },
+            "required": ["log_text"],
+        },
+    },
 ]
 
 
@@ -287,6 +347,35 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
         compact = container.compact_inference(payload)
         compact["output_path"] = str(arguments.get("output_path") or "")
         return compact
+    if name == "cloversec_ctf_visible_content_evidence":
+        return workflow.import_visible_content_evidence(
+            visible_content_path=str(arguments.get("visible_content_path") or ""),
+            evidence_dir=str(arguments.get("evidence_dir") or ""),
+            output_path=str(arguments.get("output_path") or "") or "",
+        )
+    if name == "cloversec_ctf_confirmation_request":
+        return audit.create_confirmation_request(
+            action=str(arguments.get("action") or ""),
+            output_dir=str(arguments.get("output_dir") or ""),
+            case=arguments.get("case") if isinstance(arguments.get("case"), dict) else {},
+            inputs=[str(item) for item in arguments.get("inputs", [])] if isinstance(arguments.get("inputs"), list) else None,
+            planned_outputs=[str(item) for item in arguments.get("planned_outputs", [])] if isinstance(arguments.get("planned_outputs"), list) else None,
+            risks=[str(item) for item in arguments.get("risks", [])] if isinstance(arguments.get("risks"), list) else None,
+            checks=[str(item) for item in arguments.get("checks", [])] if isinstance(arguments.get("checks"), list) else None,
+            risk_level=str(arguments.get("risk_level") or "medium"),
+        )
+    if name == "cloversec_ctf_stage_notification":
+        return audit.create_stage_notification(
+            stage=str(arguments.get("stage") or ""),
+            output_dir=str(arguments.get("output_dir") or ""),
+            completed=[str(item) for item in arguments.get("completed", [])] if isinstance(arguments.get("completed"), list) else None,
+            failed=[str(item) for item in arguments.get("failed", [])] if isinstance(arguments.get("failed"), list) else None,
+            pending_user=[str(item) for item in arguments.get("pending_user", [])] if isinstance(arguments.get("pending_user"), list) else None,
+            next_inputs=[str(item) for item in arguments.get("next_inputs", [])] if isinstance(arguments.get("next_inputs"), list) else None,
+            artifacts=[str(item) for item in arguments.get("artifacts", [])] if isinstance(arguments.get("artifacts"), list) else None,
+        )
+    if name == "cloversec_ctf_codex_warning_report":
+        return audit.classify_codex_warnings(str(arguments.get("log_text") or ""))
     raise ValueError(f"unknown tool: {name}")
 
 

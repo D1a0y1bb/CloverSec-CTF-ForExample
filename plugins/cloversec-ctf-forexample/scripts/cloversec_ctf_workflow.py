@@ -24,7 +24,7 @@ import cloversec_ctf_search as search
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.3.2"
+WORKFLOW_VERSION = "0.3.3"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -523,6 +523,82 @@ def record_source_evidence(
     }
     write_json(evidence_base / "source_evidence.json", payload)
     return payload
+
+
+def import_visible_content_evidence(
+    *,
+    visible_content_path: str | Path,
+    evidence_dir: str | Path,
+    output_path: str | Path = "",
+) -> dict[str, Any]:
+    payload = read_json(visible_content_path)
+    rows = visible_content_rows(payload)
+    evidence_base = Path(evidence_dir)
+    evidence_base.mkdir(parents=True, exist_ok=True)
+    records = []
+    for index, item in enumerate(rows, start=1):
+        title = str(item.get("title") or item.get("page_title") or "")
+        url = str(item.get("url") or item.get("source_url") or "")
+        text = str(item.get("summary") or item.get("snippet") or item.get("visible_text") or item.get("text") or "")
+        links = item.get("links") if isinstance(item.get("links"), list) else []
+        records.append(
+            {
+                "evidence_id": f"visible-{index:04d}",
+                "source_url": url,
+                "title": title,
+                "snippet": text[:1000],
+                "provider": str(item.get("provider") or "browser-visible-content"),
+                "layer": str(item.get("layer") or "writeup_candidate"),
+                "confidence": str(item.get("confidence") or "medium"),
+                "score": item.get("score", 0),
+                "captured_at": str(item.get("captured_at") or utc_now()),
+                "download_url": "",
+                "sha256": search.sha256_bytes(text.encode("utf-8")) if text else "",
+                "missing_reason": "",
+                "visible_links": [
+                    {
+                        "title": str(link.get("title") or link.get("text") or ""),
+                        "url": str(link.get("url") or link.get("href") or ""),
+                    }
+                    for link in links
+                    if isinstance(link, dict)
+                ][:50],
+                "raw": {
+                    "source_type": "browser_visible_content",
+                    "user_confirmed_visible": bool(item.get("user_confirmed_visible", True)),
+                    "blocked_page_recovery": bool(item.get("blocked_page_recovery", True)),
+                },
+            }
+        )
+    result = {
+        "schema_version": f"{SCHEMA_PREFIX}.visible_content_evidence.v1",
+        "workflow_version": WORKFLOW_VERSION,
+        "generated_at": utc_now(),
+        "visible_content_path": Path(visible_content_path).as_posix(),
+        "records": records,
+        "summary": {"records": len(records), "source": "browser_visible_content"},
+        "notes": [
+            "This imports user-confirmed visible page content only.",
+            "It does not bypass 403, login, captcha, paywall, or site risk controls.",
+        ],
+    }
+    target = Path(output_path) if str(output_path).strip() else evidence_base / "visible_content_evidence.json"
+    write_json(target, result)
+    return result
+
+
+def visible_content_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ["results", "items", "pages", "visible_pages", "records"]:
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    if {"title", "url"} & set(payload):
+        return [payload]
+    return []
 
 
 def append_reason(existing: str, reason: str) -> str:
@@ -1062,6 +1138,11 @@ def main(argv: list[str] | None = None) -> int:
     evidence_parser.add_argument("--no-fetch-snapshots", action="store_true")
     evidence_parser.add_argument("--output")
 
+    visible_parser = subparsers.add_parser("visible-content-evidence", help="import user-confirmed browser visible page content into evidence")
+    visible_parser.add_argument("--input", required=True)
+    visible_parser.add_argument("--evidence-dir", required=True)
+    visible_parser.add_argument("--output")
+
     dedupe_parser = subparsers.add_parser("dedupe", help="generate duplicate candidate groups")
     dedupe_parser.add_argument("--cases", required=True)
     dedupe_parser.add_argument("--output", required=True)
@@ -1130,6 +1211,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.output:
             write_json(args.output, payload)
         print(f"wrote {Path(args.evidence_dir) / 'source_evidence.json'}")
+        return 0
+
+    if args.command == "visible-content-evidence":
+        payload = import_visible_content_evidence(
+            visible_content_path=args.input,
+            evidence_dir=args.evidence_dir,
+            output_path=args.output or "",
+        )
+        print(f"wrote {args.output or Path(args.evidence_dir) / 'visible_content_evidence.json'}")
         return 0
 
     if args.command == "dedupe":

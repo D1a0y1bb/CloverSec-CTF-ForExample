@@ -96,8 +96,8 @@ def validate_plugin_manifest(errors: list[str]) -> None:
 def validate_skills(errors: list[str]) -> None:
     skills_dir = PLUGIN / "skills"
     skill_dirs = sorted(path for path in skills_dir.iterdir() if path.is_dir())
-    if len(skill_dirs) != 13:
-        errors.append(f"expected 13 skills, found {len(skill_dirs)}")
+    if len(skill_dirs) != 15:
+        errors.append(f"expected 15 skills, found {len(skill_dirs)}")
     for skill_dir in skill_dirs:
         skill_md = skill_dir / "SKILL.md"
         openai_yaml = skill_dir / "agents" / "openai.yaml"

@@ -70,7 +70,7 @@
 ```json
 {
   "schema_version": "cloversec.ctf.workflow.state.v1",
-  "workflow_version": "0.3.2",
+  "workflow_version": "0.3.3",
   "run_id": "",
   "status": "initialized",
   "workdir": "",
@@ -183,6 +183,217 @@
 
 `proof/` 默认只复制小型 JSON/Markdown 证据和 hash，不执行未知 solver，不点击 Hub 最终提交。
 
+## 0.3.3 手册质量
+
+手册和 Hub 字段检查使用 `manual_quality.json`：
+
+```json
+{
+  "schema_version": "cloversec.ctf.manual_quality.v1",
+  "version": "0.3.3",
+  "case_id": "",
+  "summary": {
+    "status": "pass|needs_review|fail",
+    "pass": 0,
+    "warn": 0,
+    "fail": 0
+  },
+  "checks": [],
+  "xlsx_fields_patch": {
+    "Flag": "flag{完整值}"
+  }
+}
+```
+
+输出文件：
+
+- `manual_quality.json`
+- `manual_quality_report.md`
+- `xlsx_fields_patch.json`
+
+`xlsx_fields_patch.json` 必须保留完整 `Flag`。Markdown 报告只展示状态、问题和 Flag hash。
+
+## 0.3.3 Hub 草稿与审核状态
+
+Hub 草稿输出：
+
+```json
+{
+  "schema_version": "cloversec.ctf.hub_draft.v1",
+  "version": "0.3.3",
+  "case_id": "",
+  "summary": {
+    "status": "ready|needs_review|blocked",
+    "can_fill_browser": true,
+    "can_submit": false
+  },
+  "hub_fields": {},
+  "upload_manifest": {},
+  "manual_path": "",
+  "notes": []
+}
+```
+
+常见文件：
+
+- `hub_draft.json`
+- `hub_upload_manifest.json`
+- `hub_browser_plan.json`
+- `hub_chrome_plan.json`
+- `hub_screenshot_checklist.md`
+- `hub_diff_report.md`
+
+Hub 审核状态输出：
+
+```json
+{
+  "schema_version": "cloversec.ctf.hub_review_state.v1",
+  "version": "0.3.3",
+  "case_id": "",
+  "review_status": "draft|submitted|reviewing|approved|rejected|needs_changes|unknown",
+  "hub_id": "",
+  "can_retag": false,
+  "next_actions": []
+}
+```
+
+插件不会编造 Hub 编号。`hub_id` 只能来自用户输入、Hub 页面可见内容或已存在的结构化文件。
+
+## 0.3.3 镜像命名计划
+
+审核通过后使用 `image_naming_plan.json` 记录镜像命名、tar 文件名和 xlsx 回填字段：
+
+```json
+{
+  "schema_version": "cloversec.ctf.image_naming_plan.v1",
+  "version": "0.3.3",
+  "status": "ready|needs_hub_id",
+  "hub_id": "CTF-2026060001",
+  "image": {
+    "image_name": "",
+    "image_tag": "",
+    "tar_name": "",
+    "platform": "linux/amd64"
+  },
+  "xlsx_fields": {}
+}
+```
+
+没有 Hub 编号时状态必须是 `needs_hub_id`，只生成待处理项。
+
+## 0.3.3 归档预览与锁定
+
+归档写入前使用 `archive_preview.json`：
+
+```json
+{
+  "schema_version": "cloversec.ctf.archive_preview.v1",
+  "version": "0.3.3",
+  "archive_dir": "",
+  "would_create": [],
+  "missing_items": [],
+  "duplicate_targets": [],
+  "oversized_files": [],
+  "invalid_names": [],
+  "summary": {
+    "ready_to_write": false
+  }
+}
+```
+
+归档确认后使用 `manifest.lock.json` 固定交付物：
+
+```json
+{
+  "schema_version": "cloversec.ctf.manifest_lock.v1",
+  "version": "0.3.3",
+  "case_id": "",
+  "files": [],
+  "summary": {
+    "flag_present": true,
+    "hub_id": "",
+    "archive_dir": ""
+  },
+  "flag": {
+    "value": "flag{完整值}",
+    "sha256": "",
+    "sensitive": true
+  },
+  "xlsx_fields": {}
+}
+```
+
+`manifest.lock.json` 保存完整 Flag 和 hash，用于内部归档复核；不要发布到公开渠道。
+
+## 0.3.3 批量报告、失败案例和阶段通知
+
+批量状态：
+
+```json
+{
+  "schema_version": "cloversec.ctf.batch_status_report.v1",
+  "version": "0.3.3",
+  "summary": {
+    "total": 0,
+    "ready_to_archive": 0,
+    "archived": 0,
+    "needs_user_confirmation": 0
+  },
+  "rows": []
+}
+```
+
+失败案例库每行是一个 JSON 对象：
+
+```json
+{
+  "schema_version": "cloversec.ctf.failure_case.v1",
+  "version": "0.3.3",
+  "failure_type": "search|download|docker|hub|manual|archive|unknown",
+  "case_id": "",
+  "evidence": {},
+  "suggested_next_actions": []
+}
+```
+
+阶段通知：
+
+```json
+{
+  "schema_version": "cloversec.ctf.stage_notification.v1",
+  "version": "0.3.3",
+  "stage": "",
+  "completed": [],
+  "failed": [],
+  "needs_user": [],
+  "next_inputs": []
+}
+```
+
+## 0.3.3 浏览器可见内容证据
+
+对 403、登录页、验证码页或站点限制导致的抓取失败，允许用户把确认后的页面可见结果导入：
+
+```json
+{
+  "schema_version": "cloversec.ctf.workflow.visible_content_evidence.v1",
+  "version": "0.3.3",
+  "query": "",
+  "provider": "user-visible-content",
+  "results": [
+    {
+      "title": "",
+      "url": "",
+      "snippet": "",
+      "confidence": "medium",
+      "requires_user_confirmation": true
+    }
+  ]
+}
+```
+
+只记录页面可见标题、URL、摘要、正文片段或链接，不读取 Cookie、token、localStorage、sessionStorage。
+
 ## 脚本入口
 
 统一数据模型脚本：
@@ -193,6 +404,12 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py batch
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py classify challenge-dir --output classification/resource_classification.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_container.py infer challenge-dir --resource-classification classification/resource_classification.json --output classification/container_inference.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py --output-dir proof --case-json ctf_case.json --container-inference classification/container_inference.json --quality-review quality_review.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_manual_quality.py --case-json ctf_case.json --manual manual_filled_draft.md --hub-fields hub_fields.json --output-dir manual_quality
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft --case-json ctf_case.json --hub-fields hub_fields.json --manual manual_filled_draft.md --output-dir hub_draft
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py archive-preview --case-json ctf_case.json --output-dir archive_preview
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py lock --case-json ctf_case.json --output-dir manifest_lock
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py batch-report --cases ctf_cases.jsonl --output-dir batch_report
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py visible-content-evidence --input visible_results.json --evidence-dir evidence --output visible_content_evidence.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py export-xlsx ctf_cases.jsonl archive.xlsx
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xlsx archive.xlsx

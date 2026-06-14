@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.3.2 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.3.3 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -1114,24 +1114,62 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     for index, result in enumerate(manifest.get("results", []), start=1):
         if not isinstance(result, dict):
             continue
-        if result.get("layer") in {"noise", "platform_lead"}:
+        if result.get("layer") in {"noise"}:
             continue
         title = str(result.get("title") or "").strip()
         if not title:
             continue
         source_type = result.get("source_type") or "public_web"
         case_id = f"research-{index:06d}"
+        layer = str(result.get("layer") or "")
+        confidence = result_to_case_confidence(result)
+        category = infer_case_category(result)
+        years = infer_case_years(result, manifest)
+        event = infer_case_event(result, manifest)
+        issue_text = ";".join(str(item) for item in result.get("quality_issues", []) if item)
+        missing_reason = missing_reason_for_result(result, category=category, event=event, years=years)
+        requires_confirmation = confidence == "low" or bool(result.get("lead_only")) or bool(missing_reason)
+        attachment_candidates = []
+        writeup_candidates = []
+        candidate = {
+            "source_url": result.get("url", ""),
+            "title": title,
+            "provider": result.get("provider", ""),
+            "confidence": confidence,
+            "score": result.get("score", 0),
+        }
+        if layer == "attachment_candidate" or looks_attachment_candidate_url(str(result.get("url") or "")):
+            attachment_candidates.append(candidate)
+        else:
+            writeup_candidates.append(candidate)
         cases.append(
             {
                 "case_id": case_id,
                 "source_files": [],
-                "research": {"query": manifest.get("query", ""), "provider": result.get("provider", "")},
-                "asset_collection": {},
+                "research": {
+                    "query": manifest.get("query", ""),
+                    "provider": result.get("provider", ""),
+                    "layer": layer,
+                    "score": result.get("score", 0),
+                    "ranking_reasons": result.get("ranking_reasons", []),
+                    "quality_issues": result.get("quality_issues", []),
+                    "source_url": result.get("url", ""),
+                    "source_title": title,
+                    "missing_reason": missing_reason,
+                    "requires_user_confirmation": requires_confirmation,
+                    "lead_only": bool(result.get("lead_only")),
+                },
+                "asset_collection": {
+                    "attachment_candidates": attachment_candidates,
+                    "writeup_candidates": writeup_candidates,
+                    "missing_reason": missing_reason,
+                },
                 "metadata": {
-                    "赛事来源": result.get("metadata", {}).get("event", "") if isinstance(result.get("metadata"), dict) else "",
+                    "赛事来源": event,
                     "题目来源": title,
-                    "名称": title,
-                    "分类": "",
+                    "名称": infer_case_title(result),
+                    "分类": category,
+                    "年份": ",".join(years),
                     "题目类型": "未知",
                     "Flag类型": "未知",
                     "Flag": "",
@@ -1158,17 +1196,96 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                         "title": title,
                         "accessed_at": utc_date(),
                         "summary": result.get("summary", ""),
-                        "confidence": result.get("confidence", "low"),
-                        "layer": result.get("layer", ""),
+                        "provider": result.get("provider", ""),
+                        "snippet": result.get("snippet", result.get("summary", "")),
+                        "confidence": confidence,
+                        "layer": layer,
                         "score": result.get("score", 0),
                         "quality_issues": result.get("quality_issues", []),
+                        "requires_user_confirmation": requires_confirmation,
+                        "missing_reason": missing_reason,
                         "status": "found",
                     }
                 ],
-                "confidence": result.get("confidence", "low"),
+                "confidence": confidence,
+                "requires_user_confirmation": requires_confirmation,
+                "missing_reason": missing_reason,
+                "notes": issue_text,
             }
         )
     return cases
+
+
+def result_to_case_confidence(result: dict[str, Any]) -> str:
+    layer = str(result.get("layer") or "")
+    issues = [str(item) for item in result.get("quality_issues", [])]
+    score = int(result.get("score") or 0)
+    if layer == "confirmed_challenge" and score >= 85 and not issues:
+        return "high"
+    if layer in {"attachment_candidate", "writeup_candidate"} and score >= 40 and not any("mismatch" in item for item in issues):
+        return "medium"
+    return "low"
+
+
+def infer_case_category(result: dict[str, Any]) -> str:
+    haystack = f"{result.get('title', '')} {result.get('url', '')} {result.get('summary', '')}"
+    categories = sorted(detect_categories(haystack))
+    if not categories:
+        return ""
+    mapping = {
+        "web": "Web",
+        "pwn": "Pwn",
+        "reverse": "Reverse",
+        "crypto": "Crypto",
+        "misc": "Misc",
+        "forensics": "Forensics",
+        "ai": "AI",
+        "osint": "OSINT",
+        "mobile": "Mobile",
+        "iot": "IoT",
+        "blockchain": "Blockchain",
+    }
+    return mapping.get(categories[0], categories[0])
+
+
+def infer_case_years(result: dict[str, Any], manifest: dict[str, Any]) -> list[str]:
+    haystack = f"{result.get('title', '')} {result.get('url', '')} {result.get('summary', '')}"
+    years = sorted(set(re.findall(r"(?<!\d)20\d{2}(?!\d)", haystack)))
+    if not years:
+        years = [str(item) for item in manifest.get("years", []) if str(item).strip()]
+    return years
+
+
+def infer_case_event(result: dict[str, Any], manifest: dict[str, Any]) -> str:
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    if str(metadata.get("event") or "").strip():
+        return str(metadata.get("event"))
+    query = str(manifest.get("query") or "")
+    event_tokens = extract_event_tokens(query)
+    if event_tokens:
+        return event_tokens[0]
+    return ""
+
+
+def infer_case_title(result: dict[str, Any]) -> str:
+    title = str(result.get("title") or "").strip()
+    title = re.sub(r"\s*[-|]\s*(Writeup|WP|题解|复现).*$", "", title, flags=re.I)
+    return title[:120] or str(result.get("title") or "").strip()
+
+
+def missing_reason_for_result(result: dict[str, Any], *, category: str, event: str, years: list[str]) -> str:
+    issues = [str(item) for item in result.get("quality_issues", [])]
+    reasons = []
+    if not event:
+        reasons.append("赛事名未能结构化确认")
+    if not years:
+        reasons.append("年份未能结构化确认")
+    if not category:
+        reasons.append("分类未能结构化确认")
+    if result.get("lead_only"):
+        reasons.append("仅为入口线索，不是确认题目")
+    reasons.extend(issues)
+    return ";".join(dict.fromkeys(reason for reason in reasons if reason))
 
 
 def normalize_repo_name(repo: str) -> str:

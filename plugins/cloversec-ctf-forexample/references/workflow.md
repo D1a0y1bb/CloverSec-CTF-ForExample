@@ -9,11 +9,13 @@
 5. `cloversec-ctf-build-dockerizer`：容器题目构建转换。
 6. `cloversec-ctf-attachment-packager`：附件题目检查和打包。
 7. `cloversec-ctf-writeup-scaffold`：手册和 Hub 字段草稿。
-8. `cloversec-ctf-archive-packager`：归档目录、镜像 tar、hash 清单。
-9. `cloversec-ctf-quality-review`：题目、手册、附件、镜像一致性检查。
-10. `cloversec-ctf-hub-submission`：Hub 提交材料生成。
-11. `cloversec-ctf-hub-retag`：审核通过后按 HUB 编号重打镜像 tag。
-12. `cloversec-ctf-final-report`：最终位置、xlsx 和后续动作报告。
+8. `cloversec-ctf-manual-quality`：手册、截图、附件、Flag 和 Hub 字段一致性检查。
+9. `cloversec-ctf-archive-packager`：归档目录、镜像 tar、hash 清单、预览和锁定文件。
+10. `cloversec-ctf-quality-review`：题目、手册、附件、镜像一致性检查。
+11. `cloversec-ctf-hub-submission`：Hub 提交草稿、上传清单、截图清单和浏览器计划。
+12. `cloversec-ctf-hub-retag`：审核通过后按 HUB 编号生成镜像命名和 retag 计划。
+13. `cloversec-ctf-batch-reporter`：批量状态报告、失败案例库、确认请求和阶段通知。
+14. `cloversec-ctf-final-report`：最终位置、xlsx 和后续动作报告。
 
 ## 全局原则
 
@@ -58,6 +60,7 @@ MCP 入口：
 - `cloversec_ctf_download_sandbox`
 - `cloversec_ctf_resource_classify`
 - `cloversec_ctf_search_plus`
+- `cloversec_ctf_results_to_cases`
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
 - `cloversec_ctf_fetch_url`
@@ -68,6 +71,18 @@ MCP 入口：
 - `cloversec_ctf_browser_search_dom_to_visible`
 - `cloversec_ctf_hub_chrome_plan`
 - `cloversec_ctf_hub_validate_manifest`
+- `cloversec_ctf_manual_quality`
+- `cloversec_ctf_archive_preview`
+- `cloversec_ctf_manifest_lock`
+- `cloversec_ctf_hub_draft`
+- `cloversec_ctf_hub_review_state`
+- `cloversec_ctf_image_naming_plan`
+- `cloversec_ctf_batch_status_report`
+- `cloversec_ctf_failure_cases`
+- `cloversec_ctf_visible_content_evidence`
+- `cloversec_ctf_confirmation_request`
+- `cloversec_ctf_stage_notification`
+- `cloversec_ctf_codex_warning_report`
 
 没有付费 API key 时，仍可用 GitHub repository search、CTFTime、DuckDuckGo HTML、公开 archive seeds、CTF 平台入口、CSDN、博客园和语雀。平台入口标记为 `platform_lead` / `lead_only`，不能直接当成确认题目。
 
@@ -198,3 +213,129 @@ proof/hashes.json
 - `solve_verify`：需要人工确认后按手册验证解题，不自动执行未知 solver。
 
 `proof/` 用于审核复核，不替代最终人工判断。
+
+## 0.3.3 手册、Hub、归档和批量交接
+
+### 手册质量
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_manual_quality.py \
+  --case-json ctf_case.json \
+  --manual writeup_out/manual_filled_draft.md \
+  --hub-fields writeup_out/hub_fields.json \
+  --output-dir manual_quality
+```
+
+输出：
+
+```text
+manual_quality/manual_quality.json
+manual_quality/manual_quality_report.md
+manual_quality/xlsx_fields_patch.json
+```
+
+`xlsx_fields_patch.json` 保留完整 `Flag`。`manual_quality_report.md` 只展示检查结果和 hash。
+
+### Hub 草稿
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft \
+  --case-json ctf_case.json \
+  --hub-fields writeup_out/hub_fields.json \
+  --manual writeup_out/manual_filled_draft.md \
+  --output-dir hub_draft
+```
+
+输出：
+
+```text
+hub_draft/hub_draft.json
+hub_draft/hub_upload_manifest.json
+hub_draft/hub_browser_plan.json
+hub_draft/hub_chrome_plan.json
+hub_draft/hub_screenshot_checklist.md
+hub_draft/hub_diff_report.md
+```
+
+Hub 草稿只到提交前。分类不确定、上传结果未知、最终提交都由人确认。
+
+### Hub 审核状态和镜像命名
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py review-state \
+  --case-json ctf_case.json \
+  --submission-status submitted \
+  --review-status reviewing \
+  --output-dir hub_review
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py image-naming \
+  --case-json ctf_case.json \
+  --hub-id CTF-2026060001 \
+  --output-dir hub_review
+```
+
+没有 Hub 编号时，`image_naming_plan.json` 状态为 `needs_hub_id`。插件不会推测 Hub 编号来源。
+
+### 归档预览和锁定
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py archive-preview \
+  --case-json ctf_case.json \
+  --output-dir archive_preview \
+  --archive-root archive
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py lock \
+  --case-json ctf_case.json \
+  --output-dir manifest_lock
+```
+
+输出：
+
+```text
+archive_preview/archive_preview.json
+archive_preview/archive_preview.md
+manifest_lock/manifest.lock.json
+manifest_lock/manifest.lock.md
+```
+
+`manifest.lock.json` 固定文件 hash、完整 Flag、Hub 编号和最终 xlsx 字段，供内部复核。
+
+### 批量状态、失败案例和阶段通知
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py batch-report \
+  --cases ctf_cases.jsonl \
+  --output-dir batch_report
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py failure-library \
+  --cases ctf_cases.jsonl \
+  --output batch_report/failure_cases.jsonl
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py notify \
+  --stage hub \
+  --output-dir batch_report \
+  --completed "manual_quality" \
+  --pending-user "Hub 最终提交前确认"
+```
+
+对应 MCP：
+
+- `cloversec_ctf_batch_status_report`
+- `cloversec_ctf_failure_cases`
+- `cloversec_ctf_stage_notification`
+- `cloversec_ctf_confirmation_request`
+
+### 403 或浏览器可见内容导入
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py visible-content-evidence \
+  --input visible_results.json \
+  --evidence-dir evidence \
+  --output visible_content_evidence.json
+```
+
+只导入用户确认后的页面可见内容。对登录页、搜索页或不相关页面，结果必须带 `requires_user_confirmation=true` 或降为低置信度。
+
+### 多 Agent 分工模板
+
+`references/agent-roles.json` 记录 Research、Asset、Docker、Writeup、Review、Hub、Archive 七类角色的输入、输出、skill ID 和 MCP tool ID。批量任务中 Agent 必须使用精确 ID，例如 `cloversec-ctf-manual-quality`、`cloversec_ctf_manual_quality`，不能输出泛称。

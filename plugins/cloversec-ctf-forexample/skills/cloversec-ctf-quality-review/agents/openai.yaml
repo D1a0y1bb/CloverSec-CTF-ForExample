@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Quality Review"
   short_description: "检查题目资源、手册内容、Flag 字段和最终验证状态"
-  default_prompt: "使用 $cloversec-ctf-quality-review 检查 ctf_case.json、归档目录、手册、附件、镜像 tar 和验证状态。"
+  default_prompt: "使用 $cloversec-ctf-quality-review 检查 ctf_case.json、归档目录、手册、附件、镜像 tar 和验证状态；手册细查用 cloversec_ctf_manual_quality，批量证据用 cloversec_ctf_quality_run。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-quality-review、cloversec_ctf_quality_run、cloversec_ctf_manual_quality、cloversec_ctf_proof_pack。"

@@ -198,18 +198,18 @@
 - [x] 附件智能识别：自动判断源码包、附件题、Docker 项目、compose 项目、writeup、截图、pcap、binary、数据库 dump 等资源类型。0.3.1 已实现 `cloversec_ctf_resource.py classify` 和 `cloversec_ctf_resource_classify`。
 - [x] 容器题识别：从 Dockerfile、compose、README、端口、启动脚本中推断服务类型、端口、环境变量、构建命令和运行命令。0.3.2 已实现 `cloversec_ctf_container.py infer` 和 `cloversec_ctf_container_infer`。
 - [x] Docker 验证分级：轻量 inspect、构建验证、启动验证、端口探测、日志采集、HTTP 探测、手册解题验证分层执行。0.3.2 已实现 `static_only`、`inspect_only`、`build_only`、`run_probe`、`solve_verify`。
-- [ ] 手册质量助手：检查字段完整性、题目描述、考点、环境、解题步骤、截图引用、Flag、附件引用和 Hub 表单字段一致性。
+- [x] 手册质量助手：检查字段完整性、题目描述、考点、环境、解题步骤、截图引用、Flag、附件引用和 Hub 表单字段一致性。0.3.3 已实现 `cloversec_ctf_manual_quality.py`、`cloversec_ctf_manual_quality` 和 `cloversec-ctf-manual-quality`。
 - [x] 解题证据包：把关键命令、输出摘要、截图、flag 验证记录、容器日志和文件 hash 打包成 `proof/`，供审核复核。0.3.2 已实现 `cloversec_ctf_proof.py` 和 `cloversec_ctf_proof_pack`。
-- [ ] Hub 提交草稿：从 markdown、xlsx 字段和资源目录生成表单草稿、上传清单、截图清单和提交前差异报告。
-- [ ] Hub 审核跟踪：记录已提交题目、审核状态、退回意见、Hub 编号、镜像 tag 计划和重新导出任务。
-- [ ] 镜像命名助手：根据 Hub 编号、题目分类、内部规范生成镜像名、tag、tar 文件名、hash 和归档字段。
-- [ ] 归档一致性锁定：生成 `manifest.lock.json`，固定手册、附件、镜像 tar、hash、flag、Hub 编号和最终 xlsx 字段。
-- [ ] 归档目录预览：在写入前输出目录树、缺失项、重复文件、过大文件、命名不规范文件和将要生成的最终路径。
-- [ ] 人工确认节点：下载、解压、Docker 执行、Hub 提交、镜像 retag、最终归档写入前都显示风险、影响和确认项。
-- [ ] 批量报告：按赛事、年份、分类、状态、缺失资源、待人工确认、可归档、已归档输出 xlsx、markdown 和终端摘要。
-- [ ] 失败案例库：记录搜索失败、下载失败、构建失败、Hub 退回、手册不一致等案例，沉淀成后续自动修复建议。
-- [ ] 多 Agent 分工模板：Research、Asset、Docker、Writeup、Review、Hub、Archive 角色分工，适配大批量题目处理。
-- [ ] 通知输出：每个阶段结束生成“已完成、失败、待人工处理、下一阶段输入”的短报告，方便接手继续处理。
+- [x] Hub 提交草稿：从 markdown、xlsx 字段和资源目录生成表单草稿、上传清单、截图清单和提交前差异报告。0.3.3 已实现 `hub_draft.json`、`hub_upload_manifest.json`、`hub_screenshot_checklist.md`、`hub_diff_report.md`。
+- [x] Hub 审核跟踪：记录已提交题目、审核状态、退回意见、Hub 编号、镜像 tag 计划和重新导出任务。0.3.3 已实现 `hub_review_state.json` 和 `cloversec_ctf_hub_review_state`。
+- [x] 镜像命名助手：根据 Hub 编号、题目分类、内部规范生成镜像名、tag、tar 文件名、hash 和归档字段。0.3.3 已实现 `image_naming_plan.json` 和 `retag_inputs.json`；无 Hub 编号时状态为 `needs_hub_id`。
+- [x] 归档一致性锁定：生成 `manifest.lock.json`，固定手册、附件、镜像 tar、hash、flag、Hub 编号和最终 xlsx 字段。0.3.3 已实现 `cloversec_ctf_manifest_lock`，完整 `Flag` 保留在内部 JSON。
+- [x] 归档目录预览：在写入前输出目录树、缺失项、重复文件、过大文件、命名不规范文件和将要生成的最终路径。0.3.3 已实现 `archive_preview.json` 和 `cloversec_ctf_archive_preview`。
+- [x] 人工确认节点：下载、解压、Docker 执行、Hub 提交、镜像 retag、最终归档写入前都显示风险、影响和确认项。0.3.3 已实现 `confirmation_request.json` 和 `cloversec_ctf_confirmation_request`。
+- [x] 批量报告：按赛事、年份、分类、状态、缺失资源、待人工确认、可归档、已归档输出 xlsx、markdown 和终端摘要。0.3.3 已实现 `batch_status_report.json/md/xlsx` 和 `cloversec_ctf_batch_status_report`。
+- [x] 失败案例库：记录搜索失败、下载失败、构建失败、Hub 退回、手册不一致等案例，沉淀成后续自动修复建议。0.3.3 已实现 `failure_cases.jsonl` 和 `cloversec_ctf_failure_cases`。
+- [x] 多 Agent 分工模板：Research、Asset、Docker、Writeup、Review、Hub、Archive 角色分工，适配大批量题目处理。0.3.3 已实现 `references/agent-roles.json`，并在 workflow skill 中引用。
+- [x] 通知输出：每个阶段结束生成“已完成、失败、待人工处理、下一阶段输入”的短报告，方便接手继续处理。0.3.3 已实现 `stage_notification.json/md` 和 `cloversec_ctf_stage_notification`。
 
 ## v0.3.0 开发与验收记录
 
@@ -249,10 +249,10 @@
 - [x] 安装版 workflow MCP 验收：serverInfo 为 `0.3.1`，工具数量 9，包含 `cloversec_ctf_resource_classify`。
 - [x] 新 Codex 会话可见性验收：`codex exec` 只读新会话确认插件可见、`cloversec-ctf-resource-classifier` 可见、`cloversec-ctf-workflow` 可见、期望 skill 数为 12。
 - [x] 发布后发现并处理旧缓存问题：`codex plugin list` 一度显示 `0.3.1`，但旧安装路径 manifest 仍是 `0.3.0` 且没有资源识别脚本；已通过移除旧 plugin 与旧 marketplace 后重新安装解决。
-- [ ] 待后续增强：`results-to-cases` 目前仍是调研草稿，不自动把赛事、分类、题目名拆成最终内部字段；这一步交给 Agent 归并或人工确认。
-- [ ] 待后续增强：Medium/InfosecWriteups 等站点可能返回 403，当前会记录为失败证据；需要 Chrome/浏览器辅助或人工提供页面内容。
-- [ ] 待后续增强：LLM 输出精确 skill ID 时需要明确“只能输出精确 ID，不允许前后缀”；未加严格约束时模型可能写成泛称或加 `skill ` 前缀。
-- [ ] 待后续注意：`codex exec` 输出里仍有其他已安装插件的 icon/defaultPrompt warning，以及某个外部 MCP shutdown 阶段 `Auth required` warning；本次 CloverSec 插件验收返回成功。
+- [x] 待后续增强：`results-to-cases` 目前仍是调研草稿，不自动把赛事、分类、题目名拆成最终内部字段；这一步交给 Agent 归并或人工确认。0.3.3 已增强为结构化输出赛事、年份、分类、题名、来源层级、缺失原因和人工确认原因。
+- [x] 待后续增强：Medium/InfosecWriteups 等站点可能返回 403，当前会记录为失败证据；需要 Chrome/浏览器辅助或人工提供页面内容。0.3.3 已新增 `visible-content-evidence` 和 `cloversec_ctf_visible_content_evidence`，用于导入用户确认后的页面可见内容。
+- [x] 待后续增强：LLM 输出精确 skill ID 时需要明确“只能输出精确 ID，不允许前后缀”；未加严格约束时模型可能写成泛称或加 `skill ` 前缀。0.3.3 已把精确 skill/MCP ID 写入 plugin defaultPrompt、相关 skill 的 Agent prompt 和 `references/agent-roles.json`。
+- [x] 待后续注意：`codex exec` 输出里仍有其他已安装插件的 icon/defaultPrompt warning，以及某个外部 MCP shutdown 阶段 `Auth required` warning；本次 CloverSec 插件验收返回成功。0.3.3 已新增 `cloversec_ctf_codex_warning_report`，把 CloverSec 阻断项、CloverSec 警告和外部插件 warning 分开记录。
 
 ## v0.3.2 开发与验收记录
 
@@ -273,3 +273,23 @@
 - [x] 安装版真实测试：cache manifest 为 `0.3.2`，实际 skills 目录为 13 个，`.mcp.json` 为 8 个 MCP server；安装版 `cloversec_ctf_container.py infer` 能识别临时 Dockerfile 为 `container_project` 并推荐 `run_probe`。
 - [x] 安装版 MCP 验收：workflow MCP serverInfo 为 `0.3.2`，工具数量 10，包含 `cloversec_ctf_container_infer`；docker MCP 包含 `cloversec_ctf_docker_validation_plan`；quality-runner MCP 包含 `cloversec_ctf_proof_pack`。
 - [x] 新 Codex 会话可见性验收：`codex exec` 只读新会话返回 `version=0.3.2`、`has_container_validator_skill=true`、`has_container_infer_tool=true`、`has_docker_validation_plan_tool=true`、`has_proof_pack_tool=true`、`skill_count=13`、`mcp_count=8`、`pass=true`。
+
+## v0.3.3 开发与验收记录
+
+- [x] 新增 `cloversec-ctf-manual-quality` skill，作为手册质量、Hub 字段和完整 Flag 检查入口。
+- [x] 新增 `cloversec-ctf-batch-reporter` skill，作为批量状态、失败案例、确认请求和阶段通知入口。
+- [x] 新增 `cloversec_ctf_manual_quality.py`，输出 `manual_quality.json`、`manual_quality_report.md`、`xlsx_fields_patch.json`。
+- [x] 新增 `cloversec_ctf_audit.py`，覆盖归档预览、`manifest.lock.json`、人工确认、批量报告、失败案例库、阶段通知和 Codex warning 分类。
+- [x] `cloversec_ctf_hub.py` 新增 `draft` 和 `review-state`，输出 Hub 草稿、上传清单、截图清单、差异报告和审核状态。
+- [x] `cloversec_ctf_retag.py` 新增 `image-naming`，输出镜像命名计划和 retag 输入。
+- [x] `cloversec_ctf_search.py results-to-cases` 已增强，能写入赛事、年份、分类、题名、来源层级、缺失原因和人工确认原因。
+- [x] `cloversec_ctf_workflow.py` 新增 `visible-content-evidence`，支持导入用户确认后的页面可见结果。
+- [x] 8 个 MCP server 版本已更新到 `0.3.3`，新增手册质量、Hub 草稿、审核状态、镜像命名、归档预览、锁定、批量报告、失败案例、可见内容证据、确认请求、阶段通知、warning 分类等工具。
+- [x] 新增 `references/agent-roles.json`，记录 Research、Asset、Docker、Writeup、Review、Hub、Archive 角色分工和精确 skill/MCP ID。
+- [x] 本地单元测试已通过：`python3 -m unittest discover -s tests`，107 个测试通过。
+- [x] 发布前官方插件校验：`python3 /Users/d1a0y1bb/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/cloversec-ctf-forexample` 通过。
+- [x] 发布前真实样本工作流测试：公网样本 `/tmp/cloversec-v033-real-20260614120431` 和本地样本 `/tmp/cloversec-v033-local-20260614121235` 通过，记录见 `docs/validation/v0.3.3-automation-llm-validation.md`。
+- [x] 发布前真实 LLM 测试：CloudRouter `gpt-5.4-mini` 和 `gpt-5.5` 通过，第一轮 ID 暴露问题已修复，记录见 `docs/validation/v0.3.3-automation-llm-validation.md`。
+- [ ] `v0.3.3` Release 发布。
+- [ ] 本机 Codex 插件更新到 `0.3.3`。
+- [ ] 安装版真实测试和新会话可见性验收。
