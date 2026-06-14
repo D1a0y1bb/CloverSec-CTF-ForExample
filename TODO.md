@@ -268,5 +268,8 @@
 - [x] 发布前真实验证发现并修复：`container_inference.runtime.container_command` 误用 Dockerfile `CMD`，导致 `docker run` 覆盖镜像默认命令；已改为只记录 `dockerfile_cmd`，不作为 run 覆盖命令。
 - [x] 发布前真实验证发现并处理：CloudRouter `gpt-5.4-mini` 在长提示和 `max_tokens=900` 下返回 `finish_reason=length` 且 `content=null`；已用短 JSON 提示和更高输出 token 复测通过。
 - [x] v0.3.2 验证记录已写入 `docs/validation/v0.3.2-container-docker-llm-validation.md`。
-- [ ] v0.3.2 Release 发布。
-- [ ] 本机 Codex 插件更新到 `0.3.2` 后进行安装版真实测试。
+- [x] v0.3.2 Release 已发布：Git tag 指向 `76d458f`，GitHub Actions run `27486893719` 成功，Release 标题为 `v0.3.2`，资产包含 repo marketplace zip、plugin zip、tar.gz 和 release notes。
+- [x] 本机 Codex 插件已更新到 `0.3.2`：移除旧 plugin 和旧 marketplace 后重新添加 `D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.2`，cache 路径为 `/Users/d1a0y1bb/.codex/plugins/cache/cloversec-ctf/cloversec-ctf-forexample/0.3.2`。
+- [x] 安装版真实测试：cache manifest 为 `0.3.2`，实际 skills 目录为 13 个，`.mcp.json` 为 8 个 MCP server；安装版 `cloversec_ctf_container.py infer` 能识别临时 Dockerfile 为 `container_project` 并推荐 `run_probe`。
+- [x] 安装版 MCP 验收：workflow MCP serverInfo 为 `0.3.2`，工具数量 10，包含 `cloversec_ctf_container_infer`；docker MCP 包含 `cloversec_ctf_docker_validation_plan`；quality-runner MCP 包含 `cloversec_ctf_proof_pack`。
+- [x] 新 Codex 会话可见性验收：`codex exec` 只读新会话返回 `version=0.3.2`、`has_container_validator_skill=true`、`has_container_infer_tool=true`、`has_docker_validation_plan_tool=true`、`has_proof_pack_tool=true`、`skill_count=13`、`mcp_count=8`、`pass=true`。
