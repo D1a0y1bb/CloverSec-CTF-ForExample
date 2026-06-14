@@ -40,6 +40,39 @@ classification/
 reports/
 ```
 
+## 完整流程执行规则
+
+用户要求“完整处理”“全流程”“一路做完”时，按下列阶段推进，并在需要确认的地方停止等待：
+
+```text
+任务创建 -> 搜索候选 -> 来源证据 -> 去重筛选 -> 下载沙箱 -> 资源识别 -> 容器推断 -> 容器改造或附件检查 -> 手册字段 -> 归档预览 -> 质量检查 -> Hub 草稿 -> Hub 审核状态/retag -> 最终报告
+```
+
+默认先执行不改文件、不运行未知代码的阶段。下列动作必须等用户确认：
+
+- 把下载沙箱内容移入正式题目目录。
+- 生成或覆盖 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`check/check.sh`。
+- 执行 Docker build/run/save/load，尤其是 `--privileged`、capability、宿主目录挂载、内网访问。
+- Hub 页面上传附件、填写真实提交内容、最终提交。
+- 审核后根据 Hub 编号 retag、导出镜像 tar、回写最终归档。
+
+中断后优先读取 `workflow_state.json`，从未完成阶段继续，不把未验证阶段写成通过。
+
+## 资源分流规则
+
+下载后或用户提供目录后，必须先输出 `resource_classification.json`，再决定下一步：
+
+| 资源状态 | 下一步 | 质量结论 |
+|---|---|---|
+| 没有源码、没有附件，只有题名/WP 线索 | 写缺失项和人工入口，不进入构建 | `missing_source` / `needs_user_material` |
+| 只有附件 zip/tar | `cloversec-ctf-attachment-packager` | 附件题检查，不强行容器化 |
+| 有源码，没有 Dockerfile | `cloversec-ctf-build-dockerizer` 先出方案 | 可转容器候选，需后续验证 |
+| 有源码和上游 Dockerfile/compose | 仍进入 `cloversec-ctf-build-dockerizer` | 上游 Dockerfile/compose 只作为迁移输入 |
+| 只有镜像 tar | 授权后 inspect/hash，缺平台契约时写迁移计划 | 不能直接算平台交付 |
+| Pwn jail/kernel/eBPF/QEMU/privileged 题 | 静态推断和普通权限计划；高权限单独确认 | 记录运行条件和平台差异 |
+
+看到 Dockerfile、compose 或官方启动脚本时，不能直接把它们当作 CloverSec 平台最终交付。容器题最终必须经 `cloversec-ctf-build-dockerizer` 生成或校验 `/start.sh`、`/changeflag.sh`、`/flag`、端口、amd64、镜像 tar 和 xlsx 字段。
+
 ## 常用命令
 
 创建任务：
@@ -165,6 +198,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py class
 - apply 写入 `workflow_state.json`。
 - resume 跳过已完成的单题阶段。
 - 下载后或用户提供目录后，先输出 `resource_classification.json`，再决定进入 Dockerizer、附件题检查、手册或人工确认。
+- 现成 Dockerfile、compose 或官方启动脚本只能作为证据和迁移输入；不能跳过 `cloversec-ctf-build-dockerizer`。
+- 直接 Docker build/run 只能作为验证证据，不能替代 CloverSec 平台交付改造。
 - 去重只生成候选，默认不合并；只有人工把 `approved` 改成 `true` 才合并。
 - 外部附件先进入 `downloads_sandbox/`，安全预览通过后才能进入 `downloads_accepted/`。
 - 下载沙箱默认单文件上限 300MB、最多 5 次重定向，禁止 `file://`、`ftp://`、localhost、内网 IP 和路径穿越压缩包。

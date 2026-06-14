@@ -20,6 +20,14 @@ description: CloverSec CTF 容器题识别与验证分级 skill。用于从 Dock
 4. Docker 验证等级只给建议。真实执行 `build/run/logs/stop/save` 前必须有用户明确授权。
 5. `solve_verify` 只表示需要按手册验证解题，不自动执行未知 solver。
 
+## 平台交付规则
+
+- Dockerfile、compose、README 里的 `docker build/run` 命令只用于推断运行时和生成验证证据。
+- 上游 Dockerfile 或 compose 不能直接作为 CloverSec 平台最终交付。
+- 容器题最终必须进入 `cloversec-ctf-build-dockerizer`，生成或校验 `/start.sh`、`/changeflag.sh`、`/flag`、端口、amd64、镜像 tar 和 xlsx 字段。
+- `cloversec-ctf-docker` 的 build/run/probe 结果只能证明上游环境能否启动，不能替代 Dockerizer 的平台契约。
+- 需要 `--privileged`、capability、KVM、eBPF/tc、宿主目录挂载或内网访问时，必须写入 warnings，并等待单独确认。
+
 ## 常用命令
 
 ```bash
@@ -79,7 +87,14 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py \
     "confidence": "high",
     "ports": ["18080:80"],
     "recommended_validation_level": "run_probe",
+    "platform_contract_required": true,
+    "must_use_dockerizer": true,
     "requires_manual_review": false
+  },
+  "platform_delivery": {
+    "status": "requires_cloversec_contract",
+    "existing_docker_is_reference_only": true,
+    "final_delivery_skill": "cloversec-ctf-build-dockerizer"
   },
   "runtime": {
     "image_name": "cloversec/example:local",
@@ -98,3 +113,4 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py \
 - `warnings` 非空时，不直接执行 Docker，先把风险讲清楚。
 - 需要执行 `docker run`、上传 Hub、运行未知 solver、访问内网服务或读取浏览器凭证时，必须等用户确认。
 - 题目类型低置信度时，不把它强行当成容器题。
+- 只生成了 `container_inference.json` 或 `docker_validation_plan.json` 时，不能说平台交付已完成；还需要 Dockerizer 产物和质量检查证据。

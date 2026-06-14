@@ -65,6 +65,7 @@ def infer_container_project(
         ports=ports,
         warnings=warnings,
     )
+    platform_delivery = build_platform_delivery_policy(project_type)
     image_name = suggest_image_name(challenge_manifest, root)
     runtime = {
         "image_name": image_name,
@@ -90,8 +91,11 @@ def infer_container_project(
             "dockerfile": dockerfile_payload.get("relative_path", ""),
             "compose_files": [item.get("relative_path", "") for item in compose_payload.get("files", [])],
             "recommended_validation_level": validation_level,
+            "platform_contract_required": platform_delivery["requires_cloversec_contract"],
+            "must_use_dockerizer": platform_delivery["must_use_dockerizer"],
             "requires_manual_review": bool(warnings) or confidence != "high",
         },
+        "platform_delivery": platform_delivery,
         "dockerfile": dockerfile_payload,
         "compose": compose_payload,
         "runtime": runtime,
@@ -378,6 +382,8 @@ def build_warnings(
         warnings.append("Dockerfile has no FROM line")
     if project_type == "compose_project" and not compose_payload.get("services"):
         warnings.append("compose file detected but no services parsed")
+    if project_type in {"container_project", "compose_project"}:
+        warnings.append("existing Dockerfile/compose is migration input only; run cloversec-ctf-build-dockerizer before final delivery")
     if project_type == "non_container_or_unknown":
         warnings.append("no Dockerfile, compose file, image tar, or runtime instruction was found")
     if classification_summary.get("project_type") == "attachment_challenge" and project_type != "non_container_or_unknown":
@@ -400,8 +406,32 @@ def build_next_actions(validation_level: str, project_type: str, warnings: list[
     elif validation_level == "solve_verify":
         actions.append("only run solver verification after explicit user approval")
     if project_type in {"container_project", "compose_project"}:
-        actions.append("send runtime fields to cloversec-ctf-docker or cloversec-ctf-build-dockerizer")
+        actions.append("send runtime fields to cloversec-ctf-build-dockerizer for CloverSec platform contract conversion")
+        actions.append("use cloversec-ctf-docker only for approved build/run evidence, not as final delivery conversion")
     return dedupe(actions)
+
+
+def build_platform_delivery_policy(project_type: str) -> dict[str, Any]:
+    must_use_dockerizer = project_type in {"container_project", "compose_project", "container_instructions", "remote_service_challenge"}
+    requires_contract = must_use_dockerizer or project_type == "docker_image_delivery"
+    return {
+        "status": platform_delivery_status(project_type),
+        "requires_cloversec_contract": requires_contract,
+        "must_use_dockerizer": must_use_dockerizer,
+        "existing_docker_is_reference_only": project_type in {"container_project", "compose_project"},
+        "final_delivery_skill": "cloversec-ctf-build-dockerizer" if must_use_dockerizer else "",
+        "docker_validation_is_evidence_only": project_type in {"container_project", "compose_project", "docker_image_delivery"},
+    }
+
+
+def platform_delivery_status(project_type: str) -> str:
+    if project_type in {"container_project", "compose_project"}:
+        return "requires_cloversec_contract"
+    if project_type in {"container_instructions", "remote_service_challenge"}:
+        return "needs_platform_delivery_plan"
+    if project_type == "docker_image_delivery":
+        return "needs_contract_review"
+    return "not_container_delivery"
 
 
 def extract_port_mappings(text: str) -> list[str]:

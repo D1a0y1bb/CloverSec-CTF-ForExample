@@ -39,6 +39,10 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
 
         self.assertEqual(payload["summary"]["project_type"], "container_project")
         self.assertEqual(payload["summary"]["recommended_validation_level"], "run_probe")
+        self.assertTrue(payload["summary"]["platform_contract_required"])
+        self.assertTrue(payload["summary"]["must_use_dockerizer"])
+        self.assertTrue(payload["platform_delivery"]["existing_docker_is_reference_only"])
+        self.assertIn("cloversec-ctf-build-dockerizer", " ".join(payload["next_actions"]))
         self.assertIn("18080:8080", payload["summary"]["ports"])
         self.assertEqual(payload["dockerfile"]["base_images"], ["python:3.12-alpine"])
         self.assertIn("http://127.0.0.1:18080/", payload["runtime"]["probe_urls"])

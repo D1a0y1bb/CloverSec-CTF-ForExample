@@ -28,6 +28,9 @@ class ResourceClassificationTests(unittest.TestCase):
 
         self.assertEqual(payload["root_classification"]["project_type"], "compose_project")
         self.assertEqual(payload["root_classification"]["recommended_next_skill"], "cloversec-ctf-build-dockerizer")
+        self.assertTrue(payload["root_classification"]["platform_delivery"]["must_use_dockerizer"])
+        self.assertTrue(payload["root_classification"]["platform_delivery"]["existing_docker_is_reference_only"])
+        self.assertIn("platform_conversion", {item["type"] for item in payload["recommendations"]})
         by_name = {item["name"]: item for item in payload["resources"]}
         self.assertEqual(by_name["docker-compose.yml"]["resource_type"], "compose_file")
         self.assertEqual(by_name["Dockerfile"]["resource_type"], "dockerfile")
@@ -94,6 +97,9 @@ class ResourceClassificationTests(unittest.TestCase):
         self.assertEqual(record["resource_type"], "docker_image_tar")
         self.assertEqual(record["recommended_next_skill"], "cloversec-ctf-docker")
         self.assertEqual(payload["root_classification"]["project_type"], "docker_image_delivery")
+        self.assertTrue(payload["root_classification"]["platform_delivery"]["requires_cloversec_contract"])
+        self.assertFalse(payload["root_classification"]["platform_delivery"]["must_use_dockerizer"])
+        self.assertIn("platform_contract_review", {item["type"] for item in payload["recommendations"]})
 
     def test_cli_writes_classification_json(self):
         with tempfile.TemporaryDirectory() as tmp:

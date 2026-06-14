@@ -264,6 +264,7 @@ def classify_root(resources: list[dict[str, Any]]) -> dict[str, Any]:
         "project_type": project_type,
         "confidence": confidence,
         "recommended_next_skill": next_skill,
+        "platform_delivery": build_platform_delivery_policy(project_type),
         "evidence": evidence,
     }
 
@@ -305,7 +306,68 @@ def build_recommendations(root_classification: dict[str, Any], resources: list[d
                 "reason": "docker image tar should be inspected for amd64, ports, logs, and hash before archive",
             }
         )
+    platform_delivery = (
+        root_classification.get("platform_delivery")
+        if isinstance(root_classification.get("platform_delivery"), dict)
+        else {}
+    )
+    if platform_delivery.get("must_use_dockerizer"):
+        recommendations.append(
+            {
+                "type": "platform_conversion",
+                "skill": "cloversec-ctf-build-dockerizer",
+                "reason": "container/source resources must be converted to the CloverSec platform contract before final delivery",
+            }
+        )
+    elif platform_delivery.get("requires_cloversec_contract") and root_classification.get("project_type") == "docker_image_delivery":
+        recommendations.append(
+            {
+                "type": "platform_contract_review",
+                "skill": "manual_review",
+                "reason": "image tar can be inspected, but source and platform contract evidence are still required before final archive",
+            }
+        )
+    elif root_classification.get("project_type") in {"empty", "writeup_only"}:
+        recommendations.append(
+            {
+                "type": "missing_material",
+                "skill": "manual_review",
+                "reason": "source or attachment material is required before this can be treated as a reproducible challenge",
+            }
+        )
     return recommendations
+
+
+def build_platform_delivery_policy(project_type: str) -> dict[str, Any]:
+    must_use_dockerizer = project_type in {
+        "compose_project",
+        "container_project",
+        "source_archive_bundle",
+        "source_project",
+    }
+    requires_contract = must_use_dockerizer or project_type == "docker_image_delivery"
+    return {
+        "requires_cloversec_contract": requires_contract,
+        "must_use_dockerizer": must_use_dockerizer,
+        "existing_docker_is_reference_only": project_type in {"compose_project", "container_project"},
+        "attachment_only": project_type == "attachment_challenge",
+        "writeup_only": project_type == "writeup_only",
+        "status": platform_delivery_status(project_type),
+    }
+
+
+def platform_delivery_status(project_type: str) -> str:
+    if project_type in {"compose_project", "container_project"}:
+        return "docker_reference_needs_platform_conversion"
+    if project_type in {"source_archive_bundle", "source_project"}:
+        return "source_needs_platform_conversion"
+    if project_type == "docker_image_delivery":
+        return "image_tar_needs_contract_review"
+    if project_type == "attachment_challenge":
+        return "attachment_packaging"
+    if project_type in {"empty", "writeup_only"}:
+        return "needs_user_material"
+    return "manual_review"
 
 
 def build_warnings(resources: list[dict[str, Any]], file_count: int, max_files: int) -> list[str]:

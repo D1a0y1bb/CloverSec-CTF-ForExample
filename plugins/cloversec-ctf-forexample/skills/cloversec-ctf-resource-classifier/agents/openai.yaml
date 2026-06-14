@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Resource Classifier"
   short_description: "识别题目资源类型并推荐下一步 skill"
-  default_prompt: "使用 $cloversec-ctf-resource-classifier 扫描本地题目资源目录，输出 resource_classification.json，并推荐下一步 skill。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-resource-classifier、cloversec_ctf_resource_classify。"
+  default_prompt: "使用 $cloversec-ctf-resource-classifier 扫描本地题目资源目录，输出 resource_classification.json，并推荐下一步 skill。没有源码/附件时写缺失项；附件题走 cloversec-ctf-attachment-packager；源码题、Dockerfile、compose、source archive 都必须推荐 cloversec-ctf-build-dockerizer；Dockerfile/compose 只能作为参考，不能直接当 CloverSec 平台最终交付。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-resource-classifier、cloversec_ctf_resource_classify。"

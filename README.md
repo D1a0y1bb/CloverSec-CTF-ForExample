@@ -21,6 +21,8 @@
   <a href="#overview">Overview</a> ·
   <a href="#amazing-demo">Amazing Demo</a> ·
   <a href="#quick-start">Quick Start</a> ·
+  <a href="#full-workflow">Full Workflow</a> ·
+  <a href="#resource-handling">Resource Handling</a> ·
   <a href="#usage">Usage</a> ·
   <a href="#workflow">Workflow</a> ·
   <a href="#capabilities">Capabilities</a> ·
@@ -113,6 +115,80 @@ codex plugin add cloversec-ctf-forexample@cloversec-ctf
 | Chrome 登录 Hub 平台 | Hub 辅助填写需要 | 插件只使用当前浏览器页面，不保存密码、Cookie、token |
 | 题目目录或清单 | 推荐 | 可以是 `ctf_case.json`、`ctf_cases.jsonl`、xlsx、zip 或 URL |
 | 人工入口线索 | 可选 | 冷门比赛、网盘失效、中文站收录差时会很有用 |
+
+## Full Workflow
+
+完整跑完一批题目时，推荐按“先预览、再确认、再执行”的方式使用。你可以直接在 Codex 新会话里这样下任务：
+
+```text
+使用 CloverSec CTF For Example，帮我完整处理 2026 年公开 CTF 题目 10 道：Web 2、Misc 3、Crypto 3、Pwn 2。
+要求：
+1. 先创建批量工作目录和 workflow_state.json。
+2. 收集候选题、来源证据、writeup、附件和源码线索。
+3. 只把来源明确、年份和分类能确认的题目写入 ctf_cases.jsonl。
+4. 下载材料先进 downloads_sandbox，做 hash、大小、压缩包预览和风险检查。
+5. 对每道题生成 resource_classification.json 和 container_inference.json。
+6. 容器题必须经 cloversec-ctf-build-dockerizer 生成 CloverSec 平台交付方案，看到上游 Dockerfile 也不能直接当最终交付。
+7. 附件题走 attachment-packager，不强行容器化。
+8. 生成手册、Hub 字段、xlsx 字段、归档目录、质量检查、Hub 草稿和最终报告。
+9. Docker build/run、Hub 最终提交、镜像 retag 前都要停下等我确认。
+```
+
+更稳妥的分阶段方式如下：
+
+| 阶段 | 你可以这样说 | 常见产物 |
+| --- | --- | --- |
+| 任务创建 | `创建 2026 年 10 道 CTF 题目的批量任务，先 dry-run` | `workflow_state.json`、`task_plan.json` |
+| 题目收集 | `开始收集候选题和证据，不下载正式附件` | `search_results.json`、`ctf_cases.jsonl`、`evidence/` |
+| 材料整理 | `根据 ctf_cases.jsonl 下载源码、附件和 WP 到沙箱` | `downloads_sandbox/`、`asset_inventory.json` |
+| 资源识别 | `对每道题生成 resource_classification.json` | `classification/` |
+| 容器判断 | `生成 container_inference.json 和 Docker 验证计划，不执行 Docker` | `container_inference.json`、`docker_validation_plan.json` |
+| 容器改造 | `对容器题生成 CloverSec 平台交付方案，等我 OK 后再写文件` | `Dockerfile`、`start.sh`、`changeflag.sh`、`flag` |
+| 附件题处理 | `处理非容器附件题，检查 zip/tar 和路径风险` | `attachment_manifest.json` |
+| 手册字段 | `生成手册、Hub 字段和 xlsx 字段，完整 Flag 写入内部字段` | `manual_filled_draft.md`、`hub_fields.json`、`xlsx_fields.json` |
+| 归档质检 | `生成归档目录、proof 包和质量检查报告` | `archive/`、`quality_review.json`、`proof/` |
+| Hub 准备 | `生成 Hub 草稿和 Chrome 填表计划，最终提交前停止` | `hub_draft.json`、`hub_chrome_plan.json` |
+| 最终交付 | `生成最终报告、archive.xlsx 和语雀表` | `final_report.md`、`archive.xlsx`、`yuque_table.md` |
+
+`workflow_state.json` 是批处理状态文件。中断后可以继续说：
+
+```text
+继续这个 runs/xxxxxxxxx 工作目录，从 workflow_state.json 里未完成的阶段继续处理。
+```
+
+需要明确授权的动作：
+
+| 动作 | 原因 |
+| --- | --- |
+| 执行未知 Docker 镜像或题目脚本 | 可能占用端口、拉依赖、访问网络或需要高权限 |
+| 生成或覆盖 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag` | 会改变平台交付目录 |
+| `docker run --privileged`、挂载宿主目录、访问内网 | 风险更高，需要单独确认 |
+| Hub 页面上传附件和最终提交 | 最终提交必须人工判断 |
+| 审核后 retag 和导出镜像 tar | 需要真实 Hub 编号和镜像命名确认 |
+
+插件能把流程尽量自动化，但它不能把缺失资料变成可复现题目。没有源码、附件下架、网盘失效、writeup 不完整时，会记录缺失原因和下一步人工入口，不会把题目写成已完成。
+
+## Resource Handling
+
+收集到的题目材料质量差异很大。插件按资源状态分流，不把所有题目都强行容器化。
+
+| 收集到的材料 | 插件会怎么处理 | 能达到的质量状态 |
+| --- | --- | --- |
+| 没有源码、没有附件，只有题名或 WP 线索 | 只做研究记录、来源证据、缺失项报告；标记 `missing_source` / `needs_user_material` | 不能构建，不能写成可复现 |
+| 只有附件 zip/tar，没有服务源码 | 走 `cloversec-ctf-attachment-packager`，检查解压、hash、目录、路径穿越和题目匹配 | 可做附件题归档；解题验证取决于 WP 和 Flag 证据 |
+| 有源码，没有 Dockerfile | 走 `cloversec-ctf-resource-classifier` 和 `cloversec-ctf-build-dockerizer`；先生成平台交付方案，确认后生成 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag` | 能转成容器题候选；必须经过 build/run/probe 或人工验证 |
+| 有源码和上游 Dockerfile/compose | 上游 Dockerfile/compose 只作为证据和迁移输入；仍必须走 `cloversec-ctf-build-dockerizer` 改造成 CloverSec 平台契约 | 通过契约校验和 Docker 验证后，才算平台交付件 |
+| 只有上游镜像 tar | 授权后可以 load/inspect/hash；若没有源码或平台启动契约，需要生成迁移计划或人工提供材料 | 只能证明镜像存在，不能直接算可交付 |
+| 纯附件题，例如 Crypto/Misc/Forensics | 不走 Dockerizer；走附件检查、手册、归档和质量检查 | 符合附件题归档后可交付 |
+| Pwn jail、kernel、eBPF、QEMU、需要 privileged 的题 | 先做静态推断和普通权限验证计划；`--privileged`、capability、KVM 等必须单独确认 | 记录平台差异和运行条件，不能默认写成通过 |
+
+关键规则：
+
+- 看到 `Dockerfile` 不代表它符合 CloverSec 平台。
+- 上游 `docker-compose.yml` 不作为最终平台交付物。
+- 直接 `docker build/run` 只能作为验证证据，不能替代平台改造。
+- 容器题最终必须符合 `/start.sh`、`/changeflag.sh`、`/flag`、端口、amd64、镜像 tar 和 xlsx 字段要求。
+- 不可复现的题目要明确写 `未验证`、`缺源码`、`缺附件`、`缺运行证据`，不能为了凑数量写成完成。
 
 ## Usage
 
@@ -223,6 +299,8 @@ environment.json
 docker_artifacts.json
 xlsx_fields.json
 ```
+
+如果题目目录里已经有 Dockerfile、compose 或官方启动脚本，也要先让 Dockerizer 做平台迁移方案。原始文件可以用于判断技术栈、端口和启动方式，但最终交付仍要生成并验证 CloverSec 平台契约文件。
 
 如果你明确授权执行 Docker 验证，插件可以通过 `cloversec-ctf-docker` 记录 build、run、logs、stop、save、load、inspect、amd64 校验、端口、hash 和失败证据。
 

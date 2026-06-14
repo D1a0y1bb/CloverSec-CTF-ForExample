@@ -293,3 +293,13 @@
 - [x] `v0.3.3` Release 发布：GitHub Actions 成功，Release 标题为 `v0.3.3`，资产包含 repo marketplace zip、plugin zip、tar.gz 和 release notes。
 - [x] 本机 Codex 插件已更新到 `0.3.3`：重新添加 `D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.3` 后安装，cache 路径为 `/Users/d1a0y1bb/.codex/plugins/cache/cloversec-ctf/cloversec-ctf-forexample/0.3.3`。
 - [x] 安装版真实测试和新会话可见性验收：安装版 manifest 为 `0.3.3`、15 个 skills、8 个 MCP server；安装版脚本保留完整 Flag、Hub 不自动提交；`codex exec` 新会话返回 `pass=true`。
+
+## 使用质量问题与处理记录
+
+- [x] README 已增加完整全流程使用方法：给出一条可直接复制的批量任务提示、分阶段执行方式、`workflow_state.json` 继续处理方式和需要人工确认的动作。
+- [x] README 已增加资源状态矩阵：无源码/无附件、只有附件、源码无 Dockerfile、源码带 Dockerfile/compose、只有镜像 tar、纯附件题、需要 privileged 的题分别怎么处理。
+- [x] 插件浅层提示已加入平台契约规则：发现 Dockerfile/compose 只能作为参考，容器题必须经 `cloversec-ctf-build-dockerizer` 改造成 CloverSec 平台契约。
+- [x] `cloversec-ctf-workflow-orchestrator` 已增加完整流程执行规则和资源分流规则，避免批量流程在看到上游 Dockerfile 后直接跳过 Dockerizer。
+- [x] `cloversec-ctf-resource-classifier` 已增加资源分流说明，并在 `resource_classification.json` 写入机器可读的 `platform_delivery` 字段。
+- [x] `cloversec-ctf-container-validator` 已增加平台交付规则，并在 `container_inference.json` 写入 `platform_contract_required`、`must_use_dockerizer` 和 `platform_delivery`。
+- [x] 容器验证输出已明确：Docker build/run/probe 只是证据，不替代 CloverSec 平台交付改造；最终交付仍需要 Dockerizer 产物和质量检查。
