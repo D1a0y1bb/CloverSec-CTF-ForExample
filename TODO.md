@@ -225,6 +225,8 @@
 - [x] 发布前真实 LLM 测试已完成：CloudRouter `/v1/models` 和 `/v1/chat/completions` 可用，`gpt-5.4-mini` 最终通过 v0.3.0 流程短 JSON 验收。
 - [x] 发布前真实 LLM 测试暴露的问题已记录并处理：900 token 长 JSON 第一次截断；第二次模型把 `json_mitigation` 写成布尔值；已把 workflow skill 输出约束改为短 JSON 和字符串枚举后复测通过。
 - [x] 发布前真实公网小样本测试：已用公开赛事执行 workflow init、strategy、search-plus、source-evidence、dedupe、download-sandbox。
-- [ ] `v0.3.0` Release 发布。
-- [ ] 本机 Codex 插件更新到 `0.3.0`。
-- [ ] 安装后真实测试：确认新会话能发现 11 个 skills 和 8 个 MCP server，`cloversec-ctf-workflow` 能正常初始化和列出工具。
+- [x] `v0.3.0` Release 已发布：Git tag 指向 `164387f`，GitHub Actions run `27484924491` 成功，Release 资产包含 repo marketplace zip、plugin zip、tar.gz 和 release notes。
+- [x] 本机 Codex 插件已更新到 `0.3.0`：重新添加 `D1a0y1bb/CloverSec-CTF-ForExample --ref v0.3.0` marketplace 后安装，cache 路径为 `/Users/d1a0y1bb/.codex/plugins/cache/cloversec-ctf/cloversec-ctf-forexample/0.3.0`。
+- [x] 安装后真实测试完成：cache manifest 为 `0.3.0`，可见 11 个 skills 和 8 个 MCP server；安装版 `cloversec_ctf_workflow.py` 能初始化任务、生成搜索策略和 dry-run 状态；安装版 `cloversec-ctf-workflow` MCP stdio 可列出 8 个工具。
+- [x] 新 Codex 会话可见性验收完成：`codex exec` 只读新会话返回 `version=0.3.0`、`has_workflow_skill=true`、`has_workflow_mcp=true`、`skill_count=11`、`mcp_count=8`、`pass=true`。
+- [x] 新会话测试附带 warning 已确认非本插件阻断项：输出中仍有其他已安装插件的 `interface.icon_*` 和 `ngs-analysis defaultPrompt` warning，以及 shutdown 阶段某外部 MCP `Auth required` warning；CloverSec 插件本次未出现 defaultPrompt 数量或长度 warning，测试返回成功。
