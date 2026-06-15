@@ -422,6 +422,31 @@ class SearchEngineTests(unittest.TestCase):
         self.assertFalse(issues_by_title["2025-SUCTF个人wp"])
         self.assertFalse(issues_by_title["2025 SUCTF 官方WriteUp&Docker"])
 
+    def test_kubectf_is_not_treated_as_other_event(self):
+        result = search.normalize_result(
+            provider="direct-url",
+            kind="challenge_metadata",
+            title="File Upload",
+            url="https://raw.githubusercontent.com/UofTCTF/uoftctf-2026-chals-public/main/fileupload/challenge.yml",
+            summary="Challenge metadata type kubectf",
+            source_type="direct_url",
+            confidence="medium",
+            metadata={
+                "challenge_metadata": {
+                    "name": "File Upload",
+                    "category": "Misc",
+                    "type": "kubectf",
+                    "files": ["dist/fileupload.zip"],
+                    "question_type": "容器题",
+                }
+            },
+        )
+
+        enriched = search.enrich_results([result], query="UofTCTF 2026 File Upload", years=[2026])[0]
+
+        self.assertEqual(enriched["layer"], "confirmed_challenge")
+        self.assertFalse(any("kubectf" in item for item in enriched["quality_issues"]))
+
     def test_broad_tutorial_pages_are_noise(self):
         payload = search.import_agent_search_results(
             [
@@ -773,6 +798,127 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(full["summary"]["direct_urls_previewed"], 1)
         self.assertTrue(any(item["provider"] == "direct-url" for item in full["results"]))
         self.assertLessEqual(len(payload["top_results"]), search_plus.DEFAULT_COMPACT_RESULTS)
+
+    def test_search_plus_challenge_metadata_becomes_case(self):
+        base_manifest = {
+            "query": "UofTCTF 2026 File Upload",
+            "years": [2026],
+            "generated_at": search.utc_now(),
+            "sources": ["seeds"],
+            "results": [],
+            "recall_recovery": {"status": "not_needed", "should_run": False},
+            "summary": {"total_results": 0, "errors": 0},
+            "errors": [],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            challenge_dir = root / "UofTCTF" / "uoftctf-2026-chals-public" / "fileupload"
+            (challenge_dir / "dist").mkdir(parents=True)
+            (challenge_dir / "dist" / "fileupload.zip").write_bytes(b"zip bytes")
+            (challenge_dir / "challenge.yml").write_text(
+                "\n".join(
+                    [
+                        "name: File Upload",
+                        "category: Misc",
+                        "type: kubectf",
+                        "value: 500",
+                        "flag: UofTCTF{demo_flag}",
+                        "files:",
+                        "  - dist/fileupload.zip",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with LocalServer(root) as server:
+                with mock.patch.object(search, "discover", return_value=base_manifest):
+                    payload = search_plus.search_plus(
+                        "UofTCTF 2026 File Upload",
+                        years=[2026],
+                        sources=["seeds"],
+                        direct_urls=[f"{server.url}/UofTCTF/uoftctf-2026-chals-public/fileupload/challenge.yml"],
+                        compact=False,
+                    )
+
+        top = payload["results"][0]
+        self.assertEqual(top["kind"], "challenge_metadata")
+        self.assertEqual(top["layer"], "confirmed_challenge")
+        self.assertEqual(top["title"], "File Upload")
+        cases = search.results_to_cases(payload)
+
+        self.assertEqual(cases[0]["metadata"]["题目名称"], "File Upload")
+        self.assertEqual(cases[0]["metadata"]["分类"], "Misc")
+        self.assertEqual(cases[0]["metadata"]["题目类型"], "容器题")
+        self.assertEqual(cases[0]["metadata"]["Flag"], "UofTCTF{demo_flag}")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "已发现官方题目配置和附件候选，待下载检查")
+        self.assertTrue(
+            any(
+                item["source_url"].endswith("/challenges/fileupload/dist/fileupload.zip")
+                or item["source_url"].endswith("/UofTCTF/uoftctf-2026-chals-public/fileupload/dist/fileupload.zip")
+                for item in cases[0]["asset_collection"]["attachment_candidates"]
+            )
+        )
+
+    def test_search_plus_github_repo_accepts_url_and_path_args(self):
+        with mock.patch.object(search, "github_release_assets", return_value=[]) as release_assets:
+            with mock.patch.object(search, "github_tree_files", return_value=[]) as tree_files:
+                payload = search_plus.collect_github_repo_sources(
+                    [{"url": "https://github.com/UofTCTF/uoftctf-2026-chals-public", "path": "fileupload"}],
+                    limit=5,
+                )
+
+        self.assertEqual(payload["summary"]["repositories"], 1)
+        release_assets.assert_called_once_with("UofTCTF/uoftctf-2026-chals-public", limit=5)
+        tree_files.assert_called_once_with(
+            "UofTCTF/uoftctf-2026-chals-public",
+            ref="main",
+            path_prefix="fileupload",
+            limit=5,
+        )
+
+    def test_search_plus_github_tree_parses_challenge_metadata(self):
+        tree_item = search.normalize_result(
+            provider="github-tree",
+            kind="raw_file",
+            title="UofTCTF/uoftctf-2026-chals-public/fileupload/challenge.yml",
+            url="https://github.com/UofTCTF/uoftctf-2026-chals-public/blob/main/fileupload/challenge.yml",
+            summary="GitHub repository file from recursive tree",
+            source_type="github",
+            confidence="high",
+            metadata={
+                "repository": "UofTCTF/uoftctf-2026-chals-public",
+                "ref": "main",
+                "path": "fileupload/challenge.yml",
+                "raw_url": "https://raw.githubusercontent.com/UofTCTF/uoftctf-2026-chals-public/main/fileupload/challenge.yml",
+            },
+        )
+        fetched = {
+            "status": 200,
+            "content_type": "text/plain; charset=utf-8",
+            "size": 110,
+            "truncated": False,
+            "sha256": "demo",
+            "title": "",
+            "text": "\n".join(
+                [
+                    "name: File Upload",
+                    "category: Misc",
+                    "type: kubectf",
+                    "files:",
+                    "  - dist/fileupload.zip",
+                ]
+            ),
+        }
+        with mock.patch.object(search, "github_release_assets", return_value=[]):
+            with mock.patch.object(search, "github_tree_files", return_value=[tree_item]):
+                with mock.patch.object(search, "fetch_url", return_value=fetched):
+                    payload = search_plus.collect_github_repo_sources(
+                        [{"url": "https://github.com/UofTCTF/uoftctf-2026-chals-public", "path": "fileupload"}],
+                        limit=5,
+                    )
+
+        self.assertEqual(payload["results"][0]["kind"], "challenge_metadata")
+        self.assertEqual(payload["results"][0]["title"], "File Upload")
+        self.assertEqual(payload["results"][0]["metadata"]["challenge_metadata"]["category"], "Misc")
 
     def test_mcp_tools_list_and_discover(self):
         process = subprocess.Popen(

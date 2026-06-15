@@ -18,13 +18,13 @@ from html import unescape
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote, urlencode, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.5.2 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.5.3 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -34,6 +34,7 @@ GENERIC_EVENT_QUERY_TERMS = {
     "challenges",
     "archive",
     "archives",
+    "kubectf",
     "web",
     "pwn",
     "misc",
@@ -302,6 +303,16 @@ DIRECT_ASSET_EXTENSIONS = {
     ".webp",
 }
 
+CHALLENGE_METADATA_NAMES = {
+    "challenge.yml",
+    "challenge.yaml",
+    "challenge.json",
+    "ctfd.yml",
+    "ctfd.yaml",
+}
+
+CHALLENGE_METADATA_SUFFIXES = {".yml", ".yaml", ".json"}
+
 
 def parse_github_repo(value: str) -> tuple[str, str]:
     cleaned = value.strip()
@@ -496,6 +507,250 @@ def download_github_tree(
         "issues": issues,
         "summary": {"downloaded": len(downloads), "issues": len(issues)},
     }
+
+
+def parse_simple_challenge_metadata(text: str, url: str = "") -> dict[str, Any]:
+    source = str(text or "")
+    if not source.strip():
+        return {}
+    parsed_json = parse_challenge_json(source)
+    if parsed_json:
+        return parsed_json
+
+    name = yaml_scalar(source, "name") or yaml_scalar(source, "title")
+    category = yaml_scalar(source, "category") or yaml_scalar(source, "categories")
+    flag = yaml_scalar(source, "flag")
+    challenge_type = yaml_scalar(source, "type") or yaml_scalar(source, "challenge_type")
+    value = yaml_scalar(source, "value") or yaml_scalar(source, "points") or yaml_scalar(source, "score")
+    files = extract_metadata_files(source)
+    docker_hints = extract_docker_hints(source)
+    if not any([name, category, flag, files, challenge_type, docker_hints]):
+        return {}
+
+    return compact_metadata(
+        {
+            "name": name,
+            "category": display_category(category),
+            "raw_category": category,
+            "flag": flag,
+            "type": challenge_type,
+            "value": value,
+            "files": files,
+            "docker_hints": docker_hints,
+            "question_type": infer_question_type_from_metadata(challenge_type, files, docker_hints, source, url),
+            "flag_type": "静态" if flag else "",
+        }
+    )
+
+
+def parse_challenge_json(source: str) -> dict[str, Any]:
+    stripped = source.strip()
+    if not stripped.startswith("{"):
+        return {}
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    name = str(payload.get("name") or payload.get("title") or "").strip()
+    category = str(payload.get("category") or payload.get("categories") or "").strip()
+    flag = str(payload.get("flag") or "").strip()
+    files = payload.get("files") or payload.get("attachments") or []
+    if isinstance(files, str):
+        files = [files]
+    if not isinstance(files, list):
+        files = []
+    files = [str(item).strip() for item in files if str(item).strip()]
+    challenge_type = str(payload.get("type") or payload.get("challenge_type") or "").strip()
+    docker_hints = extract_docker_hints(json.dumps(payload, ensure_ascii=False))
+    if not any([name, category, flag, files, challenge_type, docker_hints]):
+        return {}
+    return compact_metadata(
+        {
+            "name": name,
+            "category": display_category(category),
+            "raw_category": category,
+            "flag": flag,
+            "type": challenge_type,
+            "value": str(payload.get("value") or payload.get("points") or payload.get("score") or "").strip(),
+            "files": files,
+            "docker_hints": docker_hints,
+            "question_type": infer_question_type_from_metadata(challenge_type, files, docker_hints, source, ""),
+            "flag_type": "静态" if flag else "",
+        }
+    )
+
+
+def yaml_scalar(source: str, key: str) -> str:
+    pattern = re.compile(rf"(?im)^\s*{re.escape(key)}\s*:\s*(.*?)\s*$")
+    match = pattern.search(source)
+    if not match:
+        return ""
+    value = match.group(1).strip()
+    value = re.sub(r"\s+#.*$", "", value).strip()
+    if value in {"|", ">"}:
+        return ""
+    return value.strip("\"'")
+
+
+def extract_metadata_files(source: str) -> list[str]:
+    files: list[str] = []
+    for block_key in ["files", "attachments", "distfiles"]:
+        block = re.search(rf"(?ims)^\s*{block_key}\s*:\s*\n(?P<body>(?:\s+[-\w./\"':]+\n?)+)", source)
+        if block:
+            for line in block.group("body").splitlines():
+                value = re.sub(r"^\s*-\s*", "", line).strip().strip("\"'")
+                if value and not value.endswith(":") and "." in value:
+                    files.append(value)
+    for match in re.finditer(
+        r"(?i)(?:^|[\s\"'])(?P<path>[A-Za-z0-9_.~/-]+\.(?:zip|7z|rar|tar|tgz|gz|xz|bz2|pcap|pcapng|png|jpg|jpeg|webp|pdf))(?:[\s\"']|$)",
+        source,
+    ):
+        files.append(match.group("path").strip())
+    output = []
+    seen = set()
+    for item in files:
+        cleaned = item.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        output.append(cleaned)
+    return output
+
+
+def extract_docker_hints(source: str) -> dict[str, Any]:
+    lowered = source.lower()
+    hints: dict[str, Any] = {}
+    if any(term in lowered for term in ["dockerfile", "docker-compose", "kubectf", "container", "image:"]):
+        hints["container_hint"] = True
+    ports = sorted(set(re.findall(r"(?im)\b(?:port|ports|containerPort|targetPort)\s*:\s*[\"']?(\d{2,5})", source)))
+    if ports:
+        hints["ports"] = ports
+    image = yaml_scalar(source, "image")
+    if image:
+        hints["image"] = image
+    command = yaml_scalar(source, "command")
+    if command:
+        hints["command"] = command
+    return hints
+
+
+def infer_question_type_from_metadata(
+    challenge_type: str,
+    files: list[str],
+    docker_hints: dict[str, Any],
+    source: str,
+    url: str,
+) -> str:
+    text = f"{challenge_type} {source} {url}".lower()
+    if docker_hints or any(term in text for term in ["docker", "kubectf", "container", "service", "compose"]):
+        return "容器题"
+    if files:
+        return "附件题"
+    return ""
+
+
+def compact_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    output = {}
+    for key, value in payload.items():
+        if value is None:
+            continue
+        if isinstance(value, str) and not value:
+            continue
+        if isinstance(value, (list, dict)) and not value:
+            continue
+        output[key] = value
+    return output
+
+
+def display_category(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    normalized = normalize_category_term(raw)
+    mapping = {
+        "web": "Web",
+        "pwn": "Pwn",
+        "reverse": "Reverse",
+        "crypto": "Crypto",
+        "misc": "Misc",
+        "forensics": "Forensics",
+        "ai": "AI",
+        "osint": "OSINT",
+        "mobile": "Mobile",
+        "iot": "IoT",
+        "blockchain": "Blockchain",
+    }
+    return mapping.get(normalized, raw[:40])
+
+
+def challenge_metadata_for_result(result: dict[str, Any]) -> dict[str, Any]:
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    challenge = metadata.get("challenge_metadata")
+    return challenge if isinstance(challenge, dict) else {}
+
+
+def challenge_metadata_text(result: dict[str, Any]) -> str:
+    metadata = challenge_metadata_for_result(result)
+    if not metadata:
+        return ""
+    parts = [
+        str(metadata.get("name", "")),
+        str(metadata.get("category", "")),
+        str(metadata.get("raw_category", "")),
+        str(metadata.get("type", "")),
+        " ".join(str(item) for item in metadata.get("files", []) if item),
+    ]
+    hints = metadata.get("docker_hints") if isinstance(metadata.get("docker_hints"), dict) else {}
+    parts.extend(str(value) for value in hints.values())
+    return " ".join(part for part in parts if part)
+
+
+def is_challenge_metadata_path(url: str, metadata: dict[str, Any] | None = None) -> bool:
+    data = metadata or {}
+    path = str(data.get("path") or urlparse(str(url or "")).path)
+    name = Path(path).name.lower()
+    stem = Path(path).stem.lower()
+    parent = Path(path).parent.name.lower()
+    if name in CHALLENGE_METADATA_NAMES:
+        return True
+    if Path(path).suffix.lower() in CHALLENGE_METADATA_SUFFIXES and parent and stem == parent:
+        return True
+    return False
+
+
+def metadata_attachment_candidates(result: dict[str, Any]) -> list[dict[str, Any]]:
+    metadata = challenge_metadata_for_result(result)
+    files = metadata.get("files") if isinstance(metadata.get("files"), list) else []
+    candidates = []
+    for item in files:
+        file_value = str(item or "").strip()
+        if not file_value:
+            continue
+        candidates.append(
+            {
+                "source_url": resolve_metadata_file_url(str(result.get("url") or ""), file_value),
+                "title": file_value,
+                "provider": "challenge-metadata",
+                "confidence": "medium",
+                "score": result.get("score", 0),
+                "kind": "metadata_file",
+            }
+        )
+    return candidates
+
+
+def resolve_metadata_file_url(base_url: str, file_value: str) -> str:
+    if file_value.startswith(("http://", "https://")):
+        return file_value
+    base = base_url
+    try:
+        if urlparse(base).netloc.lower() in {"github.com", "www.github.com"} and "/blob/" in urlparse(base).path:
+            base = github_blob_to_raw_url(base)
+    except ValueError:
+        pass
+    return urljoin(base, file_value)
 
 
 def preview_archive(path: str | Path, *, max_entries: int = 200) -> dict[str, Any]:
@@ -1132,6 +1387,7 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         category = infer_case_category(result)
         years = infer_case_years(result, manifest)
         event = infer_case_event(result, manifest)
+        challenge_metadata = challenge_metadata_for_result(result)
         issue_text = ";".join(str(item) for item in result.get("quality_issues", []) if item)
         missing_reason = missing_reason_for_result(result, category=category, event=event, years=years)
         material_profile = material_profile_for_result(result, layer=layer, missing_reason=missing_reason)
@@ -1143,6 +1399,7 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         )
         attachment_candidates = []
         writeup_candidates = []
+        attachment_candidates.extend(metadata_attachment_candidates(result))
         candidate = {
             "source_url": result.get("url", ""),
             "title": title,
@@ -1152,8 +1409,14 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         }
         if layer == "attachment_candidate" or looks_attachment_candidate_url(str(result.get("url") or "")):
             attachment_candidates.append(candidate)
+        elif challenge_metadata:
+            writeup_candidates.append(candidate)
         else:
             writeup_candidates.append(candidate)
+        case_title = infer_case_title(result)
+        question_type = str(challenge_metadata.get("question_type") or "未知")
+        flag_value = str(challenge_metadata.get("flag") or "")
+        flag_type = str(challenge_metadata.get("flag_type") or ("静态" if flag_value else "未知"))
         cases.append(
             {
                 "case_id": case_id,
@@ -1185,13 +1448,13 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                 "metadata": {
                     "赛事来源": event,
                     "题目来源": title,
-                    "名称": infer_case_title(result),
-                    "题目名称": infer_case_title(result),
+                    "名称": case_title,
+                    "题目名称": case_title,
                     "分类": category,
                     "年份": ",".join(years),
-                    "题目类型": "未知",
-                    "Flag类型": "未知",
-                    "Flag": "",
+                    "题目类型": question_type,
+                    "Flag类型": flag_type,
+                    "Flag": flag_value,
                     "材料状态": material_profile["material_status"],
                     "构建状态": "未开始",
                     "手册状态": "未开始",
@@ -1200,12 +1463,13 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                     "是否通过": "否",
                     "问题": material_profile["missing_reason"],
                 },
-                "flag": {"value": "", "type": "unknown", "sensitive": True},
+                "flag": {"value": flag_value, "type": flag_type if flag_value else "unknown", "sensitive": True},
                 "environment": {},
                 "docker_artifacts": {},
                 "attachments": [],
                 "writeup": {},
                 "hub_fields": {},
+                "challenge_metadata": challenge_metadata,
                 "review": {},
                 "archive": {},
                 "evidence": [
@@ -1248,6 +1512,7 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
     title = str(result.get("title") or "")
     provider = str(result.get("provider") or "")
     text = f"{url} {title} {provider}".lower()
+    challenge_metadata = challenge_metadata_for_result(result)
     is_direct_asset = looks_attachment_candidate_url(url)
     is_solver_repo = "github.com" in text and any(token in text for token in ["solver", "solve", "writeup", "wp", "solution", "exp"])
     is_platform = bool(result.get("lead_only")) or layer == "platform_lead"
@@ -1259,6 +1524,16 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
             "missing_reason": missing_reason or "当前免费源没有找到匹配年份、赛事和分类的可复现题目材料",
             "next_action": "需要 Agent 联网搜索、浏览器辅助搜索，或由用户提供平台页、附件、源码入口。",
             "requires_user_confirmation": True,
+        }
+    if challenge_metadata:
+        files = challenge_metadata.get("files") if isinstance(challenge_metadata.get("files"), list) else []
+        return {
+            "material_level": "official_challenge_metadata",
+            "material_status": "已发现官方题目配置和附件候选，待下载检查" if files else "已发现官方题目配置，待下载材料",
+            "reproducibility_status": "official_metadata_candidate",
+            "missing_reason": missing_reason,
+            "next_action": "按 metadata 下载附件或进入 Dockerizer 交接，不把 metadata 文件本身当成最终交付。",
+            "requires_user_confirmation": bool(missing_reason),
         }
     if is_direct_asset or layer == "attachment_candidate":
         return {
@@ -1343,6 +1618,10 @@ def search_gap_results(manifest: dict[str, Any], limit: int = 3) -> list[dict[st
 
 
 def infer_case_category(result: dict[str, Any]) -> str:
+    metadata = challenge_metadata_for_result(result)
+    category = str(metadata.get("category") or metadata.get("raw_category") or "").strip()
+    if category:
+        return display_category(category)
     haystack = f"{result.get('title', '')} {result.get('url', '')} {result.get('summary', '')}"
     categories = sorted(detect_categories(haystack))
     if not categories:
@@ -1383,6 +1662,9 @@ def infer_case_event(result: dict[str, Any], manifest: dict[str, Any]) -> str:
 
 
 def infer_case_title(result: dict[str, Any]) -> str:
+    metadata = challenge_metadata_for_result(result)
+    if str(metadata.get("name") or "").strip():
+        return str(metadata.get("name")).strip()[:120]
     title = str(result.get("title") or "").strip()
     title = re.sub(r"\s*[-|]\s*(Writeup|WP|题解|复现).*$", "", title, flags=re.I)
     return title[:120] or str(result.get("title") or "").strip()
@@ -1621,7 +1903,10 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
     summary = str(result.get("summary") or "")
     provider = str(result.get("provider") or "")
     kind = str(result.get("kind") or "")
-    haystack = f"{title} {url} {summary}".lower()
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    challenge_metadata = challenge_metadata_for_result(result)
+    metadata_path = is_challenge_metadata_path(url, metadata)
+    haystack = f"{title} {url} {summary} {challenge_metadata_text(result)}".lower()
     parsed = urlparse(url)
     domain = parsed.netloc.lower()
     score = 0
@@ -1682,7 +1967,15 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
             score -= 35
             issues.append(f"category mismatch: {', '.join(conflicting[:5])}")
 
-    if looks_attachment_candidate_url(url) or kind == "release_asset" or (kind == "raw_file" and any(term in haystack for term in ATTACHMENT_TERMS)):
+    if challenge_metadata or kind == "challenge_metadata" or metadata_path:
+        score += 70
+        reasons.append("official challenge metadata")
+        layer = "confirmed_challenge"
+    elif is_github_challenge_directory(result, profile):
+        score += 45
+        reasons.append("github challenge directory")
+        layer = "confirmed_challenge"
+    elif looks_attachment_candidate_url(url) or kind == "release_asset" or (kind == "raw_file" and any(term in haystack for term in ATTACHMENT_TERMS)):
         score += 30
         reasons.append("direct asset or release file")
         layer = "attachment_candidate"
@@ -1728,6 +2021,24 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
 def has_challenge_specific_evidence(haystack: str, profile: dict[str, Any]) -> bool:
     terms: set[str] = set(profile.get("query_specific_terms") or set())
     return bool(terms) and all(term in haystack for term in terms)
+
+
+def is_github_challenge_directory(result: dict[str, Any], profile: dict[str, Any]) -> bool:
+    provider = str(result.get("provider") or "")
+    url = str(result.get("url") or "")
+    title = str(result.get("title") or "")
+    summary = str(result.get("summary") or "")
+    parsed = urlparse(url)
+    if provider not in {"github", "github-tree", "agent-web-search", "browser-google", "browser-baidu", "direct-url"}:
+        return False
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        return False
+    if "/tree/" not in parsed.path:
+        return False
+    haystack = f"{title} {url} {summary}".lower()
+    terms: set[str] = set(profile.get("query_specific_terms") or set())
+    challenge_terms = {term for term in terms if term not in CATEGORY_TERMS and not re.fullmatch(r"20\d{2}", term)}
+    return bool(challenge_terms) and any(term in haystack for term in challenge_terms)
 
 
 def normalize_category_term(token: str) -> str:
@@ -1781,7 +2092,7 @@ def extract_event_tokens(text: str) -> list[str]:
     seen = set()
     for token in tokens:
         cleaned = token.strip("._-").lower()
-        if cleaned in GENERIC_CJK_EVENT_TERMS:
+        if cleaned in GENERIC_CJK_EVENT_TERMS or cleaned in GENERIC_EVENT_QUERY_TERMS:
             continue
         if not cleaned or cleaned in seen:
             continue
@@ -1924,7 +2235,7 @@ def is_text_content(content_type: str, url: str) -> bool:
     lowered = content_type.lower()
     if any(marker in lowered for marker in ["text/", "json", "xml", "html", "markdown"]):
         return True
-    return Path(urlparse(url).path).suffix.lower() in {".md", ".txt", ".json", ".html", ".htm", ".xml"}
+    return Path(urlparse(url).path).suffix.lower() in {".md", ".txt", ".json", ".html", ".htm", ".xml", ".yml", ".yaml"}
 
 
 def looks_direct_asset_url(url: str) -> bool:

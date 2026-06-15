@@ -149,6 +149,12 @@ def preview_direct_urls(urls: list[str], *, max_bytes: int) -> dict[str, Any]:
         )
         try:
             fetched = search.fetch_url(clean_url, max_bytes=max_bytes)
+            challenge_metadata = search.parse_simple_challenge_metadata(fetched.get("text", ""), clean_url)
+            if challenge_metadata:
+                result["kind"] = "challenge_metadata"
+                result["title"] = str(challenge_metadata.get("name") or title)
+                result["summary"] = "Direct challenge metadata URL supplied by user, Agent search, or browser visible result."
+                result["snippet"] = result["summary"]
             result["metadata"] = {
                 **result["metadata"],
                 "preview": {
@@ -160,6 +166,8 @@ def preview_direct_urls(urls: list[str], *, max_bytes: int) -> dict[str, Any]:
                     "title": fetched.get("title", ""),
                 },
             }
+            if challenge_metadata:
+                result["metadata"]["challenge_metadata"] = challenge_metadata
             preview.append(
                 {
                     "url": clean_url,
@@ -169,6 +177,7 @@ def preview_direct_urls(urls: list[str], *, max_bytes: int) -> dict[str, Any]:
                     "truncated": fetched.get("truncated", False),
                     "sha256": fetched.get("sha256", ""),
                     "asset_hint": search.looks_direct_asset_url(clean_url),
+                    "challenge_metadata": bool(challenge_metadata),
                 }
             )
         except Exception as exc:  # noqa: BLE001 - return structured provider failure.
@@ -183,7 +192,7 @@ def collect_github_repo_sources(repos: list[Any], *, limit: int) -> dict[str, An
     errors: list[dict[str, Any]] = []
     count = 0
     for item in repos:
-        repo = str(item.get("repo") if isinstance(item, dict) else item or "").strip()
+        repo = normalize_github_repo_arg(item)
         if not repo:
             continue
         count += 1
@@ -191,14 +200,73 @@ def collect_github_repo_sources(repos: list[Any], *, limit: int) -> dict[str, An
             results.extend(search.github_release_assets(repo, limit=limit))
         except Exception as exc:  # noqa: BLE001
             errors.append(search.provider_issue("github-release", exc))
-        if isinstance(item, dict) and item.get("tree"):
-            ref = str(item.get("ref") or "main")
-            path_prefix = str(item.get("path_prefix") or "")
+        if should_collect_github_tree(item):
+            ref = str(item.get("ref") or "main") if isinstance(item, dict) else "main"
+            path_prefix = github_repo_path_arg(item)
             try:
-                results.extend(search.github_tree_files(repo, ref=ref, path_prefix=path_prefix, limit=limit))
+                tree_results = search.github_tree_files(repo, ref=ref, path_prefix=path_prefix, limit=limit)
+                results.extend(enrich_github_tree_metadata(tree_results, max_bytes=DEFAULT_DIRECT_URL_PREVIEW_BYTES))
             except Exception as exc:  # noqa: BLE001
                 errors.append(search.provider_issue("github-tree", exc))
     return {"results": results, "errors": errors, "summary": {"repositories": count}}
+
+
+def normalize_github_repo_arg(item: Any) -> str:
+    raw = item
+    if isinstance(item, dict):
+        raw = item.get("repo") or item.get("repository") or item.get("url") or item.get("html_url")
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+    try:
+        owner, repo = search.parse_github_repo(value)
+    except ValueError:
+        return value
+    return f"{owner}/{repo}"
+
+
+def github_repo_path_arg(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("path_prefix") or item.get("path") or item.get("directory") or "").strip("/")
+
+
+def should_collect_github_tree(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    return bool(item.get("tree") or item.get("path_prefix") or item.get("path") or item.get("directory"))
+
+
+def enrich_github_tree_metadata(results: list[dict[str, Any]], *, max_bytes: int) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    for item in results:
+        current = dict(item)
+        metadata = dict(current.get("metadata") or {})
+        raw_url = str(metadata.get("raw_url") or "")
+        if raw_url and search.is_challenge_metadata_path(str(current.get("url") or ""), metadata):
+            try:
+                fetched = search.fetch_url(raw_url, max_bytes=max_bytes)
+                challenge_metadata = search.parse_simple_challenge_metadata(fetched.get("text", ""), raw_url)
+            except Exception as exc:  # noqa: BLE001
+                metadata["preview_error"] = str(exc)
+            else:
+                metadata["preview"] = {
+                    "status": fetched.get("status"),
+                    "content_type": fetched.get("content_type", ""),
+                    "size": fetched.get("size", 0),
+                    "truncated": fetched.get("truncated", False),
+                    "sha256": fetched.get("sha256", ""),
+                    "title": fetched.get("title", ""),
+                }
+                if challenge_metadata:
+                    metadata["challenge_metadata"] = challenge_metadata
+                    current["kind"] = "challenge_metadata"
+                    current["title"] = str(challenge_metadata.get("name") or current.get("title") or "")
+                    current["summary"] = "GitHub challenge metadata file from recursive tree."
+                    current["snippet"] = current["summary"]
+        current["metadata"] = metadata
+        output.append(current)
+    return output
 
 
 def build_decision_required(
