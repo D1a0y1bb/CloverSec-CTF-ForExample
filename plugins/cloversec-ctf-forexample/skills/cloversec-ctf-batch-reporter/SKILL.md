@@ -19,7 +19,7 @@ Use this skill for batch progress, handoff, and audit reports across many CTF ca
 - Generate human confirmation requests before risky stages: download, extract, Docker, Hub, retag, archive, final.
 - Record failures in `failure_cases.jsonl` with stage, category, message, evidence path, retryable flag, and suggested next action.
 - Generate short stage notifications for handoff.
-- For multi-agent work, use `references/agent-roles.json` and keep each role's input/output files explicit.
+- For multi-agent work, use `../../references/agent-roles.json` and keep each role's input/output files explicit.
 - Do not hide failed or unverified items.
 
 ## Tooling

@@ -88,4 +88,4 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py session-st
 
 ## 需要更多细节时再读取
 
-读取 `plugins/cloversec-ctf-forexample/references/hub-submission.md`，里面有页面字段、接口观察、目录结构、Chrome 执行约束和停止条件。
+读取 `../../references/hub-submission.md`，里面有页面字段、接口观察、目录结构、Chrome 执行约束和停止条件。

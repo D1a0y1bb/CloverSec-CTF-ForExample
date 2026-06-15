@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "0.5.1"
+VERSION = "0.5.2"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}

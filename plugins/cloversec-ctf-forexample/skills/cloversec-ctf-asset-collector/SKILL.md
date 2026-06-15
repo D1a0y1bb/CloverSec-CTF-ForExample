@@ -48,7 +48,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py downloa
 
 ## Read When Needed
 
-- Full command catalog, field list, validation, and stop conditions: `references/asset-collector.md`.
+- Full command catalog, field list, validation, and stop conditions: `../../references/asset-collector.md`.
 
 ## Stop Conditions
 

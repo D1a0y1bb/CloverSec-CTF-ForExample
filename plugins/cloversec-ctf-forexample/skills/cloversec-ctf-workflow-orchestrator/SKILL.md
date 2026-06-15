@@ -246,7 +246,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py class
 
 ## 多 Agent 分工
 
-大批量任务需要拆给多个 Codex 会话时，读取 `references/agent-roles.json`。角色固定为 Research、Asset、Docker、Writeup、Review、Hub、Archive，每个角色都有明确输入、输出、skill 和 MCP tool ID。输出 ID 时只能使用文件中的精确 ID。
+大批量任务需要拆给多个 Codex 会话时，读取 `../../references/agent-roles.json`。角色固定为 Research、Asset、Docker、Writeup、Review、Hub、Archive，每个角色都有明确输入、输出、skill 和 MCP tool ID。输出 ID 时只能使用文件中的精确 ID。
 
 ## 规则
 

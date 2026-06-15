@@ -116,7 +116,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search_plus.py \
 
 ## Read When Needed
 
-- Detailed scoring, source list, commands, and stop conditions: `references/research-intake.md`.
+- Detailed scoring, source list, commands, and stop conditions: `../../references/research-intake.md`.
 
 ## Stop Conditions
 

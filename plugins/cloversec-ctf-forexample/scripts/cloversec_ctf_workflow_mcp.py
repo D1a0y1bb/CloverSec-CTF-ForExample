@@ -14,7 +14,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_container as container
 
 
-SERVER_VERSION = "0.5.1"
+SERVER_VERSION = "0.5.2"
 
 PLATFORM_CONTRACT = {
     "schema_version": "cloversec.ctf.platform_contract.v1",
