@@ -15,7 +15,7 @@ import cloversec_ctf_search as search
 
 
 SCHEMA_VERSION = "cloversec.ctf.resource_classification.v1"
-VERSION = "0.4.3"
+VERSION = "0.5.0"
 
 TEXT_EXTENSIONS = {
     ".c",
@@ -90,6 +90,21 @@ DOCKER_HELPERS = {"start.sh", "changeflag.sh", "check.sh", ".dockerignore"}
 CTF_MANIFEST_FILES = {"challenge.yaml", "challenge.yml", "challenge.json", "ctfd.yaml", "ctfd.yml"}
 FLAG_FILES = {"flag", "flag.txt", "flag.md"}
 IGNORED_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
+SOLVER_HINTS = {"solve", "solver", "solution", "exp", "exploit", "writeup", "wp", "题解", "解题"}
+SERVICE_HINTS = {
+    "app",
+    "server",
+    "service",
+    "main",
+    "index",
+    "src",
+    "routes",
+    "views",
+    "templates",
+    "static",
+    "run",
+    "start",
+}
 
 
 def utc_now() -> str:
@@ -174,8 +189,8 @@ def classify_file(path: Path, root: Path, *, max_text_bytes: int, archive_previe
         resource_type, confidence, next_skill = "docker_helper", "medium", "cloversec-ctf-build-dockerizer"
         evidence.append("known docker helper filename")
     elif lower_name in CTF_MANIFEST_FILES:
-        resource_type, confidence, next_skill = "source_manifest", "high", "cloversec-ctf-build-dockerizer"
-        evidence.append("known CTF challenge manifest")
+        resource_type, confidence, next_skill = "ctf_manifest", "high", "cloversec-ctf-asset-collector"
+        evidence.append("known CTF challenge metadata manifest")
     elif lower_name in FLAG_FILES:
         resource_type, confidence, next_skill = "flag_file", "high", "cloversec-ctf-writeup-scaffold"
         evidence.append("known flag filename")
@@ -193,6 +208,9 @@ def classify_file(path: Path, root: Path, *, max_text_bytes: int, archive_previe
     elif lower_name in PACKAGE_FILES:
         resource_type, confidence, next_skill = "source_manifest", "high", "cloversec-ctf-build-dockerizer"
         evidence.append("known source/package manifest")
+    elif suffix in SOURCE_EXTENSIONS and looks_solver_source(path, root, text_sample):
+        resource_type, confidence, next_skill = "solver_file", "high", "cloversec-ctf-writeup-scaffold"
+        evidence.append(f"solver/writeup source file {suffix}")
     elif suffix in SOURCE_EXTENSIONS:
         resource_type, confidence, next_skill = "source_file", "medium", "cloversec-ctf-build-dockerizer"
         evidence.append(f"source extension {suffix}")
@@ -253,9 +271,21 @@ def classify_root(resources: list[dict[str, Any]]) -> dict[str, Any]:
     elif types.get("source_archive"):
         project_type, confidence, next_skill = "source_archive_bundle", "high", "cloversec-ctf-build-dockerizer"
         evidence.append("source archive found")
-    elif types.get("source_manifest") or types.get("source_file", 0) >= 2:
+    elif types.get("source_manifest") or has_service_source_bundle(resources, types):
         project_type, confidence, next_skill = "source_project", "medium", "cloversec-ctf-build-dockerizer"
         evidence.append("source files or package manifests found")
+    elif types.get("ctf_manifest") and only_metadata_solver_or_notes(types):
+        project_type, confidence, next_skill = "challenge_metadata_bundle", "medium", "cloversec-ctf-asset-collector"
+        evidence.append("CTF metadata manifest found without service source or attachment")
+    elif types.get("solver_file") and only_metadata_solver_or_notes(types):
+        project_type, confidence, next_skill = "solver_or_writeup_bundle", "medium", "cloversec-ctf-writeup-scaffold"
+        evidence.append("solver/writeup material found without original challenge resources")
+    elif types.get("metadata_archive") and only_metadata_solver_or_notes(types):
+        project_type, confidence, next_skill = "challenge_metadata_bundle", "medium", "cloversec-ctf-asset-collector"
+        evidence.append("CTF metadata archive found without service source or attachment")
+    elif types.get("writeup_archive") and only_metadata_solver_or_notes(types):
+        project_type, confidence, next_skill = "solver_or_writeup_bundle", "medium", "cloversec-ctf-writeup-scaffold"
+        evidence.append("writeup or solver archive found without original challenge resources")
     elif types.get("attachment_archive") or types.get("binary") or types.get("pcap") or types.get("database_dump"):
         project_type, confidence, next_skill = "attachment_challenge", "medium", "cloversec-ctf-attachment-packager"
         evidence.append("attachment-oriented resources found")
@@ -333,12 +363,12 @@ def build_recommendations(root_classification: dict[str, Any], resources: list[d
                 "reason": "image tar can be inspected, but source and platform contract evidence are still required before final archive",
             }
         )
-    elif root_classification.get("project_type") in {"empty", "writeup_only"}:
+    elif root_classification.get("project_type") in {"empty", "writeup_only", "challenge_metadata_bundle", "solver_or_writeup_bundle"}:
         recommendations.append(
             {
                 "type": "missing_material",
                 "skill": "manual_review",
-                "reason": "source or attachment material is required before this can be treated as a reproducible challenge",
+                "reason": "original source, official attachment, or deployable resource is required before this can be treated as a reproducible challenge",
             }
         )
     return recommendations
@@ -375,7 +405,7 @@ def platform_delivery_status(project_type: str) -> str:
         return "image_tar_needs_contract_review"
     if project_type == "attachment_challenge":
         return "attachment_packaging"
-    if project_type in {"empty", "writeup_only"}:
+    if project_type in {"empty", "writeup_only", "challenge_metadata_bundle", "solver_or_writeup_bundle"}:
         return "needs_user_material"
     return "manual_review"
 
@@ -391,6 +421,49 @@ def build_warnings(resources: list[dict[str, Any]], file_count: int, max_files: 
     return warnings
 
 
+def looks_solver_source(path: Path, root: Path, text_sample: str) -> bool:
+    relative_parts = [part.lower() for part in path.relative_to(root).parts]
+    stem = path.stem.lower()
+    name = path.name.lower()
+    if any(hint in part for part in relative_parts for hint in SOLVER_HINTS):
+        return True
+    if any(hint in stem or hint in name for hint in SOLVER_HINTS):
+        return True
+    lowered = text_sample.lower()
+    return any(marker in lowered for marker in ["flag{", "ctf{", "solve(", "pwn.remote", "pwntools", "sage"])
+
+
+def path_has_solver_hint(path: str) -> bool:
+    lowered_parts = [part.lower() for part in Path(path).parts]
+    return any(hint in part for part in lowered_parts for hint in SOLVER_HINTS)
+
+
+def has_service_source_bundle(resources: list[dict[str, Any]], types: Counter[str]) -> bool:
+    service_like = [
+        item
+        for item in resources
+        if item.get("resource_type") == "source_file"
+        and any(hint in str(item.get("relative_path", "")).lower() for hint in SERVICE_HINTS)
+    ]
+    return bool(service_like) or types.get("source_file", 0) >= 4
+
+
+def only_metadata_solver_or_notes(types: Counter[str]) -> bool:
+    allowed = {
+        "ctf_manifest",
+        "metadata_archive",
+        "solver_file",
+        "writeup",
+        "writeup_archive",
+        "note",
+        "screenshot",
+        "flag_file",
+        "unknown",
+    }
+    active = {resource_type for resource_type, count in types.items() if count > 0}
+    return bool(active) and active <= allowed
+
+
 def classify_archive_preview(preview: dict[str, Any]) -> tuple[str, list[str], str]:
     entries = preview.get("entries", []) if isinstance(preview.get("entries"), list) else []
     paths = [str(item.get("path") or "").lower() for item in entries if isinstance(item, dict)]
@@ -404,9 +477,15 @@ def classify_archive_preview(preview: dict[str, Any]) -> tuple[str, list[str], s
     if any(Path(path).name in PACKAGE_FILES for path in paths):
         evidence.append("archive contains package manifest")
         return "source_archive", evidence, "cloversec-ctf-build-dockerizer"
-    if any(Path(path).suffix in SOURCE_EXTENSIONS for path in paths):
+    if any(Path(path).suffix in SOURCE_EXTENSIONS and not path_has_solver_hint(path) for path in paths):
         evidence.append("archive contains source files")
         return "source_archive", evidence, "cloversec-ctf-build-dockerizer"
+    if any(Path(path).name in CTF_MANIFEST_FILES for path in paths):
+        evidence.append("archive contains CTF metadata manifest")
+        return "metadata_archive", evidence, "cloversec-ctf-asset-collector"
+    if any(Path(path).suffix in SOURCE_EXTENSIONS and path_has_solver_hint(path) for path in paths):
+        evidence.append("archive contains solver/writeup source")
+        return "writeup_archive", evidence, "cloversec-ctf-writeup-scaffold"
     if any("writeup" in path or Path(path).name in {"wp.md", "writeup.md"} for path in paths):
         evidence.append("archive contains writeup material")
         return "writeup_archive", evidence, "cloversec-ctf-writeup-scaffold"

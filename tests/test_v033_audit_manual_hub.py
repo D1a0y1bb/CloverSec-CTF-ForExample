@@ -85,27 +85,50 @@ def sample_case(tmp_path: Path) -> dict:
 def sample_manual() -> str:
     return """# Web1
 
-## 题目描述
-访问 Web 服务并读取 flag。
+## 题目说明
+- 题目名称：Web1
+- 题目分类：Web
+- 题目难度：★
+- 题目分值：100
+
+访问 Web 服务并读取 flag。题目提供一个 HTTP 服务，选手需要通过路径遍历读取服务端环境变量，最终得到动态 Flag。
 
 ## 考点
 路径遍历和环境变量读取。
 
-## 环境
-Docker 服务开放 80 端口。
+## 环境说明
+Docker 服务开放 80 端口，启动后访问题目页面即可开始测试。服务启动后应能在浏览器中看到首页。
+
+## 附件说明
+challenge.zip 是题目源码和启动脚本压缩包，解压后可以看到 app.py、Dockerfile 和启动脚本。归档时需要记录 hash。
+
+## 前置知识
+1. HTTP 请求基础。
+2. Linux 文件路径。
 
 ## 解题步骤
 1. 打开题目页面。
 2. 运行 `python3 solve.py`。
+3. 脚本会请求 `/read?file=../../proc/self/environ`，从返回内容里提取 FLAG 环境变量。
+4. 核对输出的 flag 与内部 xlsx 字段一致。
+
+## 命令输出
+```bash
+$ python3 solve.py http://127.0.0.1:18080
+flag{v033-full-flag}
+```
 
 ## 附件
 challenge.zip
 
-## 截图
-solve.png
+## 截图说明
+solve.png 展示脚本运行成功并输出 flag 的结果。
 
 ## Flag
 flag{v033-full-flag}
+
+## 复现说明
+按环境说明启动服务，执行解题步骤中的命令，输出结果应包含完整 Flag。
 """
 
 
@@ -276,11 +299,13 @@ class V033AuditManualHubTests(unittest.TestCase):
             self.assertFalse(draft["auto_submit"])
             self.assertFalse(draft["summary"]["can_submit"])
             self.assertTrue(draft["summary"]["can_fill_browser"])
-            self.assertTrue(draft["manual_path"].endswith("manual_filled_draft.md"))
+            self.assertTrue(draft["manual_path"].endswith("题目解题手册.md"))
             self.assertTrue((tmp_path / "hub" / "hub_upload_manifest.json").exists())
             self.assertTrue((tmp_path / "hub" / "hub_screenshot_checklist.md").exists())
             self.assertTrue((tmp_path / "hub" / "hub_diff_report.md").exists())
+            self.assertTrue((tmp_path / "hub" / "Hub提交前确认.md").exists())
             self.assertTrue(review_state["retag_required"])
+            self.assertEqual(review_state["HUB编号"], "CTF-2026060001")
             self.assertEqual(needs_id["status"], "needs_hub_id")
             self.assertEqual(ready["status"], "ready")
             self.assertEqual(ready["tar_name"], "ctf-2026060001.tar")
@@ -309,6 +334,8 @@ class V033AuditManualHubTests(unittest.TestCase):
         self.assertEqual(len(cases), 1)
         self.assertEqual(cases[0]["metadata"]["分类"], "Web")
         self.assertEqual(cases[0]["metadata"]["年份"], "2025")
+        self.assertEqual(cases[0]["research"]["reproducibility_status"], "writeup_only")
+        self.assertIn("缺附件", cases[0]["metadata"]["材料状态"])
         self.assertIn("writeup_candidates", cases[0]["asset_collection"])
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -350,7 +377,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.4.3")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.5.0")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

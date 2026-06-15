@@ -37,6 +37,7 @@ description: CloverSec CTF 容器题识别与验证分级 skill。用于从 Dock
 - Dockerizer 方案未确认时，容器验证只能输出证据和待确认项，不能把题目写成可归档。
 - 平台交付证据至少覆盖：`Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`environment`、`docker_artifacts`、`xlsx_fields`、`linux/amd64`、端口一致性。
 - `cloversec-ctf-docker` 的 build/run/probe 结果只能说明环境启动情况，不替代 Dockerizer 平台改造。
+- Docker 验证状态必须拆开写：契约通过、镜像构建/导入通过、服务启动通过、题目可解通过。端口或 health 检查通过，只能说明服务启动，不代表解题通过。
 
 ## 常用命令
 

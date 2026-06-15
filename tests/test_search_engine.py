@@ -89,7 +89,36 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(cases[0]["metadata"]["名称"], "uclaacm/lactf-archive")
         self.assertEqual(cases[0]["evidence"][0]["source_url"], "https://github.com/uclaacm/lactf-archive")
-        self.assertEqual(cases[0]["metadata"]["材料状态"], "收集中")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "待材料检查")
+
+    def test_results_to_cases_writes_search_gap_leads_when_no_case_matches(self):
+        manifest = {
+            "query": "祥云杯 2024 pwn writeup",
+            "years": [2024],
+            "results": [
+                {
+                    "provider": "duckduckgo",
+                    "title": "【pwn】2022 祥云杯 部分wp - CSDN博客",
+                    "url": "https://blog.csdn.net/example/article/details/1",
+                    "summary": "DuckDuckGo HTML result",
+                    "source_type": "public_web",
+                    "confidence": "low",
+                    "layer": "noise",
+                    "score": 32,
+                    "quality_issues": ["year mismatch: 2022"],
+                }
+            ],
+        }
+
+        cases = search.results_to_cases(manifest)
+
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]["research"]["material_level"], "search_gap")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "未找到可复现材料")
+        self.assertEqual(cases[0]["metadata"]["是否通过"], "否")
+        self.assertEqual(cases[0]["metadata"]["是否归档"], "否")
+        self.assertTrue(cases[0]["requires_user_confirmation"])
+        self.assertIn("待人工确认线索", cases[0]["notes"])
 
     def test_fetch_and_download_url_against_local_server(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,7 +14,7 @@ from typing import Any
 import cloversec_ctf_data as data
 
 
-VERSION = "0.4.3"
+VERSION = "0.5.0"
 SCHEMA_VERSION = "cloversec.ctf.manual_quality.v1"
 REQUIRED_METADATA_FIELDS = ["名称", "分类", "题目类型", "Flag类型"]
 REQUIRED_HUB_FIELDS = ["题目标题", "题目内容", "题目来源", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级", "添加关键字"]
@@ -23,6 +23,7 @@ MANUAL_SECTION_PATTERNS = {
     "knowledge": [r"考点", r"知识点", r"漏洞点"],
     "environment": [r"环境", r"部署", r"Docker", r"端口"],
     "steps": [r"解题", r"步骤", r"利用", r"复现"],
+    "command_output": [r"命令输出", r"执行结果", r"输出", r"\$ ", r"```"],
     "flag": [r"Flag", r"flag"],
     "attachments": [r"附件", r"资源", r"源码"],
     "screenshots": [r"截图", r"图片", r"\.png", r"\.jpg", r"\.jpeg", r"\.webp"],
@@ -94,9 +95,29 @@ def check_case_fields(case: dict[str, Any]) -> list[dict[str, Any]]:
 
 def check_manual_sections(manual: str) -> list[dict[str, Any]]:
     checks = []
+    text_len = len(re.sub(r"\s+", "", manual))
+    checks.append(
+        check(
+            "manual-min-length",
+            "手册正文长度",
+            "pass" if text_len >= 500 else "fail",
+            f"正文有效字符数 {text_len}",
+            evidence={"text_length": text_len},
+        )
+    )
+    placeholder_count = sum(manual.count(item) for item in ["（待填写", "（待补充", "请输入", "TODO", "TBD"])
+    checks.append(
+        check(
+            "manual-placeholders",
+            "草稿占位内容",
+            "pass" if placeholder_count == 0 else "fail",
+            "未发现草稿占位" if placeholder_count == 0 else f"发现 {placeholder_count} 处草稿占位",
+            evidence={"placeholder_count": placeholder_count},
+        )
+    )
     for section_id, patterns in MANUAL_SECTION_PATTERNS.items():
         found = any(re.search(pattern, manual, flags=re.I) for pattern in patterns)
-        status = "pass" if found else ("warn" if section_id in {"flag", "screenshots"} else "fail")
+        status = "pass" if found else "fail"
         message = "已找到相关内容" if found else "手册中未找到清楚的相关段落"
         checks.append(check(f"manual-section-{section_id}", f"手册段落 {section_id}", status, message))
     step_density = manual_step_density(manual)
@@ -104,7 +125,7 @@ def check_manual_sections(manual: str) -> list[dict[str, Any]]:
         check(
             "manual-step-density",
             "解题步骤密度",
-            "pass" if step_density >= 2 else "warn",
+            "pass" if step_density >= 3 else "fail",
             f"检测到 {step_density} 个步骤/命令线索",
             evidence={"step_density": step_density},
         )
@@ -125,20 +146,20 @@ def check_manual_references(
     archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
     for item in archive_info.get("screenshots", []) if isinstance(archive_info.get("screenshots"), list) else []:
         screenshot_paths.append(str(item.get("path") if isinstance(item, dict) else item))
-    for label, paths, required in [("附件", attachment_paths, False), ("截图", screenshot_paths, False)]:
+    for label, paths, required in [("附件", attachment_paths, bool(attachment_paths)), ("截图", screenshot_paths, False)]:
         missing = [path for path in paths if path and not Path(path).is_file()]
         mentioned = any(Path(path).name in manual for path in paths if path)
         if missing:
             status = "fail"
             message = f"{label}路径不存在：{len(missing)} 个"
         elif paths and not mentioned:
-            status = "warn"
+            status = "fail"
             message = f"{label}存在，但手册未引用文件名"
         elif paths:
             status = "pass"
             message = f"{label}存在并可检查"
         else:
-            status = "warn" if not required else "fail"
+            status = "pass" if not required else "fail"
             message = f"未声明{label}"
         checks.append(check(f"manual-reference-{safe_id(label)}", f"{label}引用", status, message, evidence={"declared": paths, "missing": missing}))
     manifest_issues = []

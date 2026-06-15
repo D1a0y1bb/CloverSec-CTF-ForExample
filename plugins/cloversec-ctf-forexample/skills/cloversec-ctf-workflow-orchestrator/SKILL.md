@@ -32,6 +32,7 @@ runs/<日期>-<年份>-<赛事>-<方向>
 workflow_state.json
 task_plan.json
 ctf_cases.jsonl
+当前状态.md
 next_steps.md
 logs/
 evidence/
@@ -83,6 +84,12 @@ reports/
 - `failure_category`: `platform_conversion_required`
 - `next_skill`: `cloversec-ctf-build-dockerizer`
 - `can_archive`: `false`
+
+只有 `challenge.yml`、solver、writeup、截图或 Flag 文件时，不算源码题。它只能作为题目线索或手册材料，必须继续找官方附件、源码或让用户确认，不能进入可交付状态。
+
+Dockerizer handoff 必须写清题目目录、已有 Dockerfile/compose、端口线索、启动命令、Flag 路径、缺失项、用户需要确认的问题和 `confirmation_action=dockerizer`。不要让 Agent 自己根据上游 Dockerfile 直接启动后归档。
+
+批量状态给用户看时优先读 `当前状态.md`，里面只放处理题数、缺材料题数、待确认题数和最终文件位置。
 
 ## 容器题平台契约摘要
 
@@ -214,6 +221,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py class
 - `json_mitigation` 必须是字符串，只能取 `short_json`、`chunking`、`larger_output_tokens`。
 - `hub_submit` 必须是布尔值 `false`，最终提交交给人确认。
 - `flag_xlsx` 必须是布尔值 `true`，内部 xlsx 保留完整 Flag。
+- 机器 JSON 的布尔字段只能写 `true` 或 `false`，不要写中文“是/否”。
+- 没有正式 `CTF-...` HUB 编号时，retag 用的 HUB 字段必须留空；页面数字 ID 只能写 `hub_record_id`。
 - 长报告、完整证据、下载预览和去重候选写到文件路径里，不塞进一次模型回复。
 
 ## MCP Tools

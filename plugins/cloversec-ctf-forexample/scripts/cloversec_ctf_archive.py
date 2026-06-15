@@ -63,9 +63,9 @@ def create_archive_package(
 
     writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
     manual_inputs: list[dict[str, Any]] = []
-    for key in ["manual_path", "manual_filled_draft", "manual_template"]:
+    for key in ["manual_path", "formal_manual_path", "manual_filled_draft", "manual_template"]:
         if writeup.get(key):
-            manual_inputs.append({"path": writeup[key]})
+            manual_inputs.append({"path": writeup[key], "name": "题目解题手册.md" if key != "manual_template" else "手册模板.md"})
     if manual_inputs:
         for item in manual_inputs:
             files.extend(_copy_or_record(item, archive_dir / ROLE_DIRS["writeup"], "writeup", copy_files, issues))

@@ -85,6 +85,7 @@ def build_hub_fields(case: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def render_manual(case: dict[str, Any], hub_fields: dict[str, Any], filled: bool = True) -> str:
     writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
     name = _string(hub_fields.get("题目标题"))
     difficulty = _string(hub_fields.get("题目难度"))
     score = _string(hub_fields.get("题目分值"))
@@ -93,6 +94,12 @@ def render_manual(case: dict[str, Any], hub_fields: dict[str, Any], filled: bool
     knowledge = _list_text(writeup.get("knowledge_points")) or ["（待填写）"]
     tools = _list_text(writeup.get("tools")) or _split_tools(hub_fields.get("解题工具")) or ["（待填写）"]
     steps = _list_text(writeup.get("steps")) or ["（待填写题目信息）", "（待填写解题过程）"]
+    command_outputs = _list_text(writeup.get("command_outputs")) or _list_text(writeup.get("commands")) or ["（待补充关键命令与输出）"]
+    screenshots = _list_text(writeup.get("screenshots")) or ["（待补充截图文件名和说明）"]
+    attachments = _list_text(writeup.get("attachments")) or _list_text(metadata.get("附件说明")) or ["（待说明附件名称、用途和校验方式）"]
+    environment = _list_text(writeup.get("environment")) or [
+        _string(metadata.get("开放端口") and f"开放端口：{metadata.get('开放端口')}") or "（待补充环境启动方式）"
+    ]
     description = _string(writeup.get("description") or hub_fields.get("题目内容") or "（待填写）")
     if not filled:
         name = "（请输入题目名称）"
@@ -102,32 +109,109 @@ def render_manual(case: dict[str, Any], hub_fields: dict[str, Any], filled: bool
         description = "（请输入题目描述）"
 
     lines = [
-        "### 题目描述",
+        f"# {name if filled else '题目解题手册'}",
         "",
-        "#### 题目名称",
+        "## 题目说明",
         "",
-        name,
+        f"- 题目名称：{name}",
+        f"- 题目分类：{_string(hub_fields.get('题目分类')) or '（待填写）'}",
+        f"- 题目难度：{difficulty}",
+        f"- 题目分值：{score}",
         "",
-        "#### 题目难度",
+        description,
         "",
-        difficulty,
-        "",
-        "#### 题目分值",
-        "",
-        score,
-        "",
-        "#### 前置知识",
+        "## 环境说明",
         "",
     ]
+    lines.extend(_numbered(environment))
+    lines.extend(["", "## 附件说明", ""])
+    lines.extend(_numbered(attachments))
+    lines.extend(["", "## 前置知识", ""])
     lines.extend(_numbered(prerequisites))
-    lines.extend(["", "#### 考察知识点", ""])
+    lines.extend(["", "## 考察知识点", ""])
     lines.extend(_numbered(knowledge))
-    lines.extend(["", "#### 解题工具", ""])
+    lines.extend(["", "## 解题工具", ""])
     lines.extend(_numbered(tools))
-    lines.extend(["", "### 解题步骤", "", "#### 第一步：题目信息", "", description, "", "#### 第二步：解题过程", ""])
+    lines.extend(["", "## 解题步骤", ""])
     lines.extend(_numbered(steps))
-    lines.extend(["", "#### Flag", "", flag_value, ""])
+    lines.extend(["", "## 命令输出", ""])
+    lines.extend(_numbered(command_outputs))
+    lines.extend(["", "## 截图说明", ""])
+    lines.extend(_numbered(screenshots))
+    lines.extend(
+        [
+            "",
+            "## Flag",
+            "",
+            flag_value,
+            "",
+            "## 复现说明",
+            "",
+            "1、按环境说明准备题目资源。",
+            "2、按解题步骤执行，核对命令输出和截图。",
+            "3、最终得到的 Flag 需要与内部 xlsx 字段保持一致。",
+            "",
+        ]
+    )
     return "\n".join(lines)
+
+
+def render_manual_template(case: dict[str, Any], hub_fields: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "# 题目解题手册",
+            "",
+            "## 题目说明",
+            "",
+            "- 题目名称：（待填写）",
+            "- 题目分类：（待填写）",
+            "- 题目难度：（待填写）",
+            "- 题目分值：（待填写）",
+            "",
+            "（待填写题目内容）",
+            "",
+            "## 环境说明",
+            "",
+            "1、（待填写环境启动方式、端口、附件使用方式）",
+            "",
+            "## 附件说明",
+            "",
+            "1、（待填写附件名称、用途、hash 或来源说明）",
+            "",
+            "## 前置知识",
+            "",
+            "1、（待填写）",
+            "",
+            "## 考察知识点",
+            "",
+            "1、（待填写）",
+            "",
+            "## 解题工具",
+            "",
+            "1、（待填写）",
+            "",
+            "## 解题步骤",
+            "",
+            "1、（待填写完整步骤）",
+            "",
+            "## 命令输出",
+            "",
+            "1、（待填写关键命令和输出）",
+            "",
+            "## 截图说明",
+            "",
+            "1、（待填写截图文件名和说明）",
+            "",
+            "## Flag",
+            "",
+            "（待填写完整 Flag）",
+            "",
+            "## 复现说明",
+            "",
+            "1、（待填写复现检查结果）",
+            "",
+        ]
+    )
 
 
 def validate_hub_fields(hub_fields: dict[str, Any]) -> list[str]:
@@ -208,8 +292,10 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(fields["xlsx_fields"], ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        (output_dir / "manual_template.md").write_text(render_manual(case, hub_fields, filled=False), encoding="utf-8")
-        (output_dir / "manual_filled_draft.md").write_text(render_manual(case, hub_fields, filled=True), encoding="utf-8")
+        (output_dir / "manual_template.md").write_text(render_manual_template(case, hub_fields), encoding="utf-8")
+        formal_manual = render_manual(case, hub_fields, filled=True)
+        (output_dir / "manual_filled_draft.md").write_text(formal_manual, encoding="utf-8")
+        (output_dir / "题目解题手册.md").write_text(formal_manual, encoding="utf-8")
         print(f"wrote {output_dir}")
         return 0
     parser.error("unknown command")

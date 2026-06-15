@@ -122,7 +122,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((archive_dir / "源码" / "src.py").exists())
             self.assertTrue((archive_dir / "附件" / "challenge.zip").exists())
             self.assertFalse((archive_dir / "镜像" / "web.tar").exists())
-            self.assertTrue((archive_dir / "手册" / "manual_filled_draft.md").exists())
+            self.assertTrue((archive_dir / "手册" / "题目解题手册.md").exists())
             self.assertTrue((archive_dir / "截图" / "solve.png").exists())
             self.assertTrue((archive_dir / "清单" / "archive_manifest.json").exists())
             self.assertEqual(manifest["xlsx_fields"]["是否归档"], "是")
@@ -264,6 +264,26 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertFalse(
                 any("资源路径不存在" in item for item in payload["remaining_actions"])
             )
+
+    def test_final_outputs_downgrades_pass_when_required_fields_are_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["metadata"]["验证状态"] = "通过"
+            case["metadata"]["是否通过"] = "是"
+            case["metadata"]["是否归档"] = "是"
+            case["metadata"]["赛事来源"] = ""
+            case["metadata"]["解题工具"] = ""
+            case["metadata"]["归档目录"] = ""
+            case["metadata"]["环境包/附件包路径"] = ""
+
+            final.create_final_outputs([case], tmp_path / "final", base_dir=tmp_path)
+            rows = data.read_xlsx(tmp_path / "final" / "最终归档表.xlsx")
+
+            self.assertEqual(rows[0]["是否通过"], "否")
+            self.assertEqual(rows[0]["是否归档"], "否")
+            self.assertEqual(rows[0]["验证状态"], "部分通过")
+            self.assertIn("缺少 赛事来源", rows[0]["问题"])
 
     def test_quality_review_cli_writes_report_and_updated_case(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -449,6 +469,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             (outputs / "ctf_2026_10_after_docker_missing_report.md").write_text("# 缺失项报告\n", encoding="utf-8")
             (outputs / "ctf_2026_10_docker_execution_summary.md").write_text("# Docker\n", encoding="utf-8")
             (outputs / "ctf_2026_10_completion_report.md").write_text("# 完成报告\n", encoding="utf-8")
+            (outputs / "ctf_2026_10_completion_report.json").write_text("{}", encoding="utf-8")
             (outputs / "ctf_2026_10_solver_verification_summary.md").write_text("# solver\n", encoding="utf-8")
             (outputs / "ctf_2026_10_after_docker_archived_cases.jsonl").write_text("{}\n", encoding="utf-8")
             (outputs / "ctf_2026_10_completed_archived_cases.jsonl").write_text('{"done": true}\n', encoding="utf-8")
@@ -482,7 +503,10 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((delivery_dir / "镜像包清单" / "镜像包清单.md").exists())
             self.assertEqual((delivery_dir / "最终表格" / "最终归档表.xlsx").read_bytes(), b"completed-xlsx")
             self.assertEqual((delivery_dir / "题目归档包" / "题目归档包.zip").read_bytes(), b"completed-zip")
-            self.assertEqual((delivery_dir / "过程证据" / "最终题目数据.jsonl").read_text(encoding="utf-8"), '{"done": true}\n')
+            self.assertEqual((delivery_dir / "过程证据" / "机器数据" / "最终题目数据.jsonl").read_text(encoding="utf-8"), '{"done": true}\n')
+            self.assertTrue((delivery_dir / "过程证据" / "机器数据" / "完成报告.json").exists())
+            self.assertFalse((delivery_dir / "质量检查报告" / "完成报告.json").exists())
+            self.assertEqual(manifest["summary"]["package_issues"], 0)
             self.assertFalse((delivery_dir / "镜像包清单" / "web.tar").exists())
             self.assertFalse(any(path.name.startswith(("01-", "02-", "03-", "04-", "05-", "06-", "07-", "99-")) for path in delivery_dir.iterdir()))
             self.assertTrue(any(item["status"] == "referenced" and item["key"] == "image_tar" for item in manifest["files"]))
@@ -585,7 +609,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.4.3")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.5.0")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

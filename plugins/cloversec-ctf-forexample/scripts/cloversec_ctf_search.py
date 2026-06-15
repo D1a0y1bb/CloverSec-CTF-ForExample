@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.4.3 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.5.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -1128,7 +1128,13 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         event = infer_case_event(result, manifest)
         issue_text = ";".join(str(item) for item in result.get("quality_issues", []) if item)
         missing_reason = missing_reason_for_result(result, category=category, event=event, years=years)
-        requires_confirmation = confidence == "low" or bool(result.get("lead_only")) or bool(missing_reason)
+        material_profile = material_profile_for_result(result, layer=layer, missing_reason=missing_reason)
+        requires_confirmation = (
+            confidence == "low"
+            or bool(result.get("lead_only"))
+            or bool(missing_reason)
+            or bool(material_profile.get("requires_user_confirmation"))
+        )
         attachment_candidates = []
         writeup_candidates = []
         candidate = {
@@ -1156,30 +1162,37 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                     "source_url": result.get("url", ""),
                     "source_title": title,
                     "missing_reason": missing_reason,
+                    "material_level": material_profile["material_level"],
+                    "material_status": material_profile["material_status"],
+                    "reproducibility_status": material_profile["reproducibility_status"],
+                    "next_action": material_profile["next_action"],
                     "requires_user_confirmation": requires_confirmation,
                     "lead_only": bool(result.get("lead_only")),
                 },
                 "asset_collection": {
                     "attachment_candidates": attachment_candidates,
                     "writeup_candidates": writeup_candidates,
-                    "missing_reason": missing_reason,
+                    "missing_reason": missing_reason or material_profile["missing_reason"],
+                    "material_level": material_profile["material_level"],
+                    "material_status": material_profile["material_status"],
                 },
                 "metadata": {
                     "赛事来源": event,
                     "题目来源": title,
                     "名称": infer_case_title(result),
+                    "题目名称": infer_case_title(result),
                     "分类": category,
                     "年份": ",".join(years),
                     "题目类型": "未知",
                     "Flag类型": "未知",
                     "Flag": "",
-                    "材料状态": "收集中",
+                    "材料状态": material_profile["material_status"],
                     "构建状态": "未开始",
                     "手册状态": "未开始",
                     "验证状态": "未验证",
                     "是否归档": "否",
                     "是否通过": "否",
-                    "问题": "",
+                    "问题": material_profile["missing_reason"],
                 },
                 "flag": {"value": "", "type": "unknown", "sensitive": True},
                 "environment": {},
@@ -1204,16 +1217,87 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                         "quality_issues": result.get("quality_issues", []),
                         "requires_user_confirmation": requires_confirmation,
                         "missing_reason": missing_reason,
+                        "material_level": material_profile["material_level"],
+                        "reproducibility_status": material_profile["reproducibility_status"],
                         "status": "found",
                     }
                 ],
                 "confidence": confidence,
                 "requires_user_confirmation": requires_confirmation,
-                "missing_reason": missing_reason,
+                "missing_reason": missing_reason or material_profile["missing_reason"],
                 "notes": issue_text,
             }
         )
+    if not cases:
+        gap_results = search_gap_results(manifest)
+        if gap_results:
+            retry_manifest = dict(manifest)
+            retry_manifest["results"] = gap_results
+            return results_to_cases(retry_manifest)
     return cases
+
+
+def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_reason: str) -> dict[str, Any]:
+    url = str(result.get("url") or "")
+    title = str(result.get("title") or "")
+    provider = str(result.get("provider") or "")
+    text = f"{url} {title} {provider}".lower()
+    is_direct_asset = looks_attachment_candidate_url(url)
+    is_solver_repo = "github.com" in text and any(token in text for token in ["solver", "solve", "writeup", "wp", "solution", "exp"])
+    is_platform = bool(result.get("lead_only")) or layer == "platform_lead"
+    if result.get("search_gap") or layer == "search_gap_lead":
+        return {
+            "material_level": "search_gap",
+            "material_status": "未找到可复现材料",
+            "reproducibility_status": "search_gap",
+            "missing_reason": missing_reason or "当前免费源没有找到匹配年份、赛事和分类的可复现题目材料",
+            "next_action": "需要 Agent 联网搜索、浏览器辅助搜索，或由用户提供平台页、附件、源码入口。",
+            "requires_user_confirmation": True,
+        }
+    if is_direct_asset or layer == "attachment_candidate":
+        return {
+            "material_level": "attachment_candidate",
+            "material_status": "已发现附件候选，待下载检查",
+            "reproducibility_status": "attachment_candidate",
+            "missing_reason": missing_reason,
+            "next_action": "进入下载沙箱做 hash、解压和风险路径检查。",
+            "requires_user_confirmation": bool(missing_reason),
+        }
+    if is_solver_repo:
+        return {
+            "material_level": "solver_or_writeup_only",
+            "material_status": "缺官方原始题包",
+            "reproducibility_status": "solver_or_writeup_only",
+            "missing_reason": missing_reason or "只有 solver/writeup 仓库，缺源码、附件或官方题包",
+            "next_action": "继续搜索官方附件、源码或让用户提供题包入口。",
+            "requires_user_confirmation": True,
+        }
+    if layer == "writeup_candidate":
+        return {
+            "material_level": "writeup_candidate",
+            "material_status": "缺附件或源码",
+            "reproducibility_status": "writeup_only",
+            "missing_reason": missing_reason or "只有题解线索，缺官方附件或源码",
+            "next_action": "继续搜索附件、源码、Release 或平台题包。",
+            "requires_user_confirmation": True,
+        }
+    if is_platform:
+        return {
+            "material_level": "platform_lead",
+            "material_status": "仅为入口线索",
+            "reproducibility_status": "lead_only",
+            "missing_reason": missing_reason or "只有平台入口，缺题目材料",
+            "next_action": "需要进入平台页面或让用户提供可下载材料。",
+            "requires_user_confirmation": True,
+        }
+    return {
+        "material_level": "confirmed_lead",
+        "material_status": "待材料检查",
+        "reproducibility_status": "needs_material_check",
+        "missing_reason": missing_reason,
+        "next_action": "进入材料下载与资源识别。",
+        "requires_user_confirmation": bool(missing_reason),
+    }
 
 
 def result_to_case_confidence(result: dict[str, Any]) -> str:
@@ -1225,6 +1309,31 @@ def result_to_case_confidence(result: dict[str, Any]) -> str:
     if layer in {"attachment_candidate", "writeup_candidate"} and score >= 40 and not any("mismatch" in item for item in issues):
         return "medium"
     return "low"
+
+
+def search_gap_results(manifest: dict[str, Any], limit: int = 3) -> list[dict[str, Any]]:
+    """Create non-deliverable leads when search found pages but no usable case."""
+    output: list[dict[str, Any]] = []
+    for result in manifest.get("results", []):
+        if not isinstance(result, dict):
+            continue
+        title = str(result.get("title") or "").strip()
+        url = str(result.get("url") or "").strip()
+        if not title or not url or is_search_or_login_noise(url):
+            continue
+        item = dict(result)
+        issues = [str(issue) for issue in item.get("quality_issues", []) if str(issue).strip()]
+        issues.append("当前搜索没有命中可复现题目材料，只能作为待人工确认线索")
+        item["quality_issues"] = list(dict.fromkeys(issues))
+        item["layer"] = "search_gap_lead"
+        item["lead_only"] = True
+        item["search_gap"] = True
+        item["confidence"] = "low"
+        item["score"] = min(int(item.get("score") or 0), 10)
+        output.append(item)
+        if len(output) >= limit:
+            break
+    return output
 
 
 def infer_case_category(result: dict[str, Any]) -> str:

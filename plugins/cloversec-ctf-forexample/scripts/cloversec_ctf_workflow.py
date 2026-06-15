@@ -27,7 +27,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.4.3"
+WORKFLOW_VERSION = "0.5.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -232,12 +232,29 @@ def init_workflow(
     write_json(workdir / "workflow_state.json", workflow_state)
     write_jsonl(workdir / "ctf_cases.jsonl", [])
     (workdir / "next_steps.md").write_text(render_next_steps(task_plan), encoding="utf-8")
+    (workdir / "当前状态.md").write_text(
+        render_current_status(
+            {
+                "run_id": run_id,
+                "event": event,
+                "years": years,
+                "categories": categories,
+                "status": "已创建任务",
+                "cases": 0,
+                "missing_material": 0,
+                "pending_user": 0,
+                "output": workdir.as_posix(),
+            }
+        ),
+        encoding="utf-8",
+    )
     append_log(workdir, "workflow initialized")
     output["created_files"] = [
         (workdir / "task_plan.json").as_posix(),
         (workdir / "workflow_state.json").as_posix(),
         (workdir / "ctf_cases.jsonl").as_posix(),
         (workdir / "next_steps.md").as_posix(),
+        (workdir / "当前状态.md").as_posix(),
     ] + list(directories.values())
     return output
 
@@ -320,6 +337,8 @@ def execute_search_tasks(
         item for item in ranked
         if item.get("layer") in {"confirmed_challenge", "writeup_candidate", "attachment_candidate"}
     ]
+    if not case_results:
+        case_results = ranked
     cases = search.results_to_cases({"query": aggregate_query, "years": aggregate_years, "results": case_results})
     if case_limit > 0:
         cases = cases[:case_limit]
@@ -375,6 +394,23 @@ def execute_search_tasks(
             "download_preview_records": download_payload.get("summary", {}).get("total", 0) if download_payload else 0,
         },
         errors=all_errors,
+    )
+    status_counts = user_status_counts(cases)
+    (base / "当前状态.md").write_text(
+        render_current_status(
+            {
+                "run_id": str(plan.get("run_id") or base.name),
+                "event": str(request.get("event") or ""),
+                "years": request.get("years", []),
+                "categories": request.get("categories", []),
+                "status": "已完成搜索，等待材料识别" if cases else "没有形成可处理题目，等待人工入口",
+                "cases": len(cases),
+                "missing_material": status_counts["missing_material"],
+                "pending_user": status_counts["pending_user"],
+                "output": base.as_posix(),
+            }
+        ),
+        encoding="utf-8",
     )
     append_log(base, f"executed {len(query_outputs)} search tasks and wrote {len(cases)} cases")
     return {
@@ -442,6 +478,7 @@ def collect_materials(
                 "ref": github_ref_used if tree_files else github_ref,
                 "release_assets": release_assets,
                 "tree_files": tree_files,
+                "resource_split": github_tree_resource_split(tree_files, release_assets),
                 "summary": {
                     "release_assets": len(release_assets),
                     "tree_files": len(tree_files),
@@ -462,6 +499,7 @@ def collect_materials(
         "download_preview_path": (base / "download_preview.json").as_posix() if download_payload else "",
         "download_preview_summary": download_payload.get("summary", {}) if download_payload else {},
         "repo_previews": repo_previews,
+        "resource_candidates": build_material_resource_candidates(direct_urls, repo_previews),
         "errors": repo_errors,
         "summary": {
             "direct_asset_urls": len(direct_urls),
@@ -614,6 +652,78 @@ def github_tree_attachment_hints(tree_files: list[dict[str, Any]]) -> list[str]:
     return hints[:20]
 
 
+def github_tree_resource_split(tree_files: list[dict[str, Any]], release_assets: list[dict[str, Any]]) -> dict[str, list[str]]:
+    split = {"docker": [], "source": [], "attachments": [], "writeups": [], "unknown": []}
+    for item in tree_files:
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        path = str(metadata.get("path") or item.get("title") or "")
+        lower = path.lower()
+        if not path:
+            continue
+        if lower.endswith("dockerfile") or "docker-compose" in lower or lower.endswith(("compose.yml", "compose.yaml")):
+            split["docker"].append(path)
+        elif any(lower.endswith(ext) for ext in [".zip", ".tar", ".tar.gz", ".tgz", ".7z", ".rar", ".pcap", ".pcapng"]):
+            split["attachments"].append(path)
+        elif any(token in lower for token in ["writeup", "/wp", "solution", "题解"]):
+            split["writeups"].append(path)
+        elif any(lower.endswith(ext) for ext in [".py", ".js", ".ts", ".go", ".php", ".java", ".c", ".cpp", ".rs", ".sh"]):
+            split["source"].append(path)
+        else:
+            split["unknown"].append(path)
+    for asset in release_assets:
+        url = str(asset.get("browser_download_url") or asset.get("url") or asset.get("name") or "")
+        if url:
+            split["attachments"].append(url)
+    return {key: values[:30] for key, values in split.items() if values}
+
+
+def build_material_resource_candidates(direct_urls: list[str], repo_previews: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for url in direct_urls:
+        candidates.append(
+            {
+                "type": "direct_attachment",
+                "url": url,
+                "status": "待下载沙箱检查",
+                "next_skill": "cloversec-ctf-attachment-packager",
+            }
+        )
+    for repo in repo_previews:
+        split = repo.get("resource_split") if isinstance(repo.get("resource_split"), dict) else {}
+        if split.get("docker") or split.get("source"):
+            candidates.append(
+                {
+                    "type": "source_or_container_repo",
+                    "repo": repo.get("repo", ""),
+                    "status": "需要进入 Dockerizer 交接",
+                    "next_skill": "cloversec-ctf-build-dockerizer",
+                    "docker_hints": split.get("docker", []),
+                    "source_hints": split.get("source", [])[:10],
+                }
+            )
+        if split.get("attachments"):
+            candidates.append(
+                {
+                    "type": "attachment_repo",
+                    "repo": repo.get("repo", ""),
+                    "status": "待下载或预览附件",
+                    "next_skill": "cloversec-ctf-attachment-packager",
+                    "attachment_hints": split.get("attachments", [])[:10],
+                }
+            )
+        if split.get("writeups") and not split.get("docker") and not split.get("source") and not split.get("attachments"):
+            candidates.append(
+                {
+                    "type": "writeup_only_repo",
+                    "repo": repo.get("repo", ""),
+                    "status": "缺官方题包或源码",
+                    "next_skill": "cloversec-ctf-research-intake",
+                    "writeup_hints": split.get("writeups", [])[:10],
+                }
+            )
+    return candidates
+
+
 def should_infer_container(classification: dict[str, Any]) -> bool:
     if classification.get("must_use_dockerizer") or classification.get("platform_contract_required"):
         return True
@@ -649,6 +759,7 @@ def build_resource_route(
             "skill": "cloversec-ctf-build-dockerizer",
             "reason": "检测到源码、Dockerfile、compose、镜像 tar 或服务型题目，必须进入 CloverSec 平台镜像改造。",
         }
+        handoff_details = dockerizer_handoff_details(root, classification, container_payload)
         dockerizer_handoff = {
             "schema_version": f"{SCHEMA_PREFIX}.dockerizer_handoff.v1",
             "required_skill": "cloversec-ctf-build-dockerizer",
@@ -665,6 +776,7 @@ def build_resource_route(
                 + (f" 和 {container_path.as_posix()}" if container_path else "")
                 + "，把已有 Dockerfile/compose/启动说明作为迁移输入，先给方案，等用户确认后再写平台交付文件。"
             ),
+            **handoff_details,
         }
     elif any(item in types for item in ["source_archive", "binary", "pcap", "database_dump", "vm_image"]):
         recommended_next = {
@@ -678,7 +790,7 @@ def build_resource_route(
             "skill": "cloversec-ctf-writeup-scaffold",
             "reason": "材料主要是手册、题解或截图，适合生成手册和录题字段。",
         }
-    elif project_type == "empty_or_missing":
+    elif project_type in {"empty", "challenge_metadata_bundle", "solver_or_writeup_bundle"}:
         recommended_next = {
             "scenario": "missing_material",
             "skill": "cloversec-ctf-research-intake",
@@ -696,6 +808,7 @@ def build_resource_route(
             "must_use_dockerizer": bool(classification.get("must_use_dockerizer") or container_payload.get("must_use_dockerizer")),
             "has_container_inference": bool(container_payload),
         },
+        "next_skill": recommended_next.get("skill", ""),
         "recommended_next": recommended_next,
         "dockerizer_handoff": dockerizer_handoff,
         "resource_classification_path": classification_path.as_posix(),
@@ -716,10 +829,23 @@ def render_material_collection_report(payload: dict[str, Any]) -> str:
         f"- 直接附件链接：{len(payload.get('direct_asset_urls', []))}",
         f"- GitHub 仓库：{len(payload.get('github_repositories', []))}",
         f"- 下载预览：{payload.get('download_preview_path') or '无'}",
+        f"- 可处理材料候选：{len(payload.get('resource_candidates', []))}",
         "",
-        "## GitHub 仓库预览",
+        "## 材料分流",
         "",
     ]
+    for candidate in payload.get("resource_candidates", []):
+        if not isinstance(candidate, dict):
+            continue
+        target = candidate.get("url") or candidate.get("repo") or ""
+        lines.append(f"- {candidate.get('type', '')}: {target} -> {candidate.get('next_skill', '')}（{candidate.get('status', '')}）")
+    lines.extend(
+        [
+            "",
+            "## GitHub 仓库预览",
+            "",
+        ]
+    )
     for repo in payload.get("repo_previews", []):
         if not isinstance(repo, dict):
             continue
@@ -755,6 +881,10 @@ def render_resource_route_report(route: dict[str, Any]) -> str:
                 f"- 题目目录：`{handoff.get('project_dir', '')}`",
                 f"- 资源识别：`{handoff.get('resource_classification_path', '')}`",
                 f"- 容器推断：`{handoff.get('container_inference_path', '')}`",
+                f"- 已有 Dockerfile：{', '.join(handoff.get('existing_dockerfiles', [])) or '无'}",
+                f"- 已有 compose：{', '.join(handoff.get('existing_compose_files', [])) or '无'}",
+                f"- 端口线索：{', '.join(str(item) for item in handoff.get('port_hints', [])) or '待确认'}",
+                f"- Flag 路径：{', '.join(handoff.get('flag_paths', [])) or '待确认'}",
                 "",
                 handoff.get("input_prompt", ""),
                 "",
@@ -815,6 +945,93 @@ def render_next_steps(task_plan: dict[str, Any]) -> str:
     for task in task_plan.get("search_tasks", []):
         lines.append(f"- [{task.get('query_id')}] {task.get('query')}")
     return "\n".join(lines) + "\n"
+
+
+def user_status_counts(cases: list[dict[str, Any]]) -> dict[str, int]:
+    missing_material = 0
+    pending_user = 0
+    for case in cases:
+        research = case.get("research") if isinstance(case.get("research"), dict) else {}
+        status = str(research.get("reproducibility_status") or case.get("status") or "")
+        if status in {"lead_only", "writeup_only", "solver_or_writeup_only", "missing_original_material"}:
+            missing_material += 1
+        if research.get("requires_user_confirmation") or str(case.get("status") or "").startswith("pending"):
+            pending_user += 1
+    return {"missing_material": missing_material, "pending_user": pending_user}
+
+
+def render_current_status(payload: dict[str, Any]) -> str:
+    years = ", ".join(str(item) for item in payload.get("years", []) if str(item).strip()) or "未指定"
+    categories = ", ".join(str(item) for item in payload.get("categories", []) if str(item).strip()) or "未指定"
+    return "\n".join(
+        [
+            "# 当前状态",
+            "",
+            f"- 任务：{payload.get('event') or '未命名'}",
+            f"- 年份：{years}",
+            f"- 方向：{categories}",
+            f"- 状态：{payload.get('status') or '处理中'}",
+            f"- 已形成题目清单：{payload.get('cases', 0)} 题",
+            f"- 缺材料：{payload.get('missing_material', 0)} 题",
+            f"- 待人工确认：{payload.get('pending_user', 0)} 题",
+            f"- 文件位置：`{payload.get('output', '')}`",
+            "",
+        ]
+    )
+
+
+def dockerizer_handoff_details(
+    root: Path,
+    classification: dict[str, Any],
+    container_payload: dict[str, Any],
+) -> dict[str, Any]:
+    resources = classification.get("resources") if isinstance(classification.get("resources"), list) else []
+    existing_dockerfiles = sorted(
+        item.get("relative_path", "")
+        for item in resources
+        if isinstance(item, dict) and item.get("resource_type") == "dockerfile"
+    )
+    existing_compose_files = sorted(
+        item.get("relative_path", "")
+        for item in resources
+        if isinstance(item, dict) and item.get("resource_type") == "compose_file"
+    )
+    flag_paths = sorted(
+        item.get("relative_path", "")
+        for item in resources
+        if isinstance(item, dict) and item.get("resource_type") == "flag_file"
+    )
+    runtime = container_payload.get("runtime") if isinstance(container_payload.get("runtime"), dict) else {}
+    readme_hints = container_payload.get("readme_hints") if isinstance(container_payload.get("readme_hints"), dict) else {}
+    port_hints = runtime.get("ports") if isinstance(runtime.get("ports"), list) else []
+    start_commands = [
+        str(item)
+        for item in [
+            runtime.get("container_command", ""),
+            runtime.get("dockerfile_cmd", ""),
+            runtime.get("dockerfile_entrypoint", ""),
+            *(readme_hints.get("commands") if isinstance(readme_hints.get("commands"), list) else []),
+        ]
+        if str(item).strip()
+    ]
+    missing_items = []
+    if not port_hints:
+        missing_items.append("开放端口")
+    if not flag_paths:
+        missing_items.append("Flag 路径")
+    if not existing_dockerfiles and not existing_compose_files and not start_commands:
+        missing_items.append("启动方式")
+    questions = [f"请确认{item}" for item in missing_items]
+    return {
+        "challenge_dir": root.as_posix(),
+        "existing_dockerfiles": existing_dockerfiles,
+        "existing_compose_files": existing_compose_files,
+        "port_hints": port_hints,
+        "start_command_hints": start_commands,
+        "flag_paths": flag_paths,
+        "missing_items": missing_items,
+        "user_questions": questions,
+    }
 
 
 def batch_orchestrate(

@@ -14,7 +14,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_container as container
 
 
-SERVER_VERSION = "0.4.3"
+SERVER_VERSION = "0.5.0"
 
 PLATFORM_CONTRACT = {
     "schema_version": "cloversec.ctf.platform_contract.v1",
@@ -477,9 +477,9 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             resource_classification=resource_input or None,
             output_path=str(arguments.get("output_path") or "") or None,
         )
-        compact = container.compact_inference(payload)
-        compact["output_path"] = str(arguments.get("output_path") or "")
-        return compact
+        compact_payload = container.compact_inference(payload)
+        compact_payload["output_path"] = str(arguments.get("output_path") or "")
+        return compact_payload
     if name == "cloversec_ctf_visible_content_evidence":
         return workflow.import_visible_content_evidence(
             visible_content_path=str(arguments.get("visible_content_path") or ""),

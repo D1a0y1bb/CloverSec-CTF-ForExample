@@ -298,6 +298,7 @@ class Workflow030Tests(unittest.TestCase):
             self.assertEqual(payload["summary"]["github_repositories"], 1)
             self.assertTrue((root / "out" / "download_preview.json").exists())
             self.assertIn("Dockerfile", payload["repo_previews"][0]["summary"]["docker_hints"])
+            self.assertEqual(payload["resource_candidates"][0]["next_skill"], "cloversec-ctf-attachment-packager")
 
     def test_route_resource_creates_dockerizer_handoff_for_dockerfile(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -310,6 +311,8 @@ class Workflow030Tests(unittest.TestCase):
             self.assertEqual(payload["recommended_next"]["skill"], "cloversec-ctf-build-dockerizer")
             self.assertEqual(payload["dockerizer_handoff"]["required_skill"], "cloversec-ctf-build-dockerizer")
             self.assertEqual(payload["dockerizer_handoff"]["confirmation_action"], "dockerizer")
+            self.assertIn("Dockerfile", payload["dockerizer_handoff"]["existing_dockerfiles"])
+            self.assertIn("80", ",".join(payload["dockerizer_handoff"]["port_hints"]))
             self.assertTrue((root / "classification" / "resource_route.json").exists())
 
 

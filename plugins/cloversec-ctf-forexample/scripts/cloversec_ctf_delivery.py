@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "0.4.3"
+VERSION = "0.5.0"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 DELIVERY_DIRS = {
@@ -23,7 +23,9 @@ DELIVERY_DIRS = {
     "quality": "质量检查报告",
     "hub": "Hub提交材料",
     "evidence": "过程证据",
+    "machine": "过程证据/机器数据",
     "issues": "待处理问题",
+    "manual": "手册",
 }
 
 
@@ -58,21 +60,22 @@ def create_delivery_package(
         ("after_docker_xlsx", DELIVERY_DIRS["tables"], "阶段归档表-Docker验证后.xlsx"),
         ("yuque_table", DELIVERY_DIRS["yuque"], "语雀粘贴表.md"),
         ("final_report_md", DELIVERY_DIRS["quality"], "最终报告.md"),
-        ("final_report_json", DELIVERY_DIRS["quality"], "最终报告.json"),
+        ("final_report_json", DELIVERY_DIRS["machine"], "最终报告.json"),
         ("quality_summary_md", DELIVERY_DIRS["quality"], "质量检查汇总.md"),
-        ("quality_summary_json", DELIVERY_DIRS["quality"], "质量检查汇总.json"),
+        ("quality_summary_json", DELIVERY_DIRS["machine"], "质量检查汇总.json"),
         ("docker_summary_md", DELIVERY_DIRS["quality"], "Docker执行汇总.md"),
-        ("docker_summary_json", DELIVERY_DIRS["quality"], "Docker执行汇总.json"),
+        ("docker_summary_json", DELIVERY_DIRS["machine"], "Docker执行汇总.json"),
         ("completion_report_md", DELIVERY_DIRS["quality"], "完成报告.md"),
-        ("completion_report_json", DELIVERY_DIRS["quality"], "完成报告.json"),
+        ("completion_report_json", DELIVERY_DIRS["machine"], "完成报告.json"),
         ("solver_summary_md", DELIVERY_DIRS["quality"], "solver验证汇总.md"),
-        ("solver_summary_json", DELIVERY_DIRS["quality"], "solver验证汇总.json"),
+        ("solver_summary_json", DELIVERY_DIRS["machine"], "solver验证汇总.json"),
         ("archive_package", DELIVERY_DIRS["archive"], "题目归档包.zip"),
         ("manuals_zip", DELIVERY_DIRS["archive"], "手册与字段包.zip"),
+        ("formal_manual", DELIVERY_DIRS["manual"], "题目解题手册.md"),
         ("missing_report", DELIVERY_DIRS["issues"], "缺失项报告.md"),
         ("image_manifest_md", DELIVERY_DIRS["images"], "镜像包清单.md"),
-        ("image_manifest_json", DELIVERY_DIRS["images"], "镜像包清单.json"),
-        ("cases_jsonl", DELIVERY_DIRS["evidence"], "最终题目数据.jsonl"),
+        ("image_manifest_json", DELIVERY_DIRS["machine"], "镜像包清单.json"),
+        ("cases_jsonl", DELIVERY_DIRS["machine"], "最终题目数据.jsonl"),
         ("research_report", DELIVERY_DIRS["evidence"], "题目收集报告.md"),
     ]
     for key, folder, target_name in copy_spec:
@@ -103,7 +106,9 @@ def create_delivery_package(
             missing,
         )
 
+    package_issues = scan_delivery_package(delivery)
     summary = build_summary(work, outputs, delivery, files, missing, selected)
+    summary["package_issues"] = len(package_issues)
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "version": VERSION,
@@ -116,6 +121,7 @@ def create_delivery_package(
         },
         "files": files,
         "missing": missing,
+        "package_issues": package_issues,
         "selected_sources": {key: path.as_posix() for key, path in selected.items() if isinstance(path, Path)},
         "image_tars": image_tar_records,
     }
@@ -167,17 +173,44 @@ def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Path]
     selected["solver_summary_json"] = first_existing(outputs_dir, ["*solver_verification_summary.json"])
     selected["archive_package"] = first_existing(outputs_dir, ["*completed_archive_package_no_tars.zip", "*after_docker_archive_package.zip", "*archive_package.zip"])
     selected["manuals_zip"] = first_existing(outputs_dir, ["*manuals.zip"])
+    selected["formal_manual"] = first_available(
+        first_existing(outputs_dir, ["*题目解题手册.md", "题目解题手册.md"]),
+        first_existing(workdir / "writeup", ["*题目解题手册.md", "题目解题手册.md"]),
+        first_existing(workdir / "hub" / "manual", ["*题目解题手册.md", "题目解题手册.md"]),
+        first_existing_recursive(workdir / "archive", ["题目解题手册.md"]),
+    )
     selected["missing_report"] = first_existing(outputs_dir, ["*completed_missing_report.md", "*after_docker_missing_report.md", "*missing_report.md"])
     selected["cases_jsonl"] = first_existing(outputs_dir, ["*completed_archived_cases.jsonl", "*after_docker_archived_cases.jsonl", "*archived_cases.jsonl", "*cases.jsonl"])
     selected["research_report"] = first_existing(outputs_dir, ["*research_report.md"])
     selected["image_manifest_md"] = first_existing(workdir, ["image_tars_manifest.md"])
     selected["image_manifest_json"] = first_existing(workdir, ["image_tars_manifest.json"])
-    return {key: value for key, value in selected.items() if value}
+    return {key: value for key, value in selected.items() if is_real_path(value)}
 
 
 def first_existing(root: Path, patterns: list[str]) -> Path:
     for pattern in patterns:
         matches = sorted(path for path in root.glob(pattern) if path.is_file())
+        if matches:
+            return matches[-1]
+    return Path()
+
+
+def first_available(*paths: Path) -> Path:
+    for path in paths:
+        if is_real_path(path):
+            return path
+    return Path()
+
+
+def is_real_path(path: Path) -> bool:
+    return isinstance(path, Path) and path.as_posix() != "."
+
+
+def first_existing_recursive(root: Path, patterns: list[str]) -> Path:
+    if not root.exists():
+        return Path()
+    for pattern in patterns:
+        matches = sorted(path for path in root.rglob(pattern) if path.is_file())
         if matches:
             return matches[-1]
     return Path()
@@ -310,6 +343,32 @@ def build_summary(
     }
 
 
+def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    human_dirs = {value for key, value in DELIVERY_DIRS.items() if key != "machine"}
+    blocked_names = {
+        ".DS_Store",
+        "archive.xlsx",
+        "yuque_table.md",
+        "final_report.md",
+        "final_report.json",
+        "quality_summary.json",
+        "docker_execution_summary.json",
+        "completion_report.json",
+        "solver_verification_summary.json",
+    }
+    for path in delivery.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(delivery).as_posix()
+        if path.name in blocked_names:
+            issues.append({"path": relative, "issue": "人看的交付目录里出现无效或英文重复文件"})
+        top = relative.split("/", 1)[0]
+        if top in human_dirs and path.suffix.lower() == ".json" and not relative.startswith(DELIVERY_DIRS["machine"] + "/"):
+            issues.append({"path": relative, "issue": "JSON 应放到 过程证据/机器数据"})
+    return issues
+
+
 def render_delivery_readme(manifest: dict[str, Any]) -> str:
     summary = manifest.get("summary", {})
     lines = [
@@ -331,6 +390,7 @@ def render_delivery_readme(manifest: dict[str, Any]) -> str:
         f"- 已复制文件：{summary.get('copied_files', 0)}",
         f"- 仅引用文件：{summary.get('referenced_files', 0)}",
         f"- 缺失文件：{summary.get('missing_files', 0)}",
+        f"- 交付包问题：{summary.get('package_issues', 0)}",
         f"- 工作目录：`{summary.get('workdir', '')}`",
         f"- 原始 outputs：`{summary.get('outputs_dir', '')}`",
         "",
@@ -357,6 +417,10 @@ def render_delivery_readme(manifest: dict[str, Any]) -> str:
         lines.extend(["", "## 缺失文件", "", "| 类型 | 目标位置 |", "|---|---|"])
         for item in manifest["missing"]:
             lines.append("| " + " | ".join(escape_table(value) for value in [item.get("key", ""), item.get("target", "")]) + " |")
+    if manifest.get("package_issues"):
+        lines.extend(["", "## 交付包问题", "", "| 文件 | 问题 |", "|---|---|"])
+        for item in manifest["package_issues"]:
+            lines.append("| " + " | ".join(escape_table(value) for value in [item.get("path", ""), item.get("issue", "")]) + " |")
     if manifest.get("image_tars"):
         lines.extend(["", "## 镜像 tar 位置", "", "| 题目 | 镜像 | 状态 | 平台 | tar |", "|---|---|---|---|---|"])
         for item in manifest["image_tars"]:

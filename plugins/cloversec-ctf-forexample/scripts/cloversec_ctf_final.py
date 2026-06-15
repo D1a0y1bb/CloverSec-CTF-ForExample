@@ -33,6 +33,8 @@ YUQUE_FIELDS = [
     "备注",
 ]
 
+ESSENTIAL_PASS_FIELDS = ["赛事来源", "题目来源", "名称", "分类", "题目类型", "Flag类型", "Flag", "验证状态", "解题工具"]
+
 
 def create_final_outputs(
     cases: list[dict[str, Any]],
@@ -52,11 +54,11 @@ def create_final_outputs(
     legacy_report_path = output / "final_report.md"
     legacy_json_path = output / "final_report.json"
 
-    rows = [data.case_to_xlsx_row(case) for case in cases]
+    rows = [finalized_xlsx_row(case, path_base) for case in cases]
     validation_errors = []
     for index, case in enumerate(cases, start=1):
         validation_errors.extend(f"case {index}: {error}" for error in data.validate_case(case))
-    data.write_xlsx(cases, xlsx_path)
+    data.write_rows_xlsx(rows, xlsx_path)
     shutil.copyfile(xlsx_path, legacy_xlsx_path)
     read_back = data.read_xlsx(xlsx_path)
 
@@ -156,9 +158,11 @@ def _final_entry(case: dict[str, Any], row: dict[str, str], base_dir: Path | Non
     name = row.get("名称") or str(case.get("case_id") or "unknown")
     validation_status = row.get("验证状态", "").strip()
     actions = []
-    for field in ["名称", "分类", "题目类型", "Flag类型", "Flag", "验证状态"]:
+    for field in ESSENTIAL_PASS_FIELDS:
         if not row.get(field, "").strip():
             actions.append(f"{name} 缺少 {field}")
+    if row.get("题目类型", "").strip() == "环境型" and not row.get("开放端口", "").strip():
+        actions.append(f"{name} 环境型题目缺少开放端口")
     if validation_status in {"失败", "未验证"}:
         actions.append(f"{name} 验证状态为 {validation_status}，需要复核后再交付")
     elif validation_status == "部分通过":
@@ -186,6 +190,47 @@ def _final_entry(case: dict[str, Any], row: dict[str, str], base_dir: Path | Non
         "resource_path": resource_path,
         "remaining_actions": actions,
     }
+
+
+def finalized_xlsx_row(case: dict[str, Any], base_dir: Path | None = None) -> dict[str, str]:
+    row = data.case_to_xlsx_row(case)
+    issues = row_missing_issues(row, base_dir)
+    if issues:
+        if row.get("是否通过") == "是":
+            row["是否通过"] = "否"
+        if row.get("是否归档") == "是":
+            row["是否归档"] = "否"
+        if row.get("验证状态") == "通过":
+            row["验证状态"] = "部分通过"
+        existing = row.get("问题", "").strip()
+        merged = ";".join(item for item in [existing, *issues] if item)
+        row["问题"] = merged[:1000]
+    return row
+
+
+def row_missing_issues(row: dict[str, str], base_dir: Path | None = None) -> list[str]:
+    name = row.get("名称") or "未命名题目"
+    issues = []
+    if row.get("是否通过") == "是" or row.get("验证状态") == "通过":
+        for field in ESSENTIAL_PASS_FIELDS:
+            if not row.get(field, "").strip():
+                issues.append(f"{name} 缺少 {field}")
+        if row.get("题目类型", "").strip() == "环境型" and not row.get("开放端口", "").strip():
+            issues.append(f"{name} 环境型题目缺少开放端口")
+    if row.get("是否归档") == "是":
+        archive_dir = row.get("归档目录", "")
+        resource_path = row.get("环境包/附件包路径", "")
+        if not archive_dir.strip():
+            issues.append(f"{name} 缺少归档目录")
+        elif not any(path.exists() for path in _path_candidates(archive_dir, base_dir)):
+            issues.append(f"{name} 归档目录不存在：{archive_dir}")
+        if not resource_path.strip():
+            issues.append(f"{name} 缺少环境包/附件包路径")
+        else:
+            for path in _split_paths(resource_path):
+                if not _resource_exists(path, archive_dir, base_dir):
+                    issues.append(f"{name} 资源路径不存在：{path}")
+    return issues
 
 
 def _split_paths(value: str) -> list[str]:

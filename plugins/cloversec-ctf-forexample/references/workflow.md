@@ -50,6 +50,12 @@
 
 平台交付至少需要这些证据：`Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`environment`、`docker_artifacts`、`xlsx_fields`、端口一致性、`linux/amd64` 校验。直接 Docker build/run/probe 只算运行证据，不能替代 Dockerizer 生成或校验平台交付件。
 
+只有 `challenge.yml`、solver、writeup、截图、Flag 或平台页面时，只能算线索或手册材料。缺官方源码、附件或题包时，必须写 `needs_user_material`、`writeup_only`、`solver_or_writeup_only` 或 `lead_only`，不能写成可交付。
+
+Dockerizer 交接必须包含题目目录、已有 Dockerfile/compose、端口线索、启动命令、Flag 路径、缺失项和用户需要确认的问题。
+
+Docker 状态必须拆成四层：契约、镜像构建/导入、服务启动、题目可解。端口通过不等于题目可解。
+
 ## 搜索与采集能力
 
 脚本入口：
@@ -147,6 +153,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_retag.py plan --c
 workflow_state.json
 task_plan.json
 ctf_cases.jsonl
+当前状态.md
 next_steps.md
 logs/
 evidence/
@@ -167,6 +174,8 @@ reports/
 - `resume.last_case_id`
 
 阶段状态只接受清楚的事实：`pending`、`planned`、`completed`、`failed`。dry-run 只生成预览和计划；apply 才写完成状态。
+
+给用户看的批量状态优先用 `当前状态.md`，只写处理题数、缺材料题数、待确认题数和文件位置。
 
 ## 0.3.0 下载沙箱
 
@@ -236,7 +245,7 @@ proof/hashes.json
 
 没有 Dockerizer 方案确认或 `platform_contract_verified=true` 证据时，批量报告必须标 `Dockerizer 改造待确认`，失败案例库必须记录 `platform_conversion_required`，不得把题目写成可归档。
 
-## 0.4.3 手册、Hub、归档和批量交接
+## 0.5.0 手册、Hub、归档和批量交接
 
 ### 手册质量
 

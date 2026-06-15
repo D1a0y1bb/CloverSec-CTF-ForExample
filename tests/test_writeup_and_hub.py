@@ -81,10 +81,12 @@ class WriteupAndHubTests(unittest.TestCase):
 
             manual = writeup.render_manual(case, fields, filled=True)
 
-        self.assertIn("### 题目描述", manual)
-        self.assertIn("#### 题目名称", manual)
-        self.assertIn("#### 解题工具", manual)
-        self.assertIn("### 解题步骤", manual)
+        self.assertIn("## 题目说明", manual)
+        self.assertIn("- 题目名称：", manual)
+        self.assertIn("## 解题工具", manual)
+        self.assertIn("## 解题步骤", manual)
+        self.assertIn("## 命令输出", manual)
+        self.assertIn("## 截图说明", manual)
         self.assertIn("flag{stage-five-full-flag}", manual)
 
     def test_screenshot_plan_uses_stable_names(self):
@@ -114,6 +116,7 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertTrue((output_dir / "fields" / "hub_fields.json").exists())
             self.assertTrue((output_dir / "fields" / "hub_fields_preview.json").exists())
             self.assertTrue((output_dir / "manual" / "manual_filled_draft.md").exists())
+            self.assertTrue((output_dir / "manual" / "题目解题手册.md").exists())
             self.assertTrue((output_dir / "attachments" / "challenge.zip").exists())
             self.assertFalse((output_dir / "images" / "web.tar").exists())
             self.assertTrue((output_dir / "hub_submission_checklist.md").exists())
@@ -219,6 +222,7 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertEqual(state["uploads"]["pending_count"], 0)
         self.assertIn("停在最终提交前", state["next_action"])
         self.assertIn("click_final_submit", state["forbidden_actions"])
+        self.assertEqual(state["manual_submit"]["hub_record_id"], "")
         self.assertTrue(state_path_exists)
 
     def test_hub_classify_options_and_upload_results_update_payload(self):
@@ -395,6 +399,23 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue((output_dir / "hub_fields.json").exists())
             self.assertTrue((output_dir / "manual_filled_draft.md").exists())
+            self.assertTrue((output_dir / "题目解题手册.md").exists())
+
+    def test_hub_visible_page_id_is_not_formal_hub_number(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+
+            state = hub.create_hub_review_state(
+                case,
+                tmp_path / "hub-review",
+                review_status="approved",
+                visible_page={"id": "12345", "url": "https://hub.yunyansec.com/#/resource/ctf"},
+            )
+
+        self.assertFalse(state["retag_required"])
+        self.assertEqual(state["hub_record_id"], "12345")
+        self.assertEqual(state["HUB编号"], "")
 
 
 if __name__ == "__main__":

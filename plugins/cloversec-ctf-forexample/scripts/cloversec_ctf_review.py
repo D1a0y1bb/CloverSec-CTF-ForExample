@@ -119,6 +119,7 @@ def create_quality_review(
         "问题": "；".join(issues),
         "手册状态": _manual_status(manual_paths, writeup),
     }
+    docker_status = docker_status_breakdown(checks, docker_execution, writeup)
     payload = {
         "case_id": str(case.get("case_id") or ""),
         "checks": checks,
@@ -127,6 +128,7 @@ def create_quality_review(
             "fail": sum(1 for item in checks if item["status"] == "fail"),
             "skip": sum(1 for item in checks if item["status"] == "skip"),
             "status": status,
+            "docker_status": docker_status,
         },
         "xlsx_fields": xlsx_fields,
     }
@@ -284,6 +286,13 @@ def render_review_markdown(review: dict[str, Any]) -> str:
         lines.append(f"- 容器名：{review['docker_execution'].get('container_name', '')}")
         for item in review["docker_execution"].get("probes", []):
             lines.append(f"- Probe：{item.get('url', '')} {item.get('status', '')} {item.get('message', '')}")
+    docker_status = review.get("summary", {}).get("docker_status") if isinstance(review.get("summary", {}).get("docker_status"), dict) else {}
+    if docker_status:
+        lines.extend(["", "## Docker 分层状态", ""])
+        lines.append(f"- 契约：{docker_status.get('contract_status', '')}")
+        lines.append(f"- 镜像构建/导入：{docker_status.get('image_build_status', '')}")
+        lines.append(f"- 服务启动：{docker_status.get('service_start_status', '')}")
+        lines.append(f"- 题目可解：{docker_status.get('solve_status', '')}")
     return "\n".join(lines) + "\n"
 
 
@@ -313,6 +322,32 @@ def _add_docker_execution_checks(checks: list[dict[str, str]], evidence: dict[st
         _add_check(checks, "docker-execution-summary", "Docker 执行汇总", "fail", "; ".join(evidence["summary"]["issues"]))
     elif evidence.get("summary", {}).get("status") == "pass":
         _add_check(checks, "docker-execution-summary", "Docker 执行汇总", "pass", "受控 Docker 执行通过")
+
+
+def docker_status_breakdown(
+    checks: list[dict[str, str]],
+    docker_execution: dict[str, Any] | None,
+    writeup: dict[str, Any],
+) -> dict[str, str]:
+    by_id = {item["id"]: item for item in checks}
+    contract_status = "通过" if by_id.get("data-model", {}).get("status") == "pass" and by_id.get("image-platform", {}).get("status") in {"pass", "skip"} else "未通过"
+    if docker_execution:
+        load_status = by_id.get("docker-load", by_id.get("docker-inspect", {})).get("status", "")
+        inspect_status = by_id.get("docker-inspect", {}).get("status", "")
+        run_status = by_id.get("docker-run", {}).get("status", "")
+        probe_status = by_id.get("docker-port-probe", {}).get("status", "")
+        image_build_status = "通过" if inspect_status == "pass" and load_status in {"pass", "skip", ""} else "未通过"
+        service_start_status = "通过" if run_status == "pass" and probe_status in {"pass", "skip", ""} else "未通过"
+    else:
+        image_build_status = "未执行"
+        service_start_status = "未执行"
+    solve_status = "通过" if writeup.get("solve_verified") is True else "未执行"
+    return {
+        "contract_status": contract_status,
+        "image_build_status": image_build_status,
+        "service_start_status": service_start_status,
+        "solve_status": solve_status,
+    }
 
 
 def _run_command(args: list[str], *, timeout: int) -> dict[str, Any]:

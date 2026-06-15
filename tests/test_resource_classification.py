@@ -83,10 +83,13 @@ class ResourceClassificationTests(unittest.TestCase):
             payload = resource.classify_resource_root(root)
             by_name = {item["name"]: item for item in payload["resources"]}
 
-        self.assertEqual(by_name["challenge.yaml"]["resource_type"], "source_manifest")
-        self.assertEqual(by_name["solve.sage"]["resource_type"], "source_file")
+        self.assertEqual(by_name["challenge.yaml"]["resource_type"], "ctf_manifest")
+        self.assertEqual(by_name["solve.sage"]["resource_type"], "solver_file")
         self.assertEqual(by_name["flag.txt"]["resource_type"], "flag_file")
-        self.assertEqual(payload["root_classification"]["recommended_next_skill"], "cloversec-ctf-build-dockerizer")
+        self.assertEqual(payload["root_classification"]["project_type"], "challenge_metadata_bundle")
+        self.assertEqual(payload["root_classification"]["recommended_next_skill"], "cloversec-ctf-asset-collector")
+        self.assertFalse(payload["must_use_dockerizer"])
+        self.assertEqual(payload["root_classification"]["platform_delivery"]["status"], "needs_user_material")
 
     def test_classifies_docker_image_tar(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -149,6 +152,44 @@ class ResourceClassificationTests(unittest.TestCase):
         self.assertIn("cloversec_ctf_platform_contract", tools)
         self.assertEqual(contract["must_use_skill"], "cloversec-ctf-build-dockerizer")
         self.assertFalse(contract["blocking_fields"]["can_archive"])
+
+    def test_workflow_mcp_init_does_not_hit_compact_shadowing_bug(self):
+        server = SCRIPTS / "cloversec_ctf_workflow_mcp.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            messages = [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "cloversec_ctf_workflow_init",
+                        "arguments": {
+                            "event": "Fixture CTF",
+                            "years": [2026],
+                            "categories": ["web"],
+                            "limit": 1,
+                            "out_dir": str(Path(tmp) / "run"),
+                        },
+                    },
+                },
+            ]
+            result = subprocess.run(
+                [sys.executable, str(server)],
+                input="\n".join(json.dumps(item) for item in messages) + "\n",
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=20,
+            )
+            lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+            payload = json.loads(lines[1]["result"]["content"][0]["text"])
+            workdir_exists = Path(payload["workdir"]).exists()
+            status_exists = (Path(payload["workdir"]) / "当前状态.md").exists()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(workdir_exists)
+        self.assertTrue(status_exists)
 
 
 def add_tar_file(archive: tarfile.TarFile, name: str, body: bytes) -> None:

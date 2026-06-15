@@ -12,6 +12,7 @@ description: 生成 CloverSec CTF Hub 提交包、字段 payload、浏览器/Chr
 - 需要用浏览器或 Chrome 插件辅助填写 Hub 表单、上传附件和截图。
 - 用户已经在 Chrome 登录 Hub，需要记录登录确认、字段填写、上传、提交前截图和人工提交状态。
 - 需要在最终提交前检查字段、附件、截图、上传结果和 Flag。
+- 需要区分页面记录 ID 和正式 HUB 编号，避免 retag 用错编号。
 
 ## 必须遵守
 
@@ -21,6 +22,11 @@ description: 生成 CloverSec CTF Hub 提交包、字段 payload、浏览器/Chr
 - 只有确认用户当前 Chrome 已登录 Hub 后，才允许打开新增题目页并填写字段；页面仍显示“登录/注册”、SSO、403 或未登录状态时必须停止，不填写。
 - 不自动点击最终提交按钮；Chrome 辅助流程必须停在提交前检查。
 - 上传未知文件、分类 ID、字段差异和最终提交都需要用户确认。
+- 手册主文件使用 `题目解题手册.md`。`manual_filled_draft.md` 只能作为兼容文件，不作为对人交付主入口。
+- Hub 提交前必须生成中文确认页，列出分类、分值、题目等级、资源等级、关键字、附件上传结果、截图、题目类型和阻断项。缺分类 ID、缺上传结果或缺截图时不能进入 ready。
+- 页面记录 ID 写 `hub_record_id`，正式题目编号写 `HUB编号`。retag、镜像 tag 和 xlsx 只能使用正式 `HUB编号`。
+- 如果页面只有数字 ID、URL ID 或数据库记录 ID，`hub_record_id` 可以写该值，但 `HUB编号` 必须留空。不要把“待确认”“不可用”这类说明文本写进 `HUB编号` 或 retag 用的字段。
+- 如果输出机器可读 JSON，布尔字段只能写 `true` 或 `false`，不要写中文“是/否”。
 - Chrome 文件上传如果返回 `Not allowed`，提示用户在 `chrome://extensions` 给 Codex 扩展开启 `Allow access to file URLs`，不要改用 Cookie/session 方案绕过。
 
 ## 常用命令
@@ -28,7 +34,7 @@ description: 生成 CloverSec CTF Hub 提交包、字段 payload、浏览器/Chr
 生成提交材料：
 
 ```bash
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package --case-json ctf_case.json --hub-fields writeup_out/hub_fields.json --manual writeup_out/manual_filled_draft.md --output-dir hub_submission_package
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package --case-json ctf_case.json --hub-fields writeup_out/hub_fields.json --manual writeup_out/题目解题手册.md --output-dir hub_submission_package
 ```
 
 生成 Chrome 辅助计划：

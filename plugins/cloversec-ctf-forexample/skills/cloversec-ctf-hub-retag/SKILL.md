@@ -27,6 +27,8 @@ description: CloverSec CTF Hub 审核后编号回填与镜像 tag skill。用于
 ## 工作流程
 
 1. 要求用户确认 HUB 编号和 tag 规则。
+   - 只有正式题目编号可以用于 retag，例如 `CTF-2026060001`。
+   - 页面数字 ID、URL ID、`hub_record_id`、`待确认`、`不可用` 都不能当作 HUB 编号。
 2. 读取 `docker_artifacts.image_name`、`platform`、`tar_path`。
 3. 生成 docker tag、save、load、inspect 命令计划。
 4. 写入 `retag_plan.json` 和 `retag_report.md`。

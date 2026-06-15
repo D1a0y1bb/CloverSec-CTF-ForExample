@@ -16,7 +16,7 @@ import cloversec_ctf_archive as archive
 import cloversec_ctf_data as data
 
 
-VERSION = "0.4.3"
+VERSION = "0.5.0"
 CONFIRMATION_SCHEMA = "cloversec.ctf.confirmation_request.v1"
 LOCK_SCHEMA = "cloversec.ctf.manifest_lock.v1"
 PREVIEW_SCHEMA = "cloversec.ctf.archive_preview.v1"
