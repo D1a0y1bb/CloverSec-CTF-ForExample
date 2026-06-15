@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}
@@ -409,20 +409,26 @@ def build_next_actions(validation_level: str, project_type: str, warnings: list[
         actions.append("build/inspect/run/logs/stop and record probe results")
     elif validation_level == "solve_verify":
         actions.append("only run solver verification after explicit user approval")
-    if project_type in {"container_project", "compose_project"}:
+    if project_type in {"container_project", "compose_project", "docker_image_delivery"}:
         actions.append("send runtime fields to cloversec-ctf-build-dockerizer for CloverSec platform contract conversion")
         actions.append("use cloversec-ctf-docker only for approved build/run evidence, not as final delivery conversion")
     return dedupe(actions)
 
 
 def build_platform_delivery_policy(project_type: str) -> dict[str, Any]:
-    must_use_dockerizer = project_type in {"container_project", "compose_project", "container_instructions", "remote_service_challenge"}
-    requires_contract = must_use_dockerizer or project_type == "docker_image_delivery"
+    must_use_dockerizer = project_type in {
+        "container_project",
+        "compose_project",
+        "container_instructions",
+        "remote_service_challenge",
+        "docker_image_delivery",
+    }
+    requires_contract = must_use_dockerizer
     return {
         "status": platform_delivery_status(project_type),
         "requires_cloversec_contract": requires_contract,
         "must_use_dockerizer": must_use_dockerizer,
-        "existing_docker_is_reference_only": project_type in {"container_project", "compose_project"},
+        "existing_docker_is_reference_only": project_type in {"container_project", "compose_project", "docker_image_delivery"},
         "final_delivery_skill": "cloversec-ctf-build-dockerizer" if must_use_dockerizer else "",
         "requires_user_confirmation": must_use_dockerizer,
         "confirmation_action": "dockerizer" if must_use_dockerizer else "",
@@ -437,7 +443,7 @@ def platform_delivery_status(project_type: str) -> str:
     if project_type in {"container_instructions", "remote_service_challenge"}:
         return "needs_platform_delivery_plan"
     if project_type == "docker_image_delivery":
-        return "needs_contract_review"
+        return "image_tar_needs_platform_conversion"
     return "not_container_delivery"
 
 

@@ -14,7 +14,7 @@ from typing import Any
 import cloversec_ctf_data as data
 
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 SCHEMA_VERSION = "cloversec.ctf.manual_quality.v1"
 REQUIRED_METADATA_FIELDS = ["名称", "分类", "题目类型", "Flag类型"]
 REQUIRED_HUB_FIELDS = ["题目标题", "题目内容", "题目来源", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级", "添加关键字"]
@@ -146,7 +146,7 @@ def check_manual_references(
     archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
     for item in archive_info.get("screenshots", []) if isinstance(archive_info.get("screenshots"), list) else []:
         screenshot_paths.append(str(item.get("path") if isinstance(item, dict) else item))
-    for label, paths, required in [("附件", attachment_paths, bool(attachment_paths)), ("截图", screenshot_paths, False)]:
+    for label, paths, required in [("附件", attachment_paths, bool(attachment_paths)), ("截图", screenshot_paths, True)]:
         missing = [path for path in paths if path and not Path(path).is_file()]
         mentioned = any(Path(path).name in manual for path in paths if path)
         if missing:
@@ -161,7 +161,8 @@ def check_manual_references(
         else:
             status = "pass" if not required else "fail"
             message = f"未声明{label}"
-        checks.append(check(f"manual-reference-{safe_id(label)}", f"{label}引用", status, message, evidence={"declared": paths, "missing": missing}))
+        label_id = {"附件": "attachments", "截图": "screenshots"}.get(label, safe_id(label))
+        checks.append(check(f"manual-reference-{label_id}", f"{label}引用", status, message, evidence={"declared": paths, "missing": missing}))
     manifest_issues = []
     if archive_manifest:
         manifest_issues.extend(str(item) for item in archive_manifest.get("issues", []))
@@ -219,11 +220,35 @@ def build_xlsx_fields_patch(case: dict[str, Any], checks: list[dict[str, Any]]) 
     row = data.case_to_xlsx_row(case)
     fail_count = sum(1 for item in checks if item["status"] == "fail")
     warn_count = sum(1 for item in checks if item["status"] == "warn")
+    solve_verified = case_solve_verified(case)
+    current_validation = str(row.get("验证状态") or "").strip()
     row["手册状态"] = "已校验" if fail_count == 0 else "待人工完善"
-    row["验证状态"] = "部分通过" if fail_count == 0 and warn_count else ("通过" if fail_count == 0 else "失败")
-    row["是否通过"] = "是" if fail_count == 0 else "否"
+    if fail_count:
+        row["验证状态"] = "失败"
+        row["是否通过"] = "否"
+    elif solve_verified:
+        row["验证状态"] = "通过" if not warn_count else "部分通过"
+        row["是否通过"] = "是" if not warn_count else "否"
+    else:
+        row["验证状态"] = current_validation if current_validation in {"未验证", "部分通过", "失败"} else "部分通过"
+        row["是否通过"] = "否"
     row["问题"] = ";".join(item["message"] for item in checks if item["status"] in {"fail", "warn"})[:1000]
     return row
+
+
+def case_solve_verified(case: dict[str, Any]) -> bool:
+    review = case.get("review") if isinstance(case.get("review"), dict) else {}
+    writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
+    docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
+    return any(
+        value is True
+        for value in [
+            review.get("solve_verified"),
+            review.get("flag_verified"),
+            writeup.get("solve_verified"),
+            docker_artifacts.get("solve_verified"),
+        ]
+    )
 
 
 def summarize_checks(checks: list[dict[str, Any]]) -> dict[str, Any]:

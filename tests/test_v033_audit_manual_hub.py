@@ -168,6 +168,27 @@ class V033AuditManualHubTests(unittest.TestCase):
             self.assertTrue((tmp_path / "manual-quality" / "xlsx_fields_patch.json").exists())
             self.assertEqual(payload["xlsx_fields_patch"]["Flag"], "flag{v033-full-flag}")
             self.assertEqual(payload["summary"]["fail"], 0)
+            self.assertEqual(payload["xlsx_fields_patch"]["手册状态"], "已校验")
+            self.assertEqual(payload["xlsx_fields_patch"]["是否通过"], "否")
+            self.assertIn(payload["xlsx_fields_patch"]["验证状态"], {"未验证", "部分通过"})
+
+    def test_manual_quality_fails_when_screenshot_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["archive"]["screenshots"] = []
+
+            payload = manual_quality.check_manual_quality(
+                case=case,
+                manual_markdown=sample_manual(),
+                hub_fields=sample_hub_fields(),
+                output_dir=tmp_path / "manual-quality",
+            )
+
+        self.assertGreater(payload["summary"]["fail"], 0)
+        self.assertEqual(payload["xlsx_fields_patch"]["手册状态"], "待人工完善")
+        self.assertEqual(payload["xlsx_fields_patch"]["是否通过"], "否")
+        self.assertTrue(any(item["name"] == "截图引用" for item in payload["checks"] if item["status"] == "fail"))
 
     def test_manual_quality_cli_accepts_missing_optional_manifests(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -377,7 +398,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.5.0")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.5.1")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

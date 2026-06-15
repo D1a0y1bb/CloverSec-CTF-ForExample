@@ -120,6 +120,32 @@ class SearchEngineTests(unittest.TestCase):
         self.assertTrue(cases[0]["requires_user_confirmation"])
         self.assertIn("待人工确认线索", cases[0]["notes"])
 
+    def test_results_to_cases_does_not_promote_platform_homepage(self):
+        manifest = {
+            "query": "CTFTime 2026 web",
+            "results": [
+                {
+                    "provider": "ctf-platforms",
+                    "title": "CTFTime",
+                    "url": "https://ctftime.org/",
+                    "summary": "CTF platform homepage",
+                    "source_type": "public_web",
+                    "confidence": "low",
+                    "layer": "platform_lead",
+                    "lead_only": True,
+                    "score": 10,
+                    "quality_issues": ["platform homepage is not a confirmed challenge"],
+                }
+            ],
+        }
+
+        cases = search.results_to_cases(manifest)
+
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]["research"]["material_level"], "search_gap")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "未找到可复现材料")
+        self.assertTrue(cases[0]["requires_user_confirmation"])
+
     def test_fetch_and_download_url_against_local_server(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

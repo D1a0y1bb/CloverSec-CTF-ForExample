@@ -63,9 +63,18 @@ def create_archive_package(
 
     writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
     manual_inputs: list[dict[str, Any]] = []
-    for key in ["manual_path", "formal_manual_path", "manual_filled_draft", "manual_template"]:
-        if writeup.get(key):
-            manual_inputs.append({"path": writeup[key], "name": "题目解题手册.md" if key != "manual_template" else "手册模板.md"})
+    seen_manual_paths: set[str] = set()
+    for key in ["formal_manual_path", "manual_path", "manual_filled_draft", "manual_template"]:
+        manual_path = str(writeup.get(key) or "").strip()
+        if not manual_path:
+            continue
+        normalized = Path(manual_path).expanduser().resolve().as_posix() if Path(manual_path).exists() else manual_path
+        if normalized in seen_manual_paths:
+            continue
+        seen_manual_paths.add(normalized)
+        if key == "manual_template" and any(item.get("name") == "题目解题手册.md" for item in manual_inputs):
+            continue
+        manual_inputs.append({"path": manual_path, "name": "题目解题手册.md" if key != "manual_template" else "手册模板.md"})
     if manual_inputs:
         for item in manual_inputs:
             files.extend(_copy_or_record(item, archive_dir / ROLE_DIRS["writeup"], "writeup", copy_files, issues))

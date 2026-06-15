@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.5.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.5.1 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -1114,14 +1114,20 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     for index, result in enumerate(manifest.get("results", []), start=1):
         if not isinstance(result, dict):
             continue
-        if result.get("layer") in {"noise"}:
+        layer = str(result.get("layer") or "")
+        if layer in {"noise"}:
+            continue
+        if layer == "platform_lead" and not result.get("search_gap"):
+            continue
+        if bool(result.get("lead_only")) and not result.get("search_gap"):
+            continue
+        if layer == "writeup_candidate" and int(result.get("score") or 0) < 40:
             continue
         title = str(result.get("title") or "").strip()
         if not title:
             continue
         source_type = result.get("source_type") or "public_web"
         case_id = f"research-{index:06d}"
-        layer = str(result.get("layer") or "")
         confidence = result_to_case_confidence(result)
         category = infer_case_category(result)
         years = infer_case_years(result, manifest)

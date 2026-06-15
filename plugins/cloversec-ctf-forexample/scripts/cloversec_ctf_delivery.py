@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 DELIVERY_DIRS = {
@@ -54,6 +54,14 @@ def create_delivery_package(
     files: list[dict[str, Any]] = []
     missing: list[dict[str, str]] = []
 
+    required_keys = {
+        "final_xlsx",
+        "yuque_table",
+        "final_report_md",
+        "archive_package",
+        "formal_manual",
+        "missing_report",
+    }
     copy_spec = [
         ("final_xlsx", DELIVERY_DIRS["tables"], "最终归档表.xlsx"),
         ("reviewed_xlsx", DELIVERY_DIRS["tables"], "阶段归档表-质检后.xlsx"),
@@ -79,6 +87,8 @@ def create_delivery_package(
         ("research_report", DELIVERY_DIRS["evidence"], "题目收集报告.md"),
     ]
     for key, folder, target_name in copy_spec:
+        if key not in selected and key not in required_keys:
+            continue
         record = copy_or_reference(
             selected.get(key),
             delivery / folder / target_name,

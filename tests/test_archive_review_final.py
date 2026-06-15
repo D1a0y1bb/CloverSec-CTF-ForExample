@@ -132,6 +132,19 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             image_records = [item for item in manifest["files"] if item["role"] == "image_tar"]
             self.assertEqual(image_records[0]["status"], "referenced")
 
+    def test_archive_package_dedupes_same_manual_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["metadata"]["验证状态"] = "通过"
+            case["metadata"]["是否通过"] = "是"
+            case["writeup"]["manual_filled_draft"] = case["writeup"]["manual_path"]
+
+            manifest = archive.create_archive_package(case, tmp_path / "archive")
+
+        manual_files = [item for item in manifest["files"] if item["role"] == "writeup" and item["relative_path"].endswith("题目解题手册.md")]
+        self.assertEqual(len(manual_files), 1)
+
     def test_archive_package_does_not_mark_unverified_case_archived(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -511,6 +524,29 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertFalse(any(path.name.startswith(("01-", "02-", "03-", "04-", "05-", "06-", "07-", "99-")) for path in delivery_dir.iterdir()))
             self.assertTrue(any(item["status"] == "referenced" and item["key"] == "image_tar" for item in manifest["files"]))
 
+    def test_delivery_package_does_not_require_optional_stage_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work" / "ctf-2026-collection"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir(parents=True)
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 名称 |\n|---|\n", encoding="utf-8")
+            (outputs / "最终报告.md").write_text("# 最终报告\n", encoding="utf-8")
+            (outputs / "archive_package.zip").write_bytes(b"zip")
+            (outputs / "missing_report.md").write_text("# 待处理问题\n", encoding="utf-8")
+            writeup_dir = workdir / "writeup"
+            writeup_dir.mkdir()
+            (writeup_dir / "题目解题手册.md").write_text("# 题目解题手册\n", encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
+
+        missing_keys = {item["key"] for item in manifest["missing"]}
+        self.assertNotIn("completion_report_md", missing_keys)
+        self.assertNotIn("solver_summary_md", missing_keys)
+        self.assertEqual(missing_keys, set())
+
     def test_quality_runner_writes_batch_evidence_and_updated_cases(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -609,7 +645,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.5.0")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.5.1")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

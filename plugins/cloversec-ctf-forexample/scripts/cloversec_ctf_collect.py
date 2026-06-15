@@ -25,8 +25,22 @@ EVIDENCE_FIELDS = [
     "status",
 ]
 
-SOURCE_TYPES = {"public_web", "user_provided", "local_file", "github", "ctftime", "writeup", "unknown"}
-EVIDENCE_STATUS = {"found", "missing", "inaccessible", "unverified"}
+SOURCE_TYPES = {
+    "public_web",
+    "user_provided",
+    "local_file",
+    "github",
+    "github_code",
+    "github_release",
+    "github_tree",
+    "ctftime",
+    "writeup",
+    "agent_web_search",
+    "browser_visible",
+    "direct_url",
+    "unknown",
+}
+EVIDENCE_STATUS = {"found", "missing", "inaccessible", "unverified", "previewed", "downloaded", "needs_review"}
 COLLECTION_REQUIRED_METADATA = ["名称", "分类"]
 
 ASSET_EXTENSIONS = {

@@ -72,6 +72,63 @@ def default_screenshot_plan() -> list[dict[str, str]]:
     ]
 
 
+def normalize_hub_fields(case: dict[str, Any], hub_fields: dict[str, Any], manual_markdown: str) -> dict[str, Any]:
+    fields = dict(hub_fields or {})
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    flag = case.get("flag") if isinstance(case.get("flag"), dict) else {}
+    title = _string(fields.get("题目标题") or metadata.get("名称") or case.get("case_id"))
+    category = _string(fields.get("题目分类") or metadata.get("分类"))
+    source = _string(fields.get("题目来源") or metadata.get("题目来源") or metadata.get("赛事来源"))
+    set_hub_field_if_empty(fields, "题目标题", title)
+    set_hub_field_if_empty(fields, "题目来源", source)
+    set_hub_field_if_empty(fields, "题目分类", category)
+    set_hub_field_if_empty(fields, "Flag类型", _string(metadata.get("Flag类型") or fields.get("Flag类型")))
+    set_hub_field_if_empty(fields, "题目Flag", _string(fields.get("题目Flag") or metadata.get("Flag") or flag.get("value")))
+    set_hub_field_if_empty(fields, "题目类型", _string(fields.get("题目类型") or metadata.get("题目类型")))
+    set_hub_field_if_empty(fields, "题目分值", _string(fields.get("题目分值") or metadata.get("分值")))
+    set_hub_field_if_empty(fields, "题目等级", _string(fields.get("题目等级") or metadata.get("难度编号") or metadata.get("星级")))
+    set_hub_field_if_empty(fields, "资源等级", _string(fields.get("资源等级") or metadata.get("资源等级")))
+    if not _string(fields.get("题目内容")):
+        fields["题目内容"] = manual_section_excerpt(manual_markdown, ["题目说明", "题目描述", "题目内容"]) or _string(
+            metadata.get("备注") or title
+        )
+    if not _string(fields.get("题目解答")):
+        fields["题目解答"] = manual_markdown
+    if not fields.get("添加关键字"):
+        fields["添加关键字"] = hub_keywords(title=title, category=category, source=source)
+    return fields
+
+
+def set_hub_field_if_empty(fields: dict[str, Any], key: str, value: Any) -> None:
+    if not _string(fields.get(key)):
+        fields[key] = value
+
+
+def manual_section_excerpt(markdown: str, headings: list[str], *, max_chars: int = 500) -> str:
+    text = str(markdown or "")
+    for heading in headings:
+        pattern = re.compile(rf"^##+\s*{re.escape(heading)}\s*$([\s\S]*?)(?=^##+\s|\Z)", flags=re.M)
+        match = pattern.search(text)
+        if not match:
+            continue
+        body = re.sub(r"\s+", " ", match.group(1)).strip()
+        if body:
+            return body[:max_chars]
+    stripped = re.sub(r"\s+", " ", text).strip()
+    return stripped[:max_chars]
+
+
+def hub_keywords(*, title: str, category: str, source: str) -> list[str]:
+    tokens: list[str] = []
+    for value in [category, source, title, "ctf"]:
+        for token in re.findall(r"[\w\u4e00-\u9fff-]{2,}", value.lower()):
+            if token not in tokens:
+                tokens.append(token)
+            if len(tokens) >= 8:
+                return tokens
+    return tokens or ["ctf"]
+
+
 def create_submission_package(
     case: dict[str, Any],
     hub_fields: dict[str, Any],
@@ -81,6 +138,7 @@ def create_submission_package(
     copy_image_tars: bool = False,
 ) -> dict[str, Any]:
     root = Path(output_dir)
+    hub_fields = normalize_hub_fields(case, hub_fields, manual_markdown)
     fields_dir = root / "fields"
     manual_dir = root / "manual"
     attachments_dir = root / "attachments"
@@ -130,6 +188,7 @@ def create_submission_package(
     manifest = {
         "case_id": case.get("case_id", ""),
         "hub_fields": hub_fields,
+        "manual_markdown": manual_markdown,
         "upload_files": upload_files,
         "upload_results": [],
         "screenshots": screenshot_records,
@@ -169,14 +228,15 @@ def create_hub_draft(
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
     manifest = create_submission_package(case, hub_fields, manual_markdown, root, copy_image_tars=copy_image_tars)
-    form_payload = create_hub_form_payload(hub_fields, manifest=manifest, classify_options=classify_options)
+    normalized_fields = manifest.get("hub_fields", {}) if isinstance(manifest.get("hub_fields"), dict) else hub_fields
+    form_payload = create_hub_form_payload(normalized_fields, manifest=manifest, classify_options=classify_options)
     validation = validate_hub_form_payload(form_payload, manifest=manifest)
     browser_plan = create_browser_assist_plan(manifest, classify_options=classify_options)
     chrome_plan = create_chrome_assist_plan(manifest, classify_options=classify_options)
     diff = create_hub_diff(case, hub_fields, form_payload, validation)
     draft = {
         "schema_version": "cloversec.ctf.hub_draft.v1",
-        "version": "0.5.0",
+        "version": "0.5.1",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -190,7 +250,7 @@ def create_hub_draft(
             "blockers": validation.get("blockers", []),
             "pending_uploads": validation.get("pending_uploads", []),
         },
-        "hub_fields": hub_fields,
+        "hub_fields": normalized_fields,
         "form_payload": form_payload,
         "validation": validation,
         "upload_manifest_path": (root / "hub_upload_manifest.json").as_posix(),
@@ -207,7 +267,7 @@ def create_hub_draft(
     write_json(root / "hub_chrome_plan.json", chrome_plan)
     write_text(root / "hub_screenshot_checklist.md", render_screenshot_checklist(manifest))
     write_text(root / "hub_diff_report.md", render_hub_diff(diff))
-    write_text(root / "Hub提交前确认.md", render_hub_confirmation(case, hub_fields, form_payload, validation, manifest))
+    write_text(root / "Hub提交前确认.md", render_hub_confirmation(case, normalized_fields, form_payload, validation, manifest))
     return draft
 
 
@@ -235,7 +295,7 @@ def create_hub_review_state(
         status_notes.append("已获得 Hub 编号，可以进入镜像命名和 retag 计划。")
     state = {
         "schema_version": "cloversec.ctf.hub_review_state.v1",
-        "version": "0.5.0",
+        "version": "0.5.1",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -294,7 +354,7 @@ def create_hub_session_state(
     resolved_hub_id = ids["hub_challenge_id"]
     state = {
         "schema_version": "cloversec.ctf.hub_session_state.v1",
-        "version": "0.5.0",
+        "version": "0.5.1",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or draft.get("case_id") or manifest.get("case_id") or ""),
         "case_title": case_title(case) or str(draft.get("case_title") or ""),
@@ -568,7 +628,7 @@ def create_hub_form_payload(
     upload_results = manifest.get("upload_results", []) if isinstance(manifest.get("upload_results"), list) else []
     attached_upload = find_upload_result(upload_results, attached)
     image_upload = find_upload_result(upload_results, image_tar)
-    answer = _string(hub_fields.get("题目解答") or hub_fields.get("manual_markdown") or "")
+    answer = _string(hub_fields.get("题目解答") or hub_fields.get("manual_markdown") or manifest.get("manual_markdown") or "")
     classify_resolution = resolve_hub_classify(hub_fields, classify_options=classify_options)
     payload = {
         "name": _string(hub_fields.get("题目标题")),
@@ -891,7 +951,7 @@ def create_hub_diff(
         )
     return {
         "schema_version": "cloversec.ctf.hub_diff.v1",
-        "version": "0.5.0",
+        "version": "0.5.1",
         "case_id": str(case.get("case_id") or ""),
         "comparisons": comparisons,
         "validation": validation,

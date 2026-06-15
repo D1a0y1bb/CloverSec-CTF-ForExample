@@ -77,6 +77,26 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertEqual(payload["compose"]["services"][0]["name"], "web")
         self.assertIn("18081:80", payload["summary"]["ports"])
 
+    def test_image_tar_inference_still_requires_dockerizer_conversion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = root / "image.tar"
+            image.write_bytes(b"not-a-real-docker-tar")
+            classification = {
+                "summary": {"by_resource_type": {"docker_image_tar": 1}},
+                "root_classification": {"project_type": "docker_image_delivery"},
+                "resources": [{"resource_type": "docker_image_tar", "relative_path": "image.tar"}],
+            }
+
+            payload = container.infer_container_project(root, resource_classification=classification)
+
+        self.assertEqual(payload["summary"]["project_type"], "docker_image_delivery")
+        self.assertTrue(payload["platform_contract_required"])
+        self.assertTrue(payload["must_use_dockerizer"])
+        self.assertEqual(payload["final_delivery_skill"], "cloversec-ctf-build-dockerizer")
+        self.assertEqual(payload["platform_delivery"]["confirmation_action"], "dockerizer")
+        self.assertIn("cloversec-ctf-build-dockerizer", " ".join(payload["next_actions"]))
+
     def test_docker_validation_levels_select_expected_operations(self):
         self.assertEqual(docker_runner.operations_for_validation_level("static_only"), [])
         self.assertEqual(docker_runner.operations_for_validation_level("inspect_only"), ["inspect"])
@@ -182,7 +202,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.5.0")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.5.1")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

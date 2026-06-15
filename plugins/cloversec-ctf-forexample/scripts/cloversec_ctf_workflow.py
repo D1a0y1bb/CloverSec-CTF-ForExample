@@ -27,7 +27,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.5.0"
+WORKFLOW_VERSION = "0.5.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -333,10 +333,7 @@ def execute_search_tasks(
     aggregate_years = [int(item) for item in request.get("years", []) if str(item).isdigit()]
     ranked = search.rank_results(search.enrich_results(search.dedupe_results(all_results), query=aggregate_query, years=aggregate_years))
     case_limit = int(request.get("limit") or 0)
-    case_results = [
-        item for item in ranked
-        if item.get("layer") in {"confirmed_challenge", "writeup_candidate", "attachment_candidate"}
-    ]
+    case_results = [item for item in ranked if usable_case_result(item)]
     if not case_results:
         case_results = ranked
     cases = search.results_to_cases({"query": aggregate_query, "years": aggregate_years, "results": case_results})
@@ -372,6 +369,37 @@ def execute_search_tasks(
     }
     write_json(search_results_path, aggregate)
     write_jsonl(base / "ctf_cases.jsonl", cases)
+    update_workflow_collect_state(
+        base,
+        stage="research",
+        status="partial",
+        summary={
+            "search_tasks": len(query_outputs),
+            "results": len(ranked),
+            "cases": len(cases),
+            "evidence_records": 0,
+            "download_preview_records": 0,
+            "note": "搜索结果和 ctf_cases.jsonl 已写入，正在继续写证据和下载预览。",
+        },
+        errors=all_errors,
+    )
+    status_counts = user_status_counts(cases)
+    (base / "当前状态.md").write_text(
+        render_current_status(
+            {
+                "run_id": str(plan.get("run_id") or base.name),
+                "event": str(request.get("event") or ""),
+                "years": request.get("years", []),
+                "categories": request.get("categories", []),
+                "status": "已写入题目清单，正在写证据和下载预览",
+                "cases": len(cases),
+                "missing_material": status_counts["missing_material"],
+                "pending_user": status_counts["pending_user"],
+                "output": base.as_posix(),
+            }
+        ),
+        encoding="utf-8",
+    )
     evidence = record_source_evidence(
         manifest_path=search_results_path,
         evidence_dir=base / "evidence",
@@ -581,7 +609,7 @@ def update_workflow_collect_state(
         "summary": summary,
         "errors": errors[:20],
     }
-    state["status"] = "in_progress" if status in {"completed", "pending_user"} else status
+    state["status"] = "in_progress" if status in {"completed", "pending_user", "partial"} else status
     state["updated_at"] = utc_now()
     write_json(state_path, state)
 
@@ -592,18 +620,152 @@ def direct_asset_urls_from_results(results: list[dict[str, Any]]) -> list[str]:
     for result in results:
         metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
         candidates = [
-            str(result.get("url") or ""),
-            str(result.get("source_url") or ""),
             str(metadata.get("raw_url") or ""),
             str(metadata.get("download_url") or ""),
+            str(result.get("url") or ""),
+            str(result.get("source_url") or ""),
         ]
         for url in candidates:
-            clean = url.strip()
+            clean = normalize_direct_asset_url(url.strip())
             if not clean or clean in seen or not search.looks_direct_asset_url(clean):
                 continue
             seen.add(clean)
             urls.append(clean)
     return urls
+
+
+def usable_case_result(result: dict[str, Any]) -> bool:
+    layer = str(result.get("layer") or "")
+    if layer in {"confirmed_challenge", "attachment_candidate"}:
+        return True
+    if layer != "writeup_candidate" or result.get("lead_only"):
+        return False
+    if looks_event_listing_page(result):
+        return False
+    if looks_aggregate_writeup_page(result):
+        return False
+    if not has_specific_challenge_page(result):
+        return False
+    score = int(result.get("score") or 0)
+    issues = [str(item).lower() for item in result.get("quality_issues", [])]
+    if any("mismatch" in item or "search engine" in item or "platform homepage" in item for item in issues):
+        return False
+    return score >= 55
+
+
+def looks_event_listing_page(result: dict[str, Any]) -> bool:
+    title = str(result.get("title") or "").lower()
+    url = str(result.get("url") or "").lower()
+    return (
+        bool(re.match(r"\s*(challenges?|home)\s*:", title))
+        or "challenges-category" in url
+        or "/tasks/" in url
+        or url.rstrip("/").endswith("/home")
+    )
+
+
+def has_specific_challenge_page(result: dict[str, Any]) -> bool:
+    title = str(result.get("title") or "")
+    url = str(result.get("url") or "")
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    metadata_path = str(metadata.get("path") or "").lower()
+    parsed = urlparse(url)
+    path_parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if is_category_challenge_readme_path(metadata_path):
+        return True
+    if parsed.netloc.lower() == "github.com" and "/blob/" in parsed.path.lower():
+        blob_index = next((idx for idx, part in enumerate(path_parts) if part.lower() == "blob"), -1)
+        github_file_path = "/".join(path_parts[blob_index + 2 :]).lower() if blob_index >= 0 else ""
+        if is_category_challenge_readme_path(github_file_path):
+            return True
+    return has_challenge_hint_in_writeup_result(title, path_parts)
+
+
+def looks_aggregate_writeup_page(result: dict[str, Any]) -> bool:
+    title = str(result.get("title") or "")
+    url = str(result.get("url") or "")
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    metadata_path = str(metadata.get("path") or "")
+    lower_title = title.lower()
+    lower_url = url.lower()
+    lower_metadata_path = metadata_path.lower()
+    parsed = urlparse(url)
+    path_parts = [part for part in parsed.path.strip("/").split("/") if part]
+    last_part = path_parts[-1].lower() if path_parts else ""
+    if "tasks and writeups" in lower_title:
+        return True
+    if re.search(r"write[- ]?up\s+on\s+the\s+challenges", lower_title):
+        return True
+    if re.search(r"write\s*up\s*[-:]\s*.*(\.|blog|medium)", lower_title):
+        return True
+    if last_part in {"readme.md", "readme"} and ("/writeup/" in lower_title or "/writeups/" in lower_title):
+        return True
+    if last_part in {"readme.md", "readme"} and lower_metadata_path:
+        return not is_category_challenge_readme_path(lower_metadata_path)
+    if parsed.netloc.lower() == "github.com" and "/blob/" in parsed.path.lower() and last_part in {"readme.md", "readme"}:
+        blob_index = next((idx for idx, part in enumerate(path_parts) if part.lower() == "blob"), -1)
+        github_file_path = "/".join(path_parts[blob_index + 2 :]).lower() if blob_index >= 0 else ""
+        return not is_category_challenge_readme_path(github_file_path)
+    if any(token in last_part for token in ["writeup", "writeups", "write-up", "write-ups", "write_up"]) and "ctf" in last_part and re.search(r"20\d{2}", last_part):
+        return True
+    if parsed.netloc.lower() == "github.com" and len(path_parts) <= 2 and any(
+        token in lower_title for token in ["writeups", "write-ups", "write ups", "solve scripts"]
+    ):
+        return True
+    if any(token in f"{lower_title} {lower_url}" for token in ["writeup", "write-up", "writeups", "write-ups", "wp"]):
+        return not has_challenge_hint_in_writeup_result(title, path_parts)
+    return False
+
+
+def is_category_challenge_readme_path(path: str) -> bool:
+    return bool(
+        re.search(
+            r"(?:^|/)(web|pwn|crypto|misc|reverse|rev|forensics|ai|osint|mobile|iot|blockchain)/[^/]+/readme(?:\.md)?$",
+            path,
+        )
+    )
+
+
+def has_challenge_hint_in_writeup_result(title: str, path_parts: list[str]) -> bool:
+    if re.search(r"/\s*[^/]{3,80}\s*/\s*write[- ]?up", title, flags=re.I):
+        return True
+    if re.search(r"write[- ]?ups?\s*[-:]\s*[A-Za-z0-9][A-Za-z0-9 _-]{2,}", title, flags=re.I):
+        return True
+    ignored_last_parts = {
+        "tasks",
+        "writeup",
+        "writeups",
+        "write-up",
+        "write-ups",
+        "readme.md",
+        "README.md",
+        "index.html",
+    }
+    last = path_parts[-1] if path_parts else ""
+    last_lower = last.lower()
+    if not last or last_lower in {item.lower() for item in ignored_last_parts}:
+        return False
+    if re.fullmatch(r"[a-z]*ctf[-_ ]?20\d{2}", last_lower):
+        return False
+    if len(path_parts) >= 3 and any(ch.isdigit() for ch in last_lower):
+        return True
+    if "-" in last_lower or "_" in last_lower:
+        return True
+    return False
+
+
+def normalize_direct_asset_url(url: str) -> str:
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if host == "github.com" and "/blob/" in parsed.path:
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) >= 5:
+            owner, repo, _, ref = parts[:4]
+            file_path = "/".join(parts[4:])
+            return urlunparse(("https", "raw.githubusercontent.com", f"/{owner}/{repo}/{ref}/{file_path}", "", "", ""))
+    return url
 
 
 def github_repos_from_results(results: list[dict[str, Any]]) -> list[str]:

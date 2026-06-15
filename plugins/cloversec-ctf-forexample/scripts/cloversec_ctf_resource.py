@@ -15,7 +15,7 @@ import cloversec_ctf_search as search
 
 
 SCHEMA_VERSION = "cloversec.ctf.resource_classification.v1"
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 
 TEXT_EXTENSIONS = {
     ".c",
@@ -195,7 +195,7 @@ def classify_file(path: Path, root: Path, *, max_text_bytes: int, archive_previe
         resource_type, confidence, next_skill = "flag_file", "high", "cloversec-ctf-writeup-scaffold"
         evidence.append("known flag filename")
     elif is_docker_image_tar(path, archive_preview_entries):
-        resource_type, confidence, next_skill = "docker_image_tar", "high", "cloversec-ctf-docker"
+        resource_type, confidence, next_skill = "docker_image_tar", "high", "cloversec-ctf-build-dockerizer"
         evidence.append("tar archive contains docker image manifest/layers")
         archive_preview = safe_archive_preview(path, archive_preview_entries)
     elif suffix in ARCHIVE_EXTENSIONS:
@@ -266,7 +266,7 @@ def classify_root(resources: list[dict[str, Any]]) -> dict[str, Any]:
         project_type, confidence, next_skill = "container_project", "high", "cloversec-ctf-build-dockerizer"
         evidence.append("Dockerfile found")
     elif types.get("docker_image_tar"):
-        project_type, confidence, next_skill = "docker_image_delivery", "high", "cloversec-ctf-docker"
+        project_type, confidence, next_skill = "docker_image_delivery", "high", "cloversec-ctf-build-dockerizer"
         evidence.append("docker image tar found")
     elif types.get("source_archive"):
         project_type, confidence, next_skill = "source_archive_bundle", "high", "cloversec-ctf-build-dockerizer"
@@ -337,9 +337,9 @@ def build_recommendations(root_classification: dict[str, Any], resources: list[d
     if any(item.get("resource_type") == "docker_image_tar" for item in resources):
         recommendations.append(
             {
-                "type": "docker_verify",
-                "skill": "cloversec-ctf-docker",
-                "reason": "docker image tar should be inspected for amd64, ports, logs, and hash before archive",
+                "type": "platform_conversion",
+                "skill": "cloversec-ctf-build-dockerizer",
+                "reason": "docker image tar is migration input; Docker inspection is evidence only and final delivery still needs Dockerizer conversion",
             }
         )
     platform_delivery = (
@@ -353,14 +353,6 @@ def build_recommendations(root_classification: dict[str, Any], resources: list[d
                 "type": "platform_conversion",
                 "skill": "cloversec-ctf-build-dockerizer",
                 "reason": "container/source resources must be converted to the CloverSec platform contract before final delivery",
-            }
-        )
-    elif platform_delivery.get("requires_cloversec_contract") and root_classification.get("project_type") == "docker_image_delivery":
-        recommendations.append(
-            {
-                "type": "platform_contract_review",
-                "skill": "manual_review",
-                "reason": "image tar can be inspected, but source and platform contract evidence are still required before final archive",
             }
         )
     elif root_classification.get("project_type") in {"empty", "writeup_only", "challenge_metadata_bundle", "solver_or_writeup_bundle"}:
@@ -378,14 +370,15 @@ def build_platform_delivery_policy(project_type: str) -> dict[str, Any]:
     must_use_dockerizer = project_type in {
         "compose_project",
         "container_project",
+        "docker_image_delivery",
         "source_archive_bundle",
         "source_project",
     }
-    requires_contract = must_use_dockerizer or project_type == "docker_image_delivery"
+    requires_contract = must_use_dockerizer
     return {
         "requires_cloversec_contract": requires_contract,
         "must_use_dockerizer": must_use_dockerizer,
-        "existing_docker_is_reference_only": project_type in {"compose_project", "container_project"},
+        "existing_docker_is_reference_only": project_type in {"compose_project", "container_project", "docker_image_delivery"},
         "final_delivery_skill": "cloversec-ctf-build-dockerizer" if must_use_dockerizer else "",
         "requires_user_confirmation": must_use_dockerizer,
         "confirmation_action": "dockerizer" if must_use_dockerizer else "",
@@ -402,7 +395,7 @@ def platform_delivery_status(project_type: str) -> str:
     if project_type in {"source_archive_bundle", "source_project"}:
         return "source_needs_platform_conversion"
     if project_type == "docker_image_delivery":
-        return "image_tar_needs_contract_review"
+        return "image_tar_needs_platform_conversion"
     if project_type == "attachment_challenge":
         return "attachment_packaging"
     if project_type in {"empty", "writeup_only", "challenge_metadata_bundle", "solver_or_writeup_bundle"}:

@@ -57,6 +57,21 @@ class CollectWorkflowTests(unittest.TestCase):
 
         self.assertIn("case-empty: evidence 为空；至少需要一条 source_url 或 local_path", issues)
 
+    def test_validate_evidence_accepts_agent_browser_and_download_statuses(self):
+        case = {
+            "case_id": "case-agent-evidence",
+            "metadata": {"名称": "Agent Evidence", "分类": "Web"},
+            "evidence": [
+                {"source_url": "https://example.com/a", "source_type": "agent_web_search", "status": "found", "confidence": "medium"},
+                {"source_url": "https://example.com/b", "source_type": "browser_visible", "status": "previewed", "confidence": "low"},
+                {"source_url": "https://github.com/a/b/releases/download/v1/challenge.zip", "source_type": "github_release", "status": "downloaded", "confidence": "high"},
+            ],
+        }
+
+        issues = collect.validate_collection_case(case)
+
+        self.assertEqual(issues, [])
+
     def test_validate_collection_json_cli_reports_empty_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             case_path = Path(tmp) / "cases.jsonl"

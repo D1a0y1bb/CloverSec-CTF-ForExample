@@ -300,6 +300,167 @@ class Workflow030Tests(unittest.TestCase):
             self.assertIn("Dockerfile", payload["repo_previews"][0]["summary"]["docker_hints"])
             self.assertEqual(payload["resource_candidates"][0]["next_skill"], "cloversec-ctf-attachment-packager")
 
+    def test_direct_asset_urls_convert_github_blob_to_raw_before_download(self):
+        results = [
+            {
+                "title": "challenge",
+                "url": "https://github.com/example/demo/blob/main/challenge.zip",
+                "metadata": {},
+            }
+        ]
+
+        urls = workflow.direct_asset_urls_from_results(results)
+
+        self.assertEqual(urls, ["https://raw.githubusercontent.com/example/demo/main/challenge.zip"])
+
+    def test_workflow_case_filter_skips_event_writeup_summary_pages(self):
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "CTFtime.org / IrisCTF 2025 tasks and writeups",
+                    "url": "https://ctftime.org/event/2503/tasks/",
+                    "layer": "writeup_candidate",
+                    "score": 85,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "GitHub - juliancasaburi/irisctf-2025: Write-ups and solve scripts for IrisCTF 2025",
+                    "url": "https://github.com/juliancasaburi/irisctf-2025",
+                    "layer": "writeup_candidate",
+                    "score": 85,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "IrisCTF 2025 Writeups - pwoofy - welcome!!",
+                    "url": "https://pwoofy.me/IrisCTF_Writeups_2025/",
+                    "layer": "writeup_candidate",
+                    "score": 85,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "salty-byte/ctf/writeup/2025/IrisCTF 2025/README.md",
+                    "url": "https://github.com/salty-byte/ctf/blob/main/writeup/2025/IrisCTF%202025/README.md",
+                    "layer": "writeup_candidate",
+                    "score": 85,
+                    "quality_issues": [],
+                    "metadata": {"path": "writeup/2025/IrisCTF 2025/README.md"},
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "Seraphin-/ctf/2025/irisctf/README.md",
+                    "url": "https://github.com/Seraphin-/ctf/blob/main/2025/irisctf/README.md",
+                    "layer": "writeup_candidate",
+                    "score": 85,
+                    "quality_issues": [],
+                    "metadata": {"path": "2025/irisctf/README.md"},
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "ctf/2025/irisctf/README.md at master · Seraphin-/ctf · GitHub",
+                    "url": "https://github.com/Seraphin-/ctf/blob/master/2025/irisctf/README.md",
+                    "layer": "writeup_candidate",
+                    "score": 67,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "Home : IrisCTF 2025 - CTF fun for hackers of all skill levels",
+                    "url": "https://2025.irisc.tf/home",
+                    "layer": "writeup_candidate",
+                    "score": 67,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "irisCTF 2025 - josangeorge.vercel.app",
+                    "url": "https://josangeorge.vercel.app/irisCTF%202025",
+                    "layer": "writeup_candidate",
+                    "score": 67,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "Iris CTF 2025 Writeup. My write-up on the challenges I… | by ... - Medium",
+                    "url": "https://medium.com/@Cyb3r_Fr0g/iris-ctf-2025-write-up-2565debb1020",
+                    "layer": "writeup_candidate",
+                    "score": 85,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "IrisCTF 2025 Write Up - blog.whale-tw.com",
+                    "url": "http://blog.whale-tw.com/2025/01/06/irisctf-2025/",
+                    "layer": "writeup_candidate",
+                    "score": 67,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertFalse(
+            workflow.usable_case_result(
+                {
+                    "title": "Challenges : IrisCTF 2025 - CTF fun for hackers of all skill levels",
+                    "url": "https://2025.irisc.tf/challenges-category-Cryptography.html",
+                    "layer": "writeup_candidate",
+                    "score": 67,
+                    "quality_issues": [],
+                }
+            )
+        )
+        self.assertTrue(
+            workflow.usable_case_result(
+                {
+                    "title": "repo/ctf/2025/irisctf/crypto/windy-day/README.md",
+                    "url": "https://github.com/example/ctf/blob/main/2025/irisctf/crypto/windy-day/README.md",
+                    "layer": "writeup_candidate",
+                    "score": 85,
+                    "quality_issues": [],
+                    "metadata": {"path": "2025/irisctf/crypto/windy-day/README.md"},
+                }
+            )
+        )
+        self.assertTrue(
+            workflow.usable_case_result(
+                {
+                    "title": "CTFtime.org / IrisCTF 2025 / Crispy Kelp / Writeup",
+                    "url": "https://ctftime.org/writeup/39761",
+                    "layer": "writeup_candidate",
+                    "score": 85,
+                    "quality_issues": [],
+                }
+            )
+        )
+
     def test_route_resource_creates_dockerizer_handoff_for_dockerfile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -126,6 +126,35 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertEqual(image_tar["path"], case["docker_artifacts"]["tar_path"])
             self.assertEqual(manifest["hub_fields"]["题目Flag"], "flag{stage-five-full-flag}")
 
+    def test_hub_draft_fills_empty_content_answer_and_keywords_from_manual(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            manual = writeup.render_manual(case, writeup.build_hub_fields(case)["hub_fields"], filled=True)
+            empty_fields = {
+                "题目标题": "",
+                "题目内容": "",
+                "题目解答": "",
+                "添加关键字": [],
+                "题目分类": "Web",
+                "题目来源": "2026 示例赛",
+                "Flag类型": "动态Flag",
+                "题目Flag": "flag{stage-five-full-flag}",
+                "题目分值": "100",
+                "题目等级": "3",
+                "题目类型": "环境型",
+                "资源等级": "4",
+            }
+
+            draft = hub.create_hub_draft(case, empty_fields, manual, tmp_path / "hub_submission_package", classify_options=[{"label": "Web", "id": "1"}])
+
+        self.assertTrue(draft["form_payload"]["desc"].strip())
+        self.assertTrue(draft["form_payload"]["answer"].strip())
+        self.assertTrue(draft["form_payload"]["keyword"])
+        self.assertNotIn("desc", draft["validation"]["missing"])
+        self.assertNotIn("answer", draft["validation"]["missing"])
+        self.assertNotIn("keyword", draft["validation"]["missing"])
+
     def test_browser_assist_plan_keeps_security_boundaries(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -149,7 +178,8 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertEqual(plan["form_payload"]["flag_type"], 2)
             self.assertEqual(plan["form_payload"]["test_type"], 1)
             self.assertEqual(plan["form_payload"]["level"], "3")
-            self.assertIn("answer", plan["validation"]["missing"])
+            self.assertNotIn("answer", plan["validation"]["missing"])
+            self.assertTrue(plan["form_payload"]["answer"].strip())
             self.assertIn("classify_id", plan["validation"]["blockers"])
             self.assertIn("upload_results", plan["validation"]["blockers"])
             self.assertIn("容器运行.png", plan["validation"]["missing_screenshots"])
@@ -252,7 +282,8 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertEqual(payload["attached"], "/media/ctf/challenge.zip")
         self.assertEqual(payload["other_attached"], "/media/ctf/web.tar")
         self.assertNotIn("upload_results", validation["blockers"])
-        self.assertIn("answer", validation["missing"])
+        self.assertNotIn("answer", validation["missing"])
+        self.assertTrue(payload["answer"].strip())
 
     def test_hub_cli_validate_manifest_accepts_classify_options(self):
         with tempfile.TemporaryDirectory() as tmp:
