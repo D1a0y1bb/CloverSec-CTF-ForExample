@@ -32,6 +32,7 @@ def build_report() -> dict[str, Any]:
     checks = [
         check_python(),
         check_pyyaml(),
+        check_openpyxl(),
         check_gh(),
         check_docker(),
         check_chrome(),
@@ -43,6 +44,7 @@ def build_report() -> dict[str, Any]:
             "search": capability_status(checks, ["python"]),
             "github_search": capability_status(checks, ["python", "gh"]),
             "dockerizer": capability_status(checks, ["python", "pyyaml"]),
+            "xlsx_polished_export": capability_status(checks, ["python", "openpyxl"]),
             "docker_runtime": capability_status(checks, ["docker"]),
             "hub_browser_assist": capability_status(checks, ["chrome"]),
         },
@@ -64,6 +66,19 @@ def check_pyyaml() -> dict[str, Any]:
             "detail": f"容器改造需要 PyYAML：pip install -r {DOCKERIZER_REQUIREMENTS.as_posix()}",
         }
     return {"id": "pyyaml", "name": "PyYAML", "status": "ok", "detail": "installed"}
+
+
+def check_openpyxl() -> dict[str, Any]:
+    try:
+        import openpyxl  # noqa: F401
+    except ModuleNotFoundError:
+        return {
+            "id": "openpyxl",
+            "name": "openpyxl",
+            "status": "warning",
+            "detail": "未安装时仍可导出 xlsx；安装 openpyxl 后表格样式更适合人工查看",
+        }
+    return {"id": "openpyxl", "name": "openpyxl", "status": "ok", "detail": "installed"}
 
 
 def check_gh() -> dict[str, Any]:

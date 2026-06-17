@@ -61,6 +61,16 @@ reports/
 
 中断后优先读取 `workflow_state.json`，从未完成阶段继续，不把未验证阶段写成通过。
 
+如果当前会话能调用 MCP，优先使用 `cloversec_ctf_workflow_run` 执行安全阶段。没有 MCP 时，用 `cloversec_ctf_workflow.py run`。执行器会写 `workflow_engine_run.json`、`logs/workflow_engine.jsonl` 和 `当前状态.md`，不要让 Agent 只凭自然语言把阶段标成完成。
+
+默认可自动执行的阶段：
+
+```text
+research, collect, dedupe, download_preview, archive, quality, final_report
+```
+
+`download_accept`、真实 Docker、Hub 最终提交、retag 执行仍然需要用户确认。Hub 草稿可以准备，最终提交不自动点击。
+
 ## 资源分流规则
 
 下载后或用户提供目录后，必须先输出 `resource_classification.json`，再决定下一步：
@@ -156,6 +166,26 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py batch
   --output reports/research_dry_run.json
 ```
 
+执行安全阶段并支持断点继续：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py run \
+  --workdir runs/20260614-2025-IrisCTF-web \
+  --stage research \
+  --stage collect \
+  --stage dedupe \
+  --stage download_preview \
+  --stage archive \
+  --stage quality \
+  --stage final_report
+```
+
+查看进度：
+
+```bash
+python3 scripts/show_progress.py runs/20260614-2025-IrisCTF-web/workflow_state.json --watch
+```
+
 GitHub 配置检查：
 
 ```bash
@@ -228,6 +258,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py class
 ## MCP Tools
 
 - `cloversec_ctf_workflow_init`
+- `cloversec_ctf_workflow_run`
 - `cloversec_ctf_collect_execute`
 - `cloversec_ctf_collect_materials`
 - `cloversec_ctf_resource_route`

@@ -33,6 +33,43 @@
 - 内部 xlsx、语雀归档表和相关字段草稿必须保留完整 `Flag`，不能替换成摘要或脱敏值。
 - 阶段结束前更新当前任务目录内的 `workflow_state.json`、`stage_notification.json/md` 和 `failure_cases.jsonl`。根目录 `TODO.md` 仅作为维护者本地计划，不作为插件运行产物。
 
+## 工作流执行器
+
+需要处理完整批次时，优先使用执行器，而不是只让模型按 prompt 手工更新状态。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py run \
+  --workdir runs/20260614-2025-IrisCTF-web \
+  --stage research \
+  --stage collect \
+  --stage dedupe \
+  --stage download_preview \
+  --stage archive \
+  --stage quality \
+  --stage final_report
+```
+
+执行器会在工作目录写入：
+
+- `workflow_engine_run.json`：本次执行摘要。
+- `logs/workflow_engine.jsonl`：每个阶段的开始、完成、失败或等待用户确认记录。
+- `.workflow.lock`：防止同一工作目录被两个执行器同时写。
+- `当前状态.md`：给用户看的批次进度。
+
+默认自动阶段只做读取、搜索、下载预览、识别、归档预览、质量汇总和最终文件生成。`download_accept`、真实 Docker 执行、Hub 最终提交、retag 执行必须等用户确认。
+
+查看进度：
+
+```bash
+python3 scripts/show_progress.py runs/20260614-2025-IrisCTF-web/workflow_state.json --watch
+```
+
+MCP 入口：
+
+- `cloversec_ctf_workflow_run`
+
+MCP 工具调用会记录到本机运行日志，默认路径为 `~/.codex/cloversec-ctf-forexample/mcp-runtime/`。日志只记录工具名、状态、耗时、参数摘要、结果摘要和错误信息，不保存 Cookie、token、密码或完整敏感参数。
+
 ## 容器题平台契约摘要
 
 只要题目处理涉及源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 在线服务题或镜像构建需求，必须进入 `cloversec-ctf-build-dockerizer`。上游 Dockerfile、compose、README 启动命令和镜像 tar 只能作为迁移输入，不能直接算 CloverSec 平台交付。
@@ -74,6 +111,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py dedup
 MCP 入口：
 
 - `cloversec_ctf_workflow_init`
+- `cloversec_ctf_workflow_run`
 - `cloversec_ctf_workflow_batch`
 - `cloversec_ctf_search_strategy`
 - `cloversec_ctf_github_doctor`

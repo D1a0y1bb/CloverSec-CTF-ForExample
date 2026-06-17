@@ -9,10 +9,12 @@ import traceback
 from typing import Any
 
 import cloversec_ctf_hub as hub
+import cloversec_ctf_mcp_runtime as mcp_runtime
 import cloversec_ctf_retag as retag
 
 
-SERVER_VERSION = "0.6.1"
+SERVER_VERSION = "0.6.5"
+SERVER_NAME = "cloversec-ctf-hub-assistant"
 
 
 TOOLS = [
@@ -158,7 +160,13 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             params = request.get("params") if isinstance(request.get("params"), dict) else {}
             name = str(params.get("name") or "")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-            payload = call_tool(name, arguments)
+            payload = mcp_runtime.record_tool_call(
+                server_name=SERVER_NAME,
+                request_id=request_id,
+                tool_name=name,
+                arguments=arguments,
+                handler=lambda: call_tool(name, arguments),
+            )
             return response(request_id, {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}]})
         if request_id is None:
             return None

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.6.1-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.6.5-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -30,14 +30,14 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.6.1
+Git 引用：v0.6.5
 稀疏路径：留空
 ```
 
 也可以用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.6.1
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.6.5
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -58,6 +58,7 @@ codex plugin add cloversec-ctf-forexample@cloversec-ctf
 | `gh auth login` | 推荐 | GitHub 搜索、仓库预览、Release 资源更稳定 |
 | Docker Desktop | 容器题需要 | build/run/inspect/save/load、amd64 检查 |
 | PyYAML | 容器改造需要 | Dockerizer 解析 `challenge.yaml`、`stacks.yaml` 和模板数据 |
+| openpyxl | 推荐 | 生成更整齐的 xlsx；未安装时仍可导出基础 xlsx |
 | Chrome 已登录 Hub | Hub 辅助填写需要 | 使用当前浏览器页面准备提交，不保存 Cookie、token 或密码 |
 | 题目目录或清单 | 推荐 | 可以是 `ctf_case.json`、`ctf_cases.jsonl`、xlsx、zip、URL |
 
@@ -114,6 +115,21 @@ python3 scripts/doctor.py
 
 ```bash
 python3 scripts/show_progress.py runs/xxxxxxxxx/workflow_state.json
+python3 scripts/show_progress.py runs/xxxxxxxxx/workflow_state.json --watch
+```
+
+需要让脚本按已有材料继续执行安全阶段时，可以直接跑工作流执行器：
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py run \
+  --workdir runs/xxxxxxxxx \
+  --stage research \
+  --stage collect \
+  --stage dedupe \
+  --stage download_preview \
+  --stage archive \
+  --stage quality \
+  --stage final_report
 ```
 
 批量处理 Docker 构建前，可以对明确范围做一次授权。授权文件会写进工作目录，Docker 执行器会读取它；没有授权时不会直接执行真实 Docker 操作。
@@ -125,7 +141,7 @@ python3 scripts/authorize_batch.py --workdir runs/xxxxxxxxx --action docker_buil
 搜索质量验证可以生成本地报告，报告留在 `docs/validation/`，不进入发布包：
 
 ```bash
-python3 scripts/search_recall_benchmark.py --input-dir docs/validation --output docs/validation/search-recall-benchmark-v0.6.1.md
+python3 scripts/search_recall_benchmark.py --input-dir docs/validation --output docs/validation/search-recall-benchmark-v0.6.5.md
 ```
 
 ## Capability Table
@@ -149,6 +165,8 @@ python3 scripts/search_recall_benchmark.py --input-dir docs/validation --output 
 
 - 关键用户可见提示集中在 `plugins/cloversec-ctf-forexample/references/i18n.zh-CN.json`，后续要做英文版时优先替换这份 catalog。
 - 公开搜索、下载预览、端口探测等 HTTP 请求统一走 `cloversec_ctf_http.py`，避免各脚本各自处理超时、重试和重定向。
+- MCP 工具调用会记录到本机运行日志，默认在 `~/.codex/cloversec-ctf-forexample/mcp-runtime/`，用于排查批量任务里哪个工具失败。
+- `cloversec_ctf_workflow.py run` 会写 `workflow_engine_run.json`、`logs/workflow_engine.jsonl` 和 `当前状态.md`，中断后可以继续同一工作目录。
 - Hub 最终提交不能批量预授权，仍然需要人工确认。
 
 ## Resource Rules
@@ -184,7 +202,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scripts/package_plugin_release.py
 ```
 
-发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v0.6.1`；正文第一行使用 `# CloverSec CTF For Example 0.6.1`。
+发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v0.6.5`；正文第一行使用 `# CloverSec CTF For Example 0.6.5`。
 
 ## License
 

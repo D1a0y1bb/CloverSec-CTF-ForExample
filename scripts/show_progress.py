@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -26,13 +28,24 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Show CloverSec CTF workflow progress")
     parser.add_argument("workflow_state")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--watch", action="store_true", help="refresh progress until interrupted")
+    parser.add_argument("--interval", type=float, default=2.0)
+    parser.add_argument("--iterations", type=int, default=0, help="testing aid; 0 means run until interrupted")
     args = parser.parse_args()
-    state = json.loads(Path(args.workflow_state).read_text(encoding="utf-8"))
-    payload = progress_payload(state)
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-    else:
-        print(render_progress(payload))
+    iterations = 0
+    while True:
+        state = json.loads(Path(args.workflow_state).read_text(encoding="utf-8"))
+        payload = progress_payload(state)
+        output = json.dumps(payload, ensure_ascii=False, indent=2) if args.json else render_progress(payload)
+        if args.watch and not args.json:
+            os.system("clear")
+        print(output)
+        if not args.watch:
+            break
+        iterations += 1
+        if args.iterations and iterations >= args.iterations:
+            break
+        time.sleep(max(args.interval, 0.2))
     return 0
 
 
@@ -59,6 +72,10 @@ def progress_payload(state: dict[str, Any]) -> dict[str, Any]:
         "run_id": state.get("run_id", ""),
         "status": state.get("status", ""),
         "updated_at": state.get("updated_at", ""),
+        "totals": {
+            "cases": len(rows),
+            "needs_attention": sum(1 for row in rows if row.get("needs_attention")),
+        },
         "summary": summary,
         "rows": rows,
     }
@@ -69,6 +86,8 @@ def render_progress(payload: dict[str, Any]) -> str:
         f"Run: {payload.get('run_id', '')}",
         f"Status: {payload.get('status', '')}",
         f"Updated: {payload.get('updated_at', '')}",
+        f"Cases: {payload.get('totals', {}).get('cases', 0)}",
+        f"Needs attention: {payload.get('totals', {}).get('needs_attention', 0)}",
         "",
     ]
     if not payload["rows"]:

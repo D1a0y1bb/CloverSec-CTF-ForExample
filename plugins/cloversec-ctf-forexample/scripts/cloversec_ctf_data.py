@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """CloverSec CTF data model helpers.
 
-The module intentionally uses only the Python standard library so the plugin can
-run in a fresh Codex environment without extra package installation.
+The default reader/writer works without third-party packages. When openpyxl is
+available, xlsx export uses it for a cleaner table style and falls back to the
+standard-library writer when it is not installed.
 """
 
 from __future__ import annotations
@@ -187,6 +188,8 @@ def write_table_xlsx(rows: list[dict[str, Any]], path: str | Path, *, fields: li
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     headers = fields or infer_table_fields(rows)
+    if os_environ_flag("CLOVERSEC_XLSX_WRITER") != "stdlib" and write_table_xlsx_openpyxl(rows, output, headers=headers, sheet_name=sheet_name):
+        return
     matrix = [headers]
     for row in rows:
         matrix.append([_string(row.get(field, "")) for field in headers])
@@ -204,6 +207,67 @@ def write_table_xlsx(rows: list[dict[str, Any]], path: str | Path, *, fields: li
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in files.items():
             archive.writestr(name, content)
+
+
+def write_table_xlsx_openpyxl(rows: list[dict[str, Any]], path: Path, *, headers: list[str], sheet_name: str) -> bool:
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Border, Font, Side
+        from openpyxl.utils import get_column_letter
+    except ModuleNotFoundError:
+        return False
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = sheet_name[:31] or "归档表"
+    thin = Side(style="thin", color="D9D9D9")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    header_font = Font(name="等线", size=12, bold=True)
+    body_font = Font(name="等线", size=12)
+    alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    sheet.append(headers)
+    for row in rows:
+        sheet.append([_string(row.get(field, "")) for field in headers])
+
+    for row in sheet.iter_rows():
+        for cell in row:
+            cell.border = border
+            cell.alignment = alignment
+            cell.font = header_font if cell.row == 1 else body_font
+    for index, field in enumerate(headers, start=1):
+        width = suggested_column_width(field)
+        for row in rows[:200]:
+            width = max(width, min(len(_string(row.get(field, ""))) + 2, 42))
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    for row_index in range(1, sheet.max_row + 1):
+        sheet.row_dimensions[row_index].height = 24
+    sheet.freeze_panes = "A2"
+    workbook.save(path)
+    return True
+
+
+def suggested_column_width(field: str) -> int:
+    widths = {
+        "名称": 24,
+        "赛事来源": 22,
+        "题目来源": 22,
+        "分类": 12,
+        "Flag": 28,
+        "问题": 36,
+        "备注": 34,
+        "归档目录": 34,
+        "环境包/附件包路径": 34,
+    }
+    return widths.get(field, max(12, min(len(field) + 4, 24)))
+
+
+def os_environ_flag(name: str) -> str:
+    try:
+        import os
+    except Exception:  # noqa: BLE001
+        return ""
+    return os.environ.get(name, "").strip().lower()
 
 
 def infer_table_fields(rows: list[dict[str, Any]]) -> list[str]:
@@ -324,7 +388,10 @@ def _sheet_paths(archive: zipfile.ZipFile) -> list[tuple[str, str]]:
         target = targets.get(rel_id, "")
         if not target:
             continue
-        sheet_paths.append((sheet.attrib.get("name", ""), "xl/" + target.lstrip("/")))
+        normalized = target.lstrip("/")
+        if not normalized.startswith("xl/"):
+            normalized = "xl/" + normalized
+        sheet_paths.append((sheet.attrib.get("name", ""), normalized))
     return sheet_paths
 
 

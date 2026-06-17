@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ class McpServerProtocolTests(unittest.TestCase):
     def test_all_mcp_servers_support_list_and_representative_call(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            runtime_dir = tmp_path / "mcp-runtime"
             cases = [
                 (
                     "cloversec_ctf_search_mcp.py",
@@ -58,7 +60,7 @@ class McpServerProtocolTests(unittest.TestCase):
             ]
             for script_name, tool_name, arguments in cases:
                 with self.subTest(script=script_name):
-                    responses = call_mcp_server(SCRIPTS / script_name, tool_name, arguments)
+                    responses = call_mcp_server(SCRIPTS / script_name, tool_name, arguments, runtime_dir=runtime_dir)
                     self.assertEqual(responses[0]["result"]["capabilities"], {"tools": {}})
                     tools = responses[1]["result"]["tools"]
                     self.assertTrue(any(tool["name"] == tool_name for tool in tools))
@@ -66,9 +68,15 @@ class McpServerProtocolTests(unittest.TestCase):
                     content = responses[2]["result"].get("content", [])
                     self.assertEqual(content[0]["type"], "text")
                     json.loads(content[0]["text"])
+            logs = list(runtime_dir.glob("*.jsonl"))
+            self.assertGreaterEqual(len(logs), len(cases))
+            for log in logs:
+                rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines() if line.strip()]
+                self.assertTrue(rows)
+                self.assertTrue(all(row["status"] == "ok" for row in rows))
 
 
-def call_mcp_server(script: Path, tool_name: str, arguments: dict) -> list[dict]:
+def call_mcp_server(script: Path, tool_name: str, arguments: dict, *, runtime_dir: Path) -> list[dict]:
     requests = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
@@ -81,6 +89,7 @@ def call_mcp_server(script: Path, tool_name: str, arguments: dict) -> list[dict]
         text=True,
         timeout=20,
         cwd=SCRIPTS,
+        env={**os.environ, "CLOVERSEC_CTF_MCP_STATE_DIR": runtime_dir.as_posix()},
         check=False,
     )
     if proc.returncode != 0:

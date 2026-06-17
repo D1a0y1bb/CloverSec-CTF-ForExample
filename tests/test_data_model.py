@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -92,6 +93,24 @@ class DataModelTests(unittest.TestCase):
         self.assertEqual(rows[0]["Flag"], "flag{full-value-must-be-in-xlsx}")
         self.assertEqual(rows[0]["名称"], "拿不到的flag")
         self.assertEqual(list(rows[0].keys()), data.XLSX_FIELDS)
+
+    def test_xlsx_stdlib_writer_switch_still_round_trips(self):
+        case = sample_case()
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "archive.xlsx"
+            old = os.environ.get("CLOVERSEC_XLSX_WRITER")
+            os.environ["CLOVERSEC_XLSX_WRITER"] = "stdlib"
+            try:
+                data.write_xlsx([case], output)
+            finally:
+                if old is None:
+                    os.environ.pop("CLOVERSEC_XLSX_WRITER", None)
+                else:
+                    os.environ["CLOVERSEC_XLSX_WRITER"] = old
+            rows = data.read_xlsx(output)
+
+        self.assertEqual(rows[0]["Flag"], "flag{full-value-must-be-in-xlsx}")
+        self.assertEqual(rows[0]["名称"], "拿不到的flag")
 
     def test_load_jsonl_and_summary(self):
         ok_case = sample_case()

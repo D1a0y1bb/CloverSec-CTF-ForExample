@@ -93,6 +93,55 @@ class EndToEndTests(unittest.TestCase):
             self.assertTrue(Path(archive_payload["summary"]["final_report"]).exists())
             self.assertEqual(archive_payload["summary"]["cases"], 1)
 
+    def test_workflow_engine_executes_archive_quality_and_final_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            attachment = root / "challenge.zip"
+            with zipfile.ZipFile(attachment, "w") as archive:
+                archive.writestr("README.md", "demo")
+            manual = root / "题目解题手册.md"
+            manual.write_text("# 题目解题手册\n\n## 题目说明\nDemo\n\n## 解题步骤\n得到 flag{demo}\n", encoding="utf-8")
+            cases_path = root / "ctf_cases.jsonl"
+            workflow.write_jsonl(
+                cases_path,
+                [
+                    {
+                        "case_id": "case-engine",
+                        "metadata": {
+                            "赛事来源": "DemoCTF 2026",
+                            "题目来源": "DemoCTF 2026",
+                            "名称": "Engine Demo",
+                            "分类": "Misc",
+                            "题目类型": "附件型",
+                            "Flag类型": "静态Flag",
+                            "Flag": "flag{demo}",
+                            "验证状态": "通过",
+                            "是否通过": "是",
+                            "解题工具": "python",
+                        },
+                        "flag": {"value": "flag{demo}", "type": "static", "sensitive": True},
+                        "attachments": [{"path": attachment.as_posix(), "name": "challenge.zip"}],
+                        "writeup": {"formal_manual_path": manual.as_posix()},
+                        "evidence": [{"source_url": "https://example.com/demo", "title": "Demo source"}],
+                    }
+                ],
+            )
+
+            payload = workflow.run_workflow_engine(
+                workdir=root,
+                stages=["archive", "quality", "final_report"],
+                force=True,
+            )
+
+            self.assertIn(payload["status"], {"completed", "partial"})
+            self.assertTrue((root / "workflow_engine_run.json").exists())
+            self.assertTrue((root / "logs" / "workflow_engine.jsonl").exists())
+            self.assertTrue((root / "归档" / "_batch" / "archive_workflow.json").exists())
+            self.assertTrue((root / "质量检查" / "quality_summary.json").exists())
+            self.assertTrue((root / "最终交付" / "最终报告.md").exists())
+            state = json.loads((root / "workflow_state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["stages"]["final_report"]["status"], "completed")
+
     def test_dockerizer_static_chain_on_python_flask_example(self):
         try:
             import yaml  # noqa: F401

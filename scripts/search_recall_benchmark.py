@@ -35,7 +35,7 @@ DEFAULT_CASES = [
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create CloverSec CTF search recall benchmark report")
     parser.add_argument("--input-dir", default="docs/validation")
-    parser.add_argument("--output", default="docs/validation/search-recall-benchmark-v0.6.1.md")
+    parser.add_argument("--output", default="docs/validation/search-recall-benchmark-v0.6.5.md")
     args = parser.parse_args()
     report = build_report(Path(args.input_dir), DEFAULT_CASES)
     output = Path(args.output)

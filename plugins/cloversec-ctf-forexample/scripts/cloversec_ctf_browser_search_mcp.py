@@ -9,7 +9,9 @@ import traceback
 from typing import Any
 
 import cloversec_ctf_browser_search as browser_search
+import cloversec_ctf_mcp_runtime as mcp_runtime
 
+SERVER_NAME = "cloversec-ctf-browser-search"
 
 TOOLS = [
     {
@@ -70,7 +72,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-browser-search", "version": "0.6.1"},
+                    "serverInfo": {"name": "cloversec-ctf-browser-search", "version": "0.6.5"},
                 },
             )
         if method == "tools/list":
@@ -79,7 +81,13 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             params = request.get("params") if isinstance(request.get("params"), dict) else {}
             name = params.get("name")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-            payload = call_tool(str(name or ""), arguments)
+            payload = mcp_runtime.record_tool_call(
+                server_name=SERVER_NAME,
+                request_id=request_id,
+                tool_name=str(name or ""),
+                arguments=arguments,
+                handler=lambda: call_tool(str(name or ""), arguments),
+            )
             return response(request_id, {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}]})
         if request_id is None:
             return None

@@ -9,12 +9,14 @@ import traceback
 from typing import Any
 
 import cloversec_ctf_audit as audit
-import cloversec_ctf_workflow as workflow
-import cloversec_ctf_resource as resource
 import cloversec_ctf_container as container
+import cloversec_ctf_mcp_runtime as mcp_runtime
+import cloversec_ctf_resource as resource
+import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "0.6.1"
+SERVER_VERSION = "0.6.5"
+SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {
     "schema_version": "cloversec.ctf.platform_contract.v1",
@@ -141,6 +143,26 @@ TOOLS = [
                 "force": {"type": "boolean"},
             },
             "required": ["workdir", "stage"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_workflow_run",
+        "description": "Execute deterministic workflow stages with persisted evidence-backed state, resume, lock, progress, and pending-user gates.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workdir": {"type": "string"},
+                "stages": {"type": "array", "items": {"type": "string", "enum": workflow.STAGES}},
+                "resume": {"type": "boolean"},
+                "force": {"type": "boolean"},
+                "stop_on_blocked": {"type": "boolean"},
+                "max_search_tasks": {"type": "integer"},
+                "search_limit": {"type": "integer"},
+                "sources": {"type": "array", "items": {"type": "string"}},
+                "allow_download_accept": {"type": "boolean"},
+                "execute_docker": {"type": "boolean"},
+            },
+            "required": ["workdir"],
         },
     },
     {
@@ -341,7 +363,13 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             params = request.get("params") if isinstance(request.get("params"), dict) else {}
             name = params.get("name")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-            payload = call_tool(str(name or ""), arguments)
+            payload = mcp_runtime.record_tool_call(
+                server_name=SERVER_NAME,
+                request_id=request_id,
+                tool_name=str(name or ""),
+                arguments=arguments,
+                handler=lambda: call_tool(str(name or ""), arguments),
+            )
             return response(request_id, {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}]})
         if request_id is None:
             return None
@@ -401,6 +429,19 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             cases_path=str(arguments.get("cases_path") or "") or None,
             resume=bool(arguments.get("resume", False)),
             force=bool(arguments.get("force", False)),
+        )
+    if name == "cloversec_ctf_workflow_run":
+        return workflow.run_workflow_engine(
+            workdir=str(arguments.get("workdir") or ""),
+            stages=[str(item) for item in arguments.get("stages", [])] if isinstance(arguments.get("stages"), list) else None,
+            resume=bool(arguments.get("resume", True)),
+            force=bool(arguments.get("force", False)),
+            stop_on_blocked=bool(arguments.get("stop_on_blocked", False)),
+            max_search_tasks=int(arguments.get("max_search_tasks", 0)),
+            search_limit=int(arguments.get("search_limit", 20)),
+            sources=[str(item) for item in arguments.get("sources", [])] if isinstance(arguments.get("sources"), list) else None,
+            allow_download_accept=bool(arguments.get("allow_download_accept", False)),
+            execute_docker=bool(arguments.get("execute_docker", False)),
         )
     if name == "cloversec_ctf_search_strategy":
         return {

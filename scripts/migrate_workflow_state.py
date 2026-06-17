@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.workflow.state.v1"
-WORKFLOW_VERSION = "0.6.1"
+WORKFLOW_VERSION = "0.6.5"
 STAGES = [
     "research",
     "collect",
@@ -30,6 +30,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Migrate CloverSec CTF workflow_state.json")
     parser.add_argument("workflow_state")
     parser.add_argument("--output")
+    parser.add_argument("--cases")
+    parser.add_argument("--cases-output")
     parser.add_argument("--backup", action="store_true")
     args = parser.parse_args()
     path = Path(args.workflow_state)
@@ -39,6 +41,13 @@ def main() -> int:
     if args.backup and output == path:
         shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
     output.write_text(json.dumps(migrated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if args.cases:
+        cases_path = Path(args.cases)
+        cases_output = Path(args.cases_output) if args.cases_output else cases_path
+        if args.backup and cases_output == cases_path:
+            shutil.copy2(cases_path, cases_path.with_suffix(cases_path.suffix + ".bak"))
+        migrated_cases = migrate_cases(cases_path)
+        cases_output.write_text("".join(json.dumps(case, ensure_ascii=False) + "\n" for case in migrated_cases), encoding="utf-8")
     print(f"wrote {output}")
     return 0
 
@@ -88,6 +97,40 @@ def normalize_case(case: dict[str, Any], index: int) -> dict[str, Any]:
         "case_id": str(case.get("case_id") or f"case-{index:06d}"),
         "stages": {stage: normalize_case_stage(stages.get(stage)) for stage in STAGES if stage in stages},
     }
+
+
+def migrate_cases(path: Path) -> list[dict[str, Any]]:
+    migrated = []
+    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        raw = json.loads(line)
+        if not isinstance(raw, dict):
+            raise SystemExit(f"{path}:{index}: case must be a JSON object")
+        migrated.append(normalize_ctf_case(raw, index))
+    return migrated
+
+
+def normalize_ctf_case(case: dict[str, Any], index: int) -> dict[str, Any]:
+    output = dict(case)
+    output.setdefault("schema_version", "cloversec.ctf.case.v1")
+    output.setdefault("case_id", f"case-{index:06d}")
+    for key in ["metadata", "research", "asset_collection", "flag", "environment", "docker_artifacts", "writeup", "hub_fields", "review", "archive"]:
+        if not isinstance(output.get(key), dict):
+            output[key] = {}
+    for key in ["source_files", "attachments", "evidence"]:
+        if not isinstance(output.get(key), list):
+            output[key] = []
+    metadata = output["metadata"]
+    if "title" in output and not metadata.get("名称"):
+        metadata["名称"] = str(output.get("title") or "")
+    if "category" in output and not metadata.get("分类"):
+        metadata["分类"] = str(output.get("category") or "")
+    if "event" in output and not metadata.get("赛事来源"):
+        metadata["赛事来源"] = str(output.get("event") or "")
+    if "source_url" in output and not output["evidence"]:
+        output["evidence"] = [{"source_url": str(output.get("source_url") or ""), "title": metadata.get("名称", "")}]
+    return output
 
 
 def normalize_case_stage(value: Any) -> dict[str, Any]:

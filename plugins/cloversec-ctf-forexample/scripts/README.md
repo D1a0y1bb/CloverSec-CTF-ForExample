@@ -12,6 +12,31 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py summary c
 ```
 
 `export-xlsx` 会把完整 `Flag` 写入 xlsx 的 `Flag` 列。日志和错误信息不输出完整 Flag。
+安装 `openpyxl` 后会导出带固定字体、边框、居中和列宽的 xlsx；未安装时自动使用内置基础 writer。需要强制基础 writer 时设置 `CLOVERSEC_XLSX_WRITER=stdlib`。
+
+## `cloversec_ctf_workflow.py`
+
+工作流入口工具。`init` 创建任务，`run` 按工作目录执行安全阶段并支持继续处理。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py init \
+  --event "IrisCTF" \
+  --year 2025 \
+  --category web \
+  --limit 20
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py run \
+  --workdir runs/20260614-2025-IrisCTF-web \
+  --stage research \
+  --stage collect \
+  --stage dedupe \
+  --stage download_preview \
+  --stage archive \
+  --stage quality \
+  --stage final_report
+```
+
+`run` 会写 `workflow_engine_run.json`、`logs/workflow_engine.jsonl` 和 `当前状态.md`。真实 Docker、下载接受、Hub 最终提交、retag 执行仍需要用户确认。
 
 ## `cloversec_ctf_collect.py`
 
@@ -139,6 +164,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 插件带有 `cloversec-ctf-search`、`cloversec-ctf-search-plus`、`cloversec-ctf-browser-search`、`cloversec-ctf-docker`、`cloversec-ctf-archive`、`cloversec-ctf-quality-runner`、`cloversec-ctf-hub-assistant` 和 `cloversec-ctf-workflow` MCP server，配置文件为 `.mcp.json`。工具：
 
 - `cloversec_ctf_search_plus`
+- `cloversec_ctf_workflow_run`
 - `cloversec_ctf_discover`
 - `cloversec_ctf_ctftime_events`
 - `cloversec_ctf_fetch_url`
@@ -172,6 +198,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 - `cloversec_ctf_confirmation_request`
 - `cloversec_ctf_stage_notification`
 - `cloversec_ctf_codex_warning_report`
+
+MCP 工具调用会记录到本机运行目录，默认 `~/.codex/cloversec-ctf-forexample/mcp-runtime/`。这些日志用于排查批量任务失败，只保存调用摘要和错误，不保存浏览器凭证或完整敏感参数。
 
 ## `cloversec_ctf_container.py`
 

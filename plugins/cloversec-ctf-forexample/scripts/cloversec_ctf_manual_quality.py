@@ -14,7 +14,7 @@ from typing import Any
 import cloversec_ctf_data as data
 
 
-VERSION = "0.6.1"
+VERSION = "0.6.5"
 SCHEMA_VERSION = "cloversec.ctf.manual_quality.v1"
 REQUIRED_METADATA_FIELDS = ["名称", "分类", "题目类型", "Flag类型"]
 REQUIRED_HUB_FIELDS = ["题目标题", "题目内容", "题目来源", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级", "添加关键字"]

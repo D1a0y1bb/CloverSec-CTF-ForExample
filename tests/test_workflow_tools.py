@@ -28,10 +28,16 @@ class WorkflowToolTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            cases_path = root / "ctf_cases.jsonl"
+            cases_path.write_text(
+                json.dumps({"title": "Old Case", "category": "Web", "event": "DemoCTF 2026", "source_url": "https://example.com"}, ensure_ascii=False)
+                + "\n",
+                encoding="utf-8",
+            )
 
-            subprocess.run([sys.executable, str(ROOT / "scripts" / "migrate_workflow_state.py"), str(state_path)], check=True)
+            subprocess.run([sys.executable, str(ROOT / "scripts" / "migrate_workflow_state.py"), str(state_path), "--cases", str(cases_path)], check=True)
             show = subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / "show_progress.py"), str(state_path), "--json"],
+                [sys.executable, str(ROOT / "scripts" / "show_progress.py"), str(state_path), "--json", "--watch", "--iterations", "1"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -59,6 +65,9 @@ class WorkflowToolTests(unittest.TestCase):
             migrated = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(migrated["schema_version"], "cloversec.ctf.workflow.state.v1")
             self.assertTrue(migrated["authorizations"])
+            migrated_case = json.loads(cases_path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(migrated_case["schema_version"], "cloversec.ctf.case.v1")
+            self.assertEqual(migrated_case["metadata"]["名称"], "Old Case")
 
     def test_authorize_batch_rejects_hub_final_submit(self):
         with tempfile.TemporaryDirectory() as tmp:

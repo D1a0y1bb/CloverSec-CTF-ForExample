@@ -11,23 +11,28 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+from contextlib import contextmanager
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
+import cloversec_ctf_archive_runner as archive_runner
 import cloversec_ctf_data as data
 import cloversec_ctf_container as container
+import cloversec_ctf_final as final_reporter
 import cloversec_ctf_http as http
 import cloversec_ctf_i18n as i18n
+import cloversec_ctf_quality_runner as quality_runner
 import cloversec_ctf_resource as resource
 import cloversec_ctf_search as search
 import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.6.1"
+WORKFLOW_VERSION = "0.6.5"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -65,6 +70,16 @@ WORKFLOW_DIRS = [
     "downloads_accepted",
     "classification",
     "reports",
+]
+
+ENGINE_AUTO_STAGES = [
+    "research",
+    "collect",
+    "dedupe",
+    "download_preview",
+    "archive",
+    "quality",
+    "final_report",
 ]
 
 DEFAULT_MAX_FILE_SIZE = 300 * 1024 * 1024
@@ -1333,6 +1348,363 @@ def batch_orchestrate(
     return result
 
 
+def run_workflow_engine(
+    *,
+    workdir: str | Path,
+    stages: list[str] | None = None,
+    resume: bool = True,
+    force: bool = False,
+    stop_on_blocked: bool = False,
+    max_search_tasks: int = 0,
+    search_limit: int = 20,
+    sources: list[str] | None = None,
+    allow_download_accept: bool = False,
+    execute_docker: bool = False,
+) -> dict[str, Any]:
+    """Execute deterministic workflow stages and persist state evidence."""
+    base = Path(workdir)
+    base.mkdir(parents=True, exist_ok=True)
+    selected_stages = stages or list(ENGINE_AUTO_STAGES)
+    invalid = [stage for stage in selected_stages if stage not in STAGES]
+    if invalid:
+        raise ValueError(f"unsupported stages: {', '.join(invalid)}")
+
+    run_started = utc_now()
+    events: list[dict[str, Any]] = []
+    with workflow_lock(base):
+        state_path = base / "workflow_state.json"
+        if not state_path.exists():
+            write_json(state_path, initial_workflow_state(base.name, "", [], [], 0, base))
+        for stage in selected_stages:
+            event = execute_engine_stage(
+                base,
+                stage,
+                resume=resume,
+                force=force,
+                max_search_tasks=max_search_tasks,
+                search_limit=search_limit,
+                sources=sources,
+                allow_download_accept=allow_download_accept,
+                execute_docker=execute_docker,
+            )
+            events.append(event)
+            append_engine_event(base, event)
+            if stop_on_blocked and event.get("status") in {"blocked", "pending_user", "incomplete", "failed"}:
+                break
+        payload = {
+            "schema_version": f"{SCHEMA_PREFIX}.engine_run.v1",
+            "workflow_version": WORKFLOW_VERSION,
+            "workdir": base.as_posix(),
+            "started_at": run_started,
+            "finished_at": utc_now(),
+            "status": engine_status(events),
+            "stages": events,
+            "workflow_state_path": state_path.as_posix(),
+            "progress_hint": f"python3 scripts/show_progress.py {state_path.as_posix()} --watch",
+        }
+        write_json(base / "workflow_engine_run.json", payload)
+        write_current_status_from_state(base)
+        return payload
+
+
+def execute_engine_stage(
+    base: Path,
+    stage: str,
+    *,
+    resume: bool,
+    force: bool,
+    max_search_tasks: int,
+    search_limit: int,
+    sources: list[str] | None,
+    allow_download_accept: bool,
+    execute_docker: bool,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        preflight = batch_orchestrate(workdir=base, stage=stage, mode="dry-run", resume=resume, force=force)
+        if resume and stage_already_completed(base, stage):
+            return engine_event(stage, "skipped", started, evidence_path="", summary={"reason": "already_completed"})
+
+        if stage == "research":
+            output = execute_stage_research(base, max_search_tasks=max_search_tasks, search_limit=search_limit, sources=sources)
+        elif stage == "collect":
+            output = execute_stage_collect(base)
+        elif stage == "dedupe":
+            output = execute_stage_dedupe(base)
+        elif stage == "download_preview":
+            output = execute_stage_download_preview(base)
+        elif stage == "download_accept":
+            output = execute_stage_download_accept(base, allow_download_accept=allow_download_accept)
+        elif stage == "archive":
+            output = execute_stage_archive(base)
+        elif stage == "quality":
+            output = execute_stage_quality(base, execute_docker=execute_docker)
+        elif stage == "hub_prepare":
+            output = execute_stage_hub_prepare(base)
+        elif stage == "final_report":
+            output = execute_stage_final_report(base)
+        else:
+            output = {"status": "blocked", "errors": [{"message": f"unsupported stage: {stage}"}]}
+
+        if output.get("status") == "pending_user":
+            set_global_stage(base, stage, "pending_user", output)
+            return engine_event(stage, "pending_user", started, evidence_path=str(output.get("evidence_path") or ""), summary=output)
+        if output.get("status") in {"blocked", "failed", "incomplete"}:
+            set_global_stage(base, stage, str(output.get("status")), output)
+            return engine_event(stage, str(output.get("status")), started, evidence_path=str(output.get("evidence_path") or ""), summary=output)
+
+        applied = batch_orchestrate(workdir=base, stage=stage, mode="apply", resume=resume, force=force)
+        status = str(applied.get("stage") and applied_stage_status(applied) or "incomplete")
+        summary = {"executor": output, "state_update": applied, "preflight": preflight}
+        return engine_event(stage, status, started, evidence_path=str(output.get("evidence_path") or ""), summary=summary)
+    except Exception as exc:  # noqa: BLE001 - engine must keep structured stage failures.
+        error = {"stage": stage, "status": "failed", "message": str(exc)}
+        set_global_stage(base, stage, "failed", {"errors": [error]})
+        return engine_event(stage, "failed", started, summary={"errors": [error]})
+
+
+def execute_stage_research(base: Path, *, max_search_tasks: int, search_limit: int, sources: list[str] | None) -> dict[str, Any]:
+    task_plan = base / "task_plan.json"
+    cases = base / "ctf_cases.jsonl"
+    if task_plan.exists():
+        result = execute_search_tasks(
+            workdir=base,
+            task_plan_path=task_plan,
+            max_tasks=max_search_tasks,
+            limit=search_limit,
+            sources=sources,
+            download_preview=False,
+            fetch_snapshots=False,
+        )
+        return {"status": "ok", "evidence_path": result.get("search_results_path", ""), "summary": result.get("summary", {})}
+    if cases.exists():
+        return {"status": "ok", "evidence_path": cases.as_posix(), "summary": {"reason": "existing ctf_cases.jsonl"}}
+    return {"status": "blocked", "errors": [{"message": "缺少 task_plan.json 或 ctf_cases.jsonl，无法执行 research。"}]}
+
+
+def execute_stage_collect(base: Path) -> dict[str, Any]:
+    manifest = base / "search_results.json"
+    if manifest.exists():
+        result = collect_materials(manifest_path=manifest, output_dir=base, download_direct=False)
+        return {"status": "ok", "evidence_path": (base / "material_candidates.json").as_posix(), "summary": result.get("summary", {})}
+    if (base / "material_candidates.json").exists() or (base / "resource_route.json").exists():
+        return {"status": "ok", "evidence_path": first_existing(base, ["material_candidates.json", "resource_route.json"]).as_posix()}
+    return {"status": "blocked", "errors": [{"message": "缺少 search_results.json，无法收集材料候选。"}]}
+
+
+def execute_stage_dedupe(base: Path) -> dict[str, Any]:
+    cases = base / "ctf_cases.jsonl"
+    if not cases.exists():
+        return {"status": "blocked", "errors": [{"message": "缺少 ctf_cases.jsonl，无法去重。"}]}
+    output = base / "reports" / "dedupe_candidates.json"
+    result = dedupe_cases(cases_path=cases, output_path=output)
+    return {"status": "ok", "evidence_path": output.as_posix(), "summary": result.get("summary", {})}
+
+
+def execute_stage_download_preview(base: Path) -> dict[str, Any]:
+    manifest = base / "search_results.json"
+    if manifest.exists():
+        result = download_sandbox_from_manifest(manifest_path=manifest, output_dir=base, accept=False)
+        return {"status": "ok", "evidence_path": (base / "download_preview.json").as_posix(), "summary": result.get("summary", {})}
+    preview = base / "download_preview.json"
+    if preview.exists():
+        return {"status": "ok", "evidence_path": preview.as_posix()}
+    write_json(
+        preview,
+        {
+            "schema_version": f"{SCHEMA_PREFIX}.download_sandbox.v1",
+            "generated_at": utc_now(),
+            "output_dir": base.as_posix(),
+            "records": [],
+            "summary": {"total": 0, "safe": 0, "needs_review": 0, "blocked": 0, "accepted": 0},
+        },
+    )
+    return {"status": "ok", "evidence_path": preview.as_posix(), "summary": {"total": 0}}
+
+
+def execute_stage_download_accept(base: Path, *, allow_download_accept: bool) -> dict[str, Any]:
+    if not allow_download_accept:
+        return {
+            "status": "pending_user",
+            "evidence_path": (base / "download_preview.json").as_posix() if (base / "download_preview.json").exists() else "",
+            "errors": [{"message": "下载接受会把外部文件放入 downloads_accepted，需要用户显式允许 --allow-download-accept。"}],
+        }
+    manifest = base / "search_results.json"
+    if not manifest.exists():
+        return {"status": "blocked", "errors": [{"message": "缺少 search_results.json，无法接受下载。"}]}
+    result = download_sandbox_from_manifest(manifest_path=manifest, output_dir=base, accept=True)
+    return {"status": "ok", "evidence_path": (base / "download_preview.json").as_posix(), "summary": result.get("summary", {})}
+
+
+def execute_stage_archive(base: Path) -> dict[str, Any]:
+    cases = latest_cases_path(base)
+    if not cases.exists():
+        return {"status": "blocked", "errors": [{"message": "缺少 ctf_cases.jsonl，无法归档。"}]}
+    result = archive_runner.run_archive_workflow(cases_path=cases, output_root=base / "归档", copy_files=True)
+    return {"status": "ok", "evidence_path": result.get("paths", {}).get("workflow", ""), "summary": result.get("summary", {})}
+
+
+def execute_stage_quality(base: Path, *, execute_docker: bool) -> dict[str, Any]:
+    cases = latest_cases_path(base)
+    if not cases.exists():
+        return {"status": "blocked", "errors": [{"message": "缺少 ctf_cases.jsonl，无法质量检查。"}]}
+    result = quality_runner.run_quality_batch(cases_path=cases, output_dir=base / "质量检查", execute_docker=execute_docker)
+    return {"status": "ok", "evidence_path": result.get("paths", {}).get("summary_json", ""), "summary": result.get("summary", {})}
+
+
+def execute_stage_hub_prepare(base: Path) -> dict[str, Any]:
+    cases = data.load_cases(latest_cases_path(base)) if latest_cases_path(base).exists() else []
+    ready = [case for case in cases if isinstance(case.get("hub_fields"), dict) and case.get("hub_fields")]
+    if ready:
+        return {"status": "ok", "evidence_path": latest_cases_path(base).as_posix(), "summary": {"hub_ready_cases": len(ready)}}
+    return {
+        "status": "pending_user",
+        "errors": [{"message": "缺少 Hub 字段或人工确认页，Hub 最终提交仍需人工确认。"}],
+    }
+
+
+def execute_stage_final_report(base: Path) -> dict[str, Any]:
+    cases_path = latest_cases_path(base)
+    if not cases_path.exists():
+        return {"status": "blocked", "errors": [{"message": "缺少 cases 文件，无法生成最终报告。"}]}
+    cases = data.load_cases(cases_path)
+    result = final_reporter.create_final_outputs(cases, base / "最终交付", base_dir=base)
+    return {"status": "ok", "evidence_path": result.get("summary", {}).get("report_path", ""), "summary": result.get("summary", {})}
+
+
+def applied_stage_status(applied: dict[str, Any]) -> str:
+    if applied.get("blocked"):
+        return "blocked"
+    if applied.get("incomplete"):
+        return "incomplete"
+    if applied.get("completed"):
+        return "completed"
+    return "blocked"
+
+
+def engine_event(stage: str, status: str, started: float, *, evidence_path: str = "", summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "stage": stage,
+        "status": status,
+        "finished_at": utc_now(),
+        "duration_ms": int((time.monotonic() - started) * 1000),
+        "evidence_path": evidence_path,
+        "summary": summary or {},
+    }
+
+
+def engine_status(events: list[dict[str, Any]]) -> str:
+    statuses = {str(item.get("status") or "") for item in events}
+    if statuses & {"failed"}:
+        return "failed"
+    if statuses & {"blocked", "incomplete"}:
+        return "blocked"
+    if statuses & {"pending_user"}:
+        return "pending_user"
+    if all(status in {"completed", "skipped"} for status in statuses) and events:
+        return "completed"
+    return "partial" if events else "empty"
+
+
+def set_global_stage(base: Path, stage: str, status: str, summary: dict[str, Any]) -> None:
+    state_path = base / "workflow_state.json"
+    state = read_json(state_path) if state_path.exists() else initial_workflow_state(base.name, "", [], [], 0, base)
+    state.setdefault("stages", {})[stage] = {
+        "status": status,
+        "started_at": state.get("stages", {}).get(stage, {}).get("started_at") or utc_now(),
+        "finished_at": utc_now(),
+        "summary": {key: value for key, value in summary.items() if key != "errors"},
+        "errors": summary.get("errors", []) if isinstance(summary.get("errors"), list) else [],
+    }
+    state["status"] = "in_progress" if status in {"pending_user", "partial"} else status
+    state["updated_at"] = utc_now()
+    write_json(state_path, state)
+
+
+def stage_already_completed(base: Path, stage: str) -> bool:
+    state_path = base / "workflow_state.json"
+    if not state_path.exists():
+        return False
+    state = read_json(state_path)
+    global_stage = state.get("stages", {}).get(stage, {}) if isinstance(state.get("stages"), dict) else {}
+    return global_stage.get("status") == "completed"
+
+
+def latest_cases_path(base: Path) -> Path:
+    candidates = [
+        base / "质量检查" / "ctf_cases.reviewed.jsonl",
+        base / "归档" / "_batch" / "ctf_cases.archived.jsonl",
+        base / "ctf_cases.jsonl",
+    ]
+    return next((path for path in candidates if path.exists()), base / "ctf_cases.jsonl")
+
+
+def first_existing(base: Path, names: list[str]) -> Path:
+    for name in names:
+        path = base / name
+        if path.exists():
+            return path
+    return base / names[0]
+
+
+def append_engine_event(base: Path, event: dict[str, Any]) -> None:
+    log_path = base / "logs" / "workflow_engine.jsonl"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def write_current_status_from_state(base: Path) -> None:
+    state_path = base / "workflow_state.json"
+    if not state_path.exists():
+        return
+    state = read_json(state_path)
+    cases_path = latest_cases_path(base)
+    cases = data.load_cases(cases_path) if cases_path.exists() else []
+    request = state.get("request") if isinstance(state.get("request"), dict) else {}
+    counts = user_status_counts(cases)
+    (base / "当前状态.md").write_text(
+        render_current_status(
+            {
+                "run_id": state.get("run_id", base.name),
+                "event": request.get("event", ""),
+                "years": request.get("years", []),
+                "categories": request.get("categories", []),
+                "status": state.get("status", ""),
+                "cases": len(cases),
+                "missing_material": counts["missing_material"],
+                "pending_user": counts["pending_user"],
+                "output": base.as_posix(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+@contextmanager
+def workflow_lock(base: Path):
+    lock_path = base / ".workflow.lock"
+    fd = None
+    deadline = time.monotonic() + 20
+    while fd is None:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"workflow is already running or lock is stale: {lock_path}")
+            time.sleep(0.05)
+    try:
+        os.write(fd, str(os.getpid()).encode("utf-8"))
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def stage_state_payload(
     status: str,
     *,
@@ -2330,6 +2702,19 @@ def main(argv: list[str] | None = None) -> int:
     batch_parser.add_argument("--force", action="store_true")
     batch_parser.add_argument("--output", required=True)
 
+    run_parser = subparsers.add_parser("run", help="execute deterministic workflow stages and persist evidence-backed state")
+    run_parser.add_argument("--workdir", required=True)
+    run_parser.add_argument("--stage", action="append", choices=STAGES, default=[])
+    run_parser.add_argument("--no-resume", action="store_true")
+    run_parser.add_argument("--force", action="store_true")
+    run_parser.add_argument("--stop-on-blocked", action="store_true")
+    run_parser.add_argument("--max-search-tasks", type=int, default=0)
+    run_parser.add_argument("--search-limit", type=int, default=20)
+    run_parser.add_argument("--source", action="append", default=[])
+    run_parser.add_argument("--allow-download-accept", action="store_true")
+    run_parser.add_argument("--execute-docker", action="store_true")
+    run_parser.add_argument("--output")
+
     github_parser = subparsers.add_parser("github-doctor", help="check gh auth and GitHub search availability")
     github_parser.add_argument("--sample-query", default="ctf writeup")
     github_parser.add_argument("--output", required=True)
@@ -2445,6 +2830,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         write_json(args.output, payload)
         print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "run":
+        payload = run_workflow_engine(
+            workdir=args.workdir,
+            stages=args.stage or None,
+            resume=not args.no_resume,
+            force=args.force,
+            stop_on_blocked=args.stop_on_blocked,
+            max_search_tasks=args.max_search_tasks,
+            search_limit=args.search_limit,
+            sources=args.source or None,
+            allow_download_accept=args.allow_download_accept,
+            execute_docker=args.execute_docker,
+        )
+        if args.output:
+            write_json(args.output, payload)
+        print(json.dumps({"status": payload["status"], "workdir": payload["workdir"], "stages": len(payload["stages"])}, ensure_ascii=False))
         return 0
 
     if args.command == "github-doctor":
