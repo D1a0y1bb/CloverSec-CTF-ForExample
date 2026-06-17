@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import cloversec_ctf_browser_search as browser_search
 import cloversec_ctf_search as search
+import cloversec_ctf_i18n as i18n
 
 
 DEFAULT_COMPACT_RESULTS = 8
@@ -282,7 +283,7 @@ def build_decision_required(
         decisions.append(
             {
                 "type": "weak_recall",
-                "message": "默认免费源召回仍弱，需要 Agent 联网搜索、Chrome 浏览器辅助搜索或人工提供入口。",
+                "message": i18n.text("search.weak_recall"),
             }
         )
     if any(item.get("status") in {"blocked_by_captcha", "skipped", "failed"} for item in errors):

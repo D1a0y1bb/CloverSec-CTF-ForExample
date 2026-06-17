@@ -15,19 +15,19 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, urlunparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import cloversec_ctf_data as data
 import cloversec_ctf_container as container
+import cloversec_ctf_http as http
+import cloversec_ctf_i18n as i18n
 import cloversec_ctf_resource as resource
 import cloversec_ctf_search as search
 import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.6.0"
+WORKFLOW_VERSION = "0.6.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -1401,7 +1401,7 @@ def workflow_dependency_errors(
                 "stage": stage,
                 "status": "blocked",
                 "missing_dependency": dependency,
-                "message": f"{stage} 需要先完成 {dependency}。如确实要跳过，请显式使用 force。",
+                "message": i18n.text("workflow.stage_dependency_missing", stage=stage, dependency=dependency),
                 "dependency_errors": dep_check.get("errors", [])[:5],
             }
         )
@@ -1456,7 +1456,7 @@ def check_research_completion(workdir: Path, case: dict[str, Any], case_id: str)
     if not cases_path.exists():
         return completion_error("research", case_id, f"缺少 {cases_path.as_posix()}", status="blocked")
     if not case_has_source_evidence(case):
-        return completion_error("research", case_id, "case 缺少 source_url 或 evidence 来源，不能确认 research 已完成。")
+        return completion_error("research", case_id, i18n.text("workflow.research_missing_source"))
     evidence_path = workdir / "evidence" / "source_evidence.json"
     return completion_ok("research", evidence_path if evidence_path.exists() else cases_path)
 
@@ -1497,7 +1497,7 @@ def check_download_accept_completion(workdir: Path, case: dict[str, Any], case_i
     for path in case_local_paths(case):
         if path.exists():
             return completion_ok("download_accept", path)
-    return completion_error("download_accept", case_id, "缺少 downloads_accepted 文件或 case 中可访问的本地附件/源码路径。")
+    return completion_error("download_accept", case_id, i18n.text("workflow.download_accept_missing"))
 
 
 def check_archive_completion(workdir: Path, case: dict[str, Any], case_id: str) -> dict[str, Any]:
@@ -1508,7 +1508,7 @@ def check_archive_completion(workdir: Path, case: dict[str, Any], case_id: str) 
     for path in workdir.rglob("archive_manifest.json"):
         if path.is_file() and json_file_mentions_case(path, case_id):
             return completion_ok("archive", path)
-    return completion_error("archive", case_id, "缺少该 case 对应的 archive_manifest.json。")
+    return completion_error("archive", case_id, i18n.text("workflow.archive_manifest_missing"))
 
 
 def check_quality_completion(workdir: Path, case_id: str) -> dict[str, Any]:
@@ -2174,29 +2174,6 @@ def sandbox_one_url(
     return record
 
 
-class RedirectLimitExceeded(RuntimeError):
-    pass
-
-
-class RedirectTargetBlocked(RuntimeError):
-    pass
-
-
-class LimitedRedirectHandler(HTTPRedirectHandler):
-    def __init__(self, max_redirects: int):
-        self.max_redirects = max(0, int(max_redirects))
-        self.redirect_count = 0
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
-        self.redirect_count += 1
-        if self.redirect_count > self.max_redirects:
-            raise RedirectLimitExceeded(f"redirect count exceeds max_redirects={self.max_redirects}")
-        blocked_reason = blocked_url_reason(str(newurl or ""))
-        if blocked_reason:
-            raise RedirectTargetBlocked(f"redirect target blocked: {blocked_reason}")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
 def http_request_limited_redirects(
     url: str,
     *,
@@ -2205,34 +2182,20 @@ def http_request_limited_redirects(
     timeout: int = search.DEFAULT_TIMEOUT,
 ) -> dict[str, Any]:
     search.validate_http_url(url)
-    handler = LimitedRedirectHandler(max_redirects)
-    opener = build_opener(handler)
-    request = Request(url, headers={"User-Agent": search.USER_AGENT})
     try:
-        with opener.open(request, timeout=timeout) as response:  # noqa: S310 - public-source fetch helper.
-            body = response.read(read_limit)
-            return {
-                "status": getattr(response, "status", 200),
-                "headers": {key.lower(): value for key, value in response.headers.items()},
-                "body": body,
-                "final_url": response.geturl(),
-                "redirect_count": handler.redirect_count,
-            }
-    except HTTPError as exc:
-        try:
-            body = exc.read(read_limit)
-            return {
-                "status": exc.code,
-                "headers": {key.lower(): value for key, value in exc.headers.items()},
-                "body": body,
-                "final_url": exc.geturl(),
-                "redirect_count": handler.redirect_count,
-            }
-        finally:
-            exc.close()
-    except (RedirectLimitExceeded, RedirectTargetBlocked):
+        return http.http_get(
+            url,
+            timeout=timeout,
+            read_limit=read_limit,
+            retries=0,
+            backoff=0,
+            user_agent=search.USER_AGENT,
+            max_redirects=max_redirects,
+            blocked_url_checker=blocked_url_reason,
+        )
+    except (http.RedirectLimitExceeded, http.RedirectTargetBlocked):
         raise
-    except URLError as exc:
+    except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"failed to fetch {url}: {exc}") from exc
 
 

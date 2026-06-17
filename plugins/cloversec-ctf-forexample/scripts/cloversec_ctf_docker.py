@@ -13,14 +13,24 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
-from urllib.request import urlopen
+
+import cloversec_ctf_http as http
+import cloversec_ctf_i18n as i18n
 
 
 TARGET_PLATFORM = "linux/amd64"
 DEFAULT_OPERATIONS = ["build", "load", "inspect", "run", "logs", "stop", "save"]
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 VALIDATION_LEVELS = ["static_only", "inspect_only", "build_only", "run_probe", "solve_verify"]
+OPERATION_AUTH_ACTIONS = {
+    "build": "docker_build",
+    "load": "docker_load",
+    "inspect": "docker_inspect",
+    "run": "docker_run_probe",
+    "logs": "docker_run_probe",
+    "stop": "docker_run_probe",
+    "save": "docker_save",
+}
 
 
 def create_docker_plan(
@@ -173,6 +183,8 @@ def execute_docker_workflow(
     startup_wait: float = 2.0,
     command_timeout: int = 60,
     probe_timeout: float = 3.0,
+    authorization_workdir: str | Path = "",
+    authorization_path: str | Path = "",
 ) -> dict[str, Any]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -212,6 +224,14 @@ def execute_docker_workflow(
     container_started = False
     container_name = str(plan.get("container_name") or "")
     selected_operations = set(plan.get("operations", []))
+    auth_errors = authorization_errors(
+        operations=selected_operations,
+        case_id=str(plan.get("case_id") or ""),
+        authorization_workdir=authorization_workdir,
+        authorization_path=authorization_path,
+    )
+    if auth_errors:
+        issues.extend(auth_errors)
 
     if issues:
         evidence["summary"]["issues"] = issues
@@ -222,7 +242,7 @@ def execute_docker_workflow(
         evidence["summary"]["status"] = "skip"
         evidence["summary"]["run_verified"] = False
         evidence["summary"]["issues"] = []
-        evidence["summary"]["message"] = "no Docker operations selected"
+        evidence["summary"]["message"] = i18n.text("docker.no_operations_selected")
         write_evidence(output, evidence)
         return evidence
 
@@ -493,12 +513,79 @@ def probe_url(url: str, *, timeout: float) -> dict[str, Any]:
     if not str(url or "").strip():
         return {"url": "", "status": "skip", "message": "empty probe url"}
     try:
-        with urlopen(url, timeout=timeout) as response:
-            return {"url": url, "status": "pass", "http_status": response.status, "message": f"HTTP {response.status}"}
-    except URLError as exc:
-        return {"url": url, "status": "fail", "message": str(exc)}
+        response = http.http_get(url, timeout=int(max(timeout, 1)), read_limit=4096, retries=0, backoff=0)
+        status = int(response.get("status") or 0)
+        return {
+            "url": url,
+            "status": "pass" if status < 400 else "fail",
+            "http_status": status,
+            "message": f"HTTP {status}",
+        }
     except Exception as exc:  # noqa: BLE001
         return {"url": url, "status": "fail", "message": str(exc)}
+
+
+def authorization_errors(
+    *,
+    operations: set[str],
+    case_id: str,
+    authorization_workdir: str | Path = "",
+    authorization_path: str | Path = "",
+) -> list[str]:
+    required = sorted({OPERATION_AUTH_ACTIONS[operation] for operation in operations if operation in OPERATION_AUTH_ACTIONS})
+    if not required:
+        return []
+    authorizations = load_authorizations(authorization_workdir=authorization_workdir, authorization_path=authorization_path)
+    missing = [action for action in required if not has_valid_authorization(authorizations, action=action, case_id=case_id)]
+    if not missing:
+        return []
+    return [i18n.text("docker.missing_batch_authorization", actions=", ".join(missing))]
+
+
+def load_authorizations(*, authorization_workdir: str | Path = "", authorization_path: str | Path = "") -> list[dict[str, Any]]:
+    paths: list[Path] = []
+    if authorization_path:
+        paths.append(Path(authorization_path))
+    if authorization_workdir:
+        auth_dir = Path(authorization_workdir) / "authorizations"
+        if auth_dir.is_dir():
+            paths.extend(sorted(auth_dir.glob("*.json")))
+    authorizations = []
+    for path in paths:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            payload.setdefault("authorization_path", path.as_posix())
+            authorizations.append(payload)
+    return authorizations
+
+
+def has_valid_authorization(authorizations: list[dict[str, Any]], *, action: str, case_id: str) -> bool:
+    now = datetime.now(timezone.utc)
+    for payload in authorizations:
+        if payload.get("action") != action:
+            continue
+        if not authorization_covers_case(payload, case_id):
+            continue
+        expires_at = str(payload.get("expires_at") or "")
+        try:
+            expires = datetime.fromisoformat(expires_at)
+        except ValueError:
+            continue
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires >= now:
+            return True
+    return False
+
+
+def authorization_covers_case(payload: dict[str, Any], case_id: str) -> bool:
+    case_ids = payload.get("case_ids")
+    if not case_ids:
+        return True
+    return str(case_id or "") in {str(item) for item in case_ids}
 
 
 def platform_from_inspect_output(output: str) -> str:
@@ -585,6 +672,8 @@ def main(argv: list[str] | None = None) -> int:
     execute_parser.add_argument("--startup-wait", type=float, default=2.0)
     execute_parser.add_argument("--command-timeout", type=int, default=60)
     execute_parser.add_argument("--probe-timeout", type=float, default=3.0)
+    execute_parser.add_argument("--authorization-workdir", default="")
+    execute_parser.add_argument("--authorization-path", default="")
 
     args = parser.parse_args(argv)
     case = json.loads(Path(args.case_json).read_text(encoding="utf-8")) if getattr(args, "case_json", None) else {}
@@ -627,6 +716,8 @@ def main(argv: list[str] | None = None) -> int:
             startup_wait=args.startup_wait,
             command_timeout=args.command_timeout,
             probe_timeout=args.probe_timeout,
+            authorization_workdir=args.authorization_workdir,
+            authorization_path=args.authorization_path,
         )
         print(f"wrote {evidence['evidence_path']}")
         return 0

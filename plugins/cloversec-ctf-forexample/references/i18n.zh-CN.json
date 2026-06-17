@@ -1,0 +1,15 @@
+{
+  "schema_version": "cloversec.ctf.i18n.v1",
+  "locale": "zh-CN",
+  "messages": {
+    "docker.no_operations_selected": "没有选择 Docker 操作",
+    "docker.missing_batch_authorization": "缺少 Docker 批量授权：{actions}。执行真实 Docker 操作前，请先使用 scripts/authorize_batch.py 生成授权。",
+    "hub.final_submit_batch_forbidden": "Hub 最终提交不能批量预授权，必须逐题人工确认。",
+    "batch.unsupported_action": "不支持的批量授权动作：{action}",
+    "workflow.stage_dependency_missing": "{stage} 需要先完成 {dependency}。如确实要跳过，请显式使用 force。",
+    "workflow.research_missing_source": "case 缺少 source_url 或 evidence 来源，不能确认 research 已完成。",
+    "workflow.download_accept_missing": "缺少 downloads_accepted 文件或 case 中可访问的本地附件/源码路径。",
+    "workflow.archive_manifest_missing": "缺少该 case 对应的 archive_manifest.json。",
+    "search.weak_recall": "默认免费源召回仍弱，需要 Agent 联网搜索、Chrome 浏览器辅助搜索或人工提供入口。"
+  }
+}

@@ -1,4 +1,6 @@
 import json
+import builtins
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -19,6 +21,32 @@ import cloversec_ctf_workflow as workflow
 
 
 class EndToEndTests(unittest.TestCase):
+    def test_dockerizer_missing_pyyaml_error_mentions_install_command(self):
+        spec = importlib.util.spec_from_file_location("dockerizer_utils_for_test", DOCKERIZER / "scripts" / "utils.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        original_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "yaml":
+                raise ModuleNotFoundError("missing yaml")
+            return original_import(name, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            yaml_path = Path(tmp) / "demo.yaml"
+            yaml_path.write_text("a: 1\n", encoding="utf-8")
+            builtins.__import__ = fake_import
+            try:
+                with self.assertRaises(module.ConfigError) as ctx:
+                    module.load_yaml_file(yaml_path)
+            finally:
+                builtins.__import__ = original_import
+
+        self.assertIn("PyYAML", str(ctx.exception))
+        self.assertIn("pip install", str(ctx.exception))
+
     def test_attachment_case_reaches_quality_archive_and_final_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

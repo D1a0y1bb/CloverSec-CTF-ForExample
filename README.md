@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.6.0-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.6.1-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -30,14 +30,14 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.6.0
+Git 引用：v0.6.1
 稀疏路径：留空
 ```
 
 也可以用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.6.0
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.6.1
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -116,6 +116,18 @@ python3 scripts/doctor.py
 python3 scripts/show_progress.py runs/xxxxxxxxx/workflow_state.json
 ```
 
+批量处理 Docker 构建前，可以对明确范围做一次授权。授权文件会写进工作目录，Docker 执行器会读取它；没有授权时不会直接执行真实 Docker 操作。
+
+```bash
+python3 scripts/authorize_batch.py --workdir runs/xxxxxxxxx --action docker_build --case-id case-001 --case-id case-002
+```
+
+搜索质量验证可以生成本地报告，报告留在 `docs/validation/`，不进入发布包：
+
+```bash
+python3 scripts/search_recall_benchmark.py --input-dir docs/validation --output docs/validation/search-recall-benchmark-v0.6.1.md
+```
+
 ## Capability Table
 
 | 能力 | 说明 |
@@ -132,6 +144,12 @@ python3 scripts/show_progress.py runs/xxxxxxxxx/workflow_state.json
 | Hub submission | 生成 Hub 草稿、上传清单、浏览器辅助计划，最终提交前停止 |
 | Hub retag | 审核通过后按正式 `HUB编号` 生成镜像 tag 和导出计划 |
 | Final report | 生成最终 xlsx、语雀表、报告和待处理事项 |
+
+## Development Notes
+
+- 关键用户可见提示集中在 `plugins/cloversec-ctf-forexample/references/i18n.zh-CN.json`，后续要做英文版时优先替换这份 catalog。
+- 公开搜索、下载预览、端口探测等 HTTP 请求统一走 `cloversec_ctf_http.py`，避免各脚本各自处理超时、重试和重定向。
+- Hub 最终提交不能批量预授权，仍然需要人工确认。
 
 ## Resource Rules
 
@@ -166,7 +184,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scripts/package_plugin_release.py
 ```
 
-发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v0.6.0`；正文第一行使用 `# CloverSec CTF For Example 0.6.0`。
+发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v0.6.1`；正文第一行使用 `# CloverSec CTF For Example 0.6.1`。
 
 ## License
 

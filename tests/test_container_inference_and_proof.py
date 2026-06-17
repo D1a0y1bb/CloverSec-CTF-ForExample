@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -116,6 +117,62 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertEqual(evidence["plan"]["operations"], [])
         self.assertEqual(evidence["steps"], [])
 
+    def test_docker_execute_requires_batch_authorization_for_real_operations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            project.mkdir()
+            (project / "Dockerfile").write_text("FROM busybox:1.36\n", encoding="utf-8")
+
+            evidence = docker_runner.execute_docker_workflow(
+                case={"case_id": "auth-001"},
+                output_dir=root / "docker",
+                project_dir=project,
+                image_name="cloversec/auth-test:local",
+                dockerfile="Dockerfile",
+                operations=["build"],
+            )
+
+        self.assertEqual(evidence["summary"]["status"], "fail")
+        self.assertIn("docker_build", "; ".join(evidence["summary"]["issues"]))
+        self.assertEqual(evidence["steps"], [])
+
+    def test_docker_execute_uses_batch_authorization_to_continue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            project.mkdir()
+            (project / "Dockerfile").write_text("FROM busybox:1.36\n", encoding="utf-8")
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "authorize_batch.py"),
+                    "--workdir",
+                    str(root),
+                    "--action",
+                    "docker_build",
+                    "--case-id",
+                    "auth-002",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            with mock.patch.object(docker_runner, "run_command", return_value={"id": "docker-build", "status": "pass", "exit_code": 0, "message": "ok"}):
+                evidence = docker_runner.execute_docker_workflow(
+                    case={"case_id": "auth-002"},
+                    output_dir=root / "docker",
+                    project_dir=project,
+                    image_name="cloversec/auth-test:local",
+                    dockerfile="Dockerfile",
+                    operations=["build"],
+                    authorization_workdir=root,
+                )
+
+        self.assertEqual(evidence["summary"]["status"], "pass")
+        self.assertEqual(evidence["steps"][0]["id"], "docker-build")
+
     def test_docker_plan_accepts_container_inference_runtime(self):
         inference = {
             "runtime": {
@@ -202,7 +259,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.6.0")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.6.1")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

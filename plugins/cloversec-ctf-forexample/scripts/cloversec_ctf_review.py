@@ -12,10 +12,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
-from urllib.request import urlopen
 
 import cloversec_ctf_data as data
+import cloversec_ctf_http as http
 
 
 TARGET_PLATFORM = "linux/amd64"
@@ -428,10 +427,14 @@ def _host_port(mapping: str) -> str:
 
 def _probe_url(url: str, *, timeout: float) -> dict[str, Any]:
     try:
-        with urlopen(url, timeout=timeout) as response:
-            return {"url": url, "status": "pass", "http_status": response.status, "message": f"HTTP {response.status}"}
-    except URLError as exc:
-        return {"url": url, "status": "fail", "message": str(exc)}
+        response = http.http_get(url, timeout=int(max(timeout, 1)), read_limit=4096, retries=0, backoff=0)
+        status = int(response.get("status") or 0)
+        return {
+            "url": url,
+            "status": "pass" if status < 400 else "fail",
+            "http_status": status,
+            "message": f"HTTP {status}",
+        }
     except Exception as exc:  # noqa: BLE001
         return {"url": url, "status": "fail", "message": str(exc)}
 

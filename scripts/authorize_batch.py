@@ -5,13 +5,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
+sys.path.insert(0, str(PLUGIN_SCRIPTS))
+
+import cloversec_ctf_i18n as i18n
+
 
 ALLOWED_ACTIONS = {
     "docker_build",
+    "docker_load",
     "docker_inspect",
     "docker_run_probe",
     "docker_save",
@@ -50,9 +58,9 @@ def create_authorization(
     note: str,
 ) -> dict[str, Any]:
     if action in FORBIDDEN_ACTIONS:
-        raise SystemExit("Hub 最终提交不能批量预授权，必须逐题人工确认。")
+        raise SystemExit(i18n.text("hub.final_submit_batch_forbidden"))
     if action not in ALLOWED_ACTIONS:
-        raise SystemExit(f"unsupported action: {action}")
+        raise SystemExit(i18n.text("batch.unsupported_action", action=action))
     root = Path(workdir)
     root.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).replace(microsecond=0)

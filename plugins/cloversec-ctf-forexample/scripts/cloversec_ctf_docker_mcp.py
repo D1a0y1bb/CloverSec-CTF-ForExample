@@ -11,7 +11,7 @@ from typing import Any
 import cloversec_ctf_docker as docker_runner
 
 
-SERVER_VERSION = "0.6.0"
+SERVER_VERSION = "0.6.1"
 
 TOOLS = [
     {
@@ -72,6 +72,8 @@ TOOLS = [
                 "startup_wait": {"type": "number"},
                 "command_timeout": {"type": "integer", "minimum": 1, "maximum": 600},
                 "probe_timeout": {"type": "number"},
+                "authorization_workdir": {"type": "string"},
+                "authorization_path": {"type": "string"},
             },
             "required": ["output_dir"],
         },
@@ -150,6 +152,8 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             startup_wait=float(arguments.get("startup_wait", 2.0)),
             command_timeout=int(arguments.get("command_timeout", 60)),
             probe_timeout=float(arguments.get("probe_timeout", 3.0)),
+            authorization_workdir=str(arguments.get("authorization_workdir") or ""),
+            authorization_path=str(arguments.get("authorization_path") or ""),
         )
         return docker_runner.compact_evidence(evidence)
     raise ValueError(f"unknown tool: {name}")

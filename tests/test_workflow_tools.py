@@ -7,6 +7,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
+sys.path.insert(0, str(PLUGIN_SCRIPTS))
+
+import cloversec_ctf_i18n as i18n
 
 
 class WorkflowToolTests(unittest.TestCase):
@@ -85,6 +89,66 @@ class WorkflowToolTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertIn("capabilities", payload)
         self.assertIn("dockerizer", payload["capabilities"])
+
+    def test_i18n_catalog_loads_key_user_messages(self):
+        self.assertIn("Hub 最终提交", i18n.text("hub.final_submit_batch_forbidden"))
+        self.assertIn("docker_build", i18n.text("docker.missing_batch_authorization", actions="docker_build"))
+
+    def test_search_recall_benchmark_writes_rate_and_false_positives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            validation = root / "validation"
+            validation.mkdir()
+            sample = {
+                "query": "IrisCTF 2025 web writeup attachment source",
+                "summary": {
+                    "provider_counts": {"duckduckgo": 2},
+                    "layer_counts": {"writeup_candidate": 3, "noise": 1},
+                },
+                "decision_required": [],
+                "top_results": [
+                    {"title": "IrisCTF 2025 Web writeup", "url": "https://example.com/iris", "layer": "writeup_candidate"},
+                    {"title": "Other CTF writeup", "url": "https://example.com/other", "layer": "noise"},
+                ],
+            }
+            for name in [
+                "search-irisctf-2025-web.compact.json",
+                "search-lactf-2024-pwn.compact.json",
+                "search-xiangyunbei-2024-pwn.compact.json",
+            ]:
+                (validation / name).write_text(json.dumps(sample, ensure_ascii=False), encoding="utf-8")
+            output = root / "benchmark.md"
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "search_recall_benchmark.py"),
+                    "--input-dir",
+                    str(validation),
+                    "--output",
+                    str(output),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            text = output.read_text(encoding="utf-8")
+            self.assertIn("recall_rate", text)
+            self.assertIn("明显误报", text)
+            self.assertIn("Other CTF writeup", text)
+
+    def test_network_requests_are_centralized_in_http_helper(self):
+        scripts = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
+        offenders = []
+        for path in scripts.glob("cloversec_ctf_*.py"):
+            if path.name == "cloversec_ctf_http.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "urlopen(" in text or "from urllib.request import" in text:
+                offenders.append(path.name)
+
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

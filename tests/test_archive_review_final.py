@@ -352,7 +352,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
 
             with mock.patch.object(review.subprocess, "run", side_effect=fake_run):
                 with mock.patch.object(review.time, "sleep", return_value=None):
-                    with mock.patch.object(review, "urlopen", return_value=Response()):
+                    with mock.patch.object(review.http, "http_get", return_value={"status": 200}):
                         evidence = review.execute_docker_review(case, tmp_path / "quality", startup_wait=0)
 
             self.assertEqual(evidence["summary"]["status"], "pass")
@@ -598,16 +598,17 @@ class ArchiveReviewFinalTests(unittest.TestCase):
 
             with mock.patch.object(docker_runner.subprocess, "run", side_effect=fake_run):
                 with mock.patch.object(docker_runner.time, "sleep", return_value=None):
-                    with mock.patch.object(docker_runner, "urlopen", return_value=Response()):
-                        evidence = docker_runner.execute_docker_workflow(
-                            case={"case_id": "docker-001"},
-                            output_dir=tmp_path / "docker",
-                            image_name="busybox:1.36",
-                            tar_path=tar_path,
-                            ports=["18080:80"],
-                            operations=["inspect", "run", "logs", "stop", "save"],
-                            startup_wait=0,
-                        )
+                    with mock.patch.object(docker_runner.http, "http_get", return_value={"status": 200}):
+                        with mock.patch.object(docker_runner, "authorization_errors", return_value=[]):
+                            evidence = docker_runner.execute_docker_workflow(
+                                case={"case_id": "docker-001"},
+                                output_dir=tmp_path / "docker",
+                                image_name="busybox:1.36",
+                                tar_path=tar_path,
+                                ports=["18080:80"],
+                                operations=["inspect", "run", "logs", "stop", "save"],
+                                startup_wait=0,
+                            )
 
             self.assertEqual(evidence["summary"]["status"], "pass")
             self.assertEqual(evidence["summary"]["platform"], "linux/amd64")
@@ -645,7 +646,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.6.0")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.6.1")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)
