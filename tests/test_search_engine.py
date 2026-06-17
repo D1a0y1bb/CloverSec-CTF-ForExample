@@ -44,6 +44,13 @@ class SearchEngineTests(unittest.TestCase):
         self.assertIn("https://github.com/google/google-ctf", urls)
         self.assertEqual(payload["summary"]["errors"], 0)
 
+    def test_github_repository_query_variants_relax_descriptive_words(self):
+        variants = search.github_repository_query_variants("HGame 2024 Writeup Vidar Team")
+
+        self.assertIn("HGame 2024", variants)
+        self.assertIn("HGame", variants)
+        self.assertIn("HGame 2024 Writeup Vidar Team", variants)
+
     def test_discover_uses_source_cache_when_available(self):
         with tempfile.TemporaryDirectory() as tmp:
             first = search.discover("google ctf archive", sources=["seeds"], limit=3, cache_dir=tmp)

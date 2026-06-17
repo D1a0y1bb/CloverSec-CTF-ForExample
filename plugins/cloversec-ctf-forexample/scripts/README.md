@@ -130,6 +130,21 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search_plus.py \
 
 直接 URL 只做安全预览，记录状态码、content-type、hash、截断状态和附件线索，不默认下载为归档资源。遇到冷门比赛、附件下架、网盘失效或搜索召回不足时，结果会把 Agent 联网搜索、Chrome 浏览器辅助搜索或人工入口列为下一步。
 
+## `search_recall_benchmark.py`
+
+真实搜索召回验收工具。它读取 `references/search-recall-benchmark.json`，对人工核对过存在的公开资源做 GitHub repo / URL 归一化命中检查，不用关键词命中代替。
+
+```bash
+python3 scripts/search_recall_benchmark.py \
+  --run-search \
+  --benchmark plugins/cloversec-ctf-forexample/references/search-recall-benchmark.json \
+  --input-dir docs/validation/search-recall-v0.7.0 \
+  --output docs/validation/search-recall-benchmark-v0.7.0.md \
+  --json-output docs/validation/search-recall-benchmark-v0.7.0.json
+```
+
+输出里的 `resource_recall` 是已验证资源的真实召回率。搜索策略改动前后都应保留本地报告，方便确认修复的是实际漏召回，不是只改了提示词。
+
 ## `cloversec_ctf_browser_search.py`
 
 浏览器辅助搜索工具，用于 Google、Baidu、CSDN、博客园、语雀这类直连不稳定或需要用户浏览器状态的搜索。工具只生成搜索页、导入页面可见结果，不读取 Cookie、token、localStorage、sessionStorage、密码或验证码。

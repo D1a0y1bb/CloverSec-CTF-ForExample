@@ -103,39 +103,74 @@ class WorkflowToolTests(unittest.TestCase):
         self.assertIn("Hub 最终提交", i18n.text("hub.final_submit_batch_forbidden"))
         self.assertIn("docker_build", i18n.text("docker.missing_batch_authorization", actions="docker_build"))
 
-    def test_search_recall_benchmark_writes_rate_and_false_positives(self):
+    def test_search_recall_benchmark_evaluates_verified_resource_hits(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             validation = root / "validation"
             validation.mkdir()
-            sample = {
-                "query": "IrisCTF 2025 web writeup attachment source",
-                "summary": {
-                    "provider_counts": {"duckduckgo": 2},
-                    "layer_counts": {"writeup_candidate": 3, "noise": 1},
-                },
-                "decision_required": [],
-                "top_results": [
-                    {"title": "IrisCTF 2025 Web writeup", "url": "https://example.com/iris", "layer": "writeup_candidate"},
-                    {"title": "Other CTF writeup", "url": "https://example.com/other", "layer": "noise"},
-                ],
-            }
-            for name in [
-                "search-irisctf-2025-web.compact.json",
-                "search-lactf-2024-pwn.compact.json",
-                "search-xiangyunbei-2024-pwn.compact.json",
-            ]:
-                (validation / name).write_text(json.dumps(sample, ensure_ascii=False), encoding="utf-8")
+            benchmark = root / "benchmark.json"
+            benchmark.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "cloversec.ctf.search_recall_benchmark.v1",
+                        "cases": [
+                            {
+                                "id": "hit-case",
+                                "query": "Demo CTF",
+                                "expected_resources": [
+                                    {"id": "demo", "type": "github_repo", "value": "demo-org/demo-repo", "required": True}
+                                ],
+                            },
+                            {
+                                "id": "miss-case",
+                                "query": "Missing CTF",
+                                "expected_resources": [
+                                    {"id": "missing", "type": "github_repo", "value": "demo-org/missing-repo", "required": True}
+                                ],
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (validation / "hit-case.compact.json").write_text(
+                json.dumps(
+                    {
+                        "query": "Demo CTF",
+                        "summary": {"provider_counts": {"github-code": 1}, "layer_counts": {"writeup_candidate": 1}},
+                        "top_results": [
+                            {
+                                "title": "demo-org/demo-repo/README.md",
+                                "source_url": "https://github.com/demo-org/demo-repo/blob/main/README.md",
+                                "provider": "github-code",
+                                "layer": "writeup_candidate",
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (validation / "miss-case.compact.json").write_text(
+                json.dumps({"query": "Missing CTF", "summary": {}, "top_results": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
             output = root / "benchmark.md"
+            json_output = root / "benchmark.json.out"
 
             subprocess.run(
                 [
                     sys.executable,
                     str(ROOT / "scripts" / "search_recall_benchmark.py"),
+                    "--benchmark",
+                    str(benchmark),
                     "--input-dir",
                     str(validation),
                     "--output",
                     str(output),
+                    "--json-output",
+                    str(json_output),
                 ],
                 check=True,
                 capture_output=True,
@@ -143,9 +178,14 @@ class WorkflowToolTests(unittest.TestCase):
             )
 
             text = output.read_text(encoding="utf-8")
-            self.assertIn("recall_rate", text)
-            self.assertIn("明显误报", text)
-            self.assertIn("Other CTF writeup", text)
+            payload = json.loads(json_output.read_text(encoding="utf-8"))
+            self.assertIn("resource_recall", text)
+            self.assertIn("demo-org/demo-repo", text)
+            self.assertIn("demo-org/missing-repo", text)
+            self.assertEqual(payload["summary"]["required_resources"], 2)
+            self.assertEqual(payload["summary"]["matched_required_resources"], 1)
+            self.assertEqual(payload["cases"][0]["status"], "pass")
+            self.assertEqual(payload["cases"][1]["status"], "needs_review")
 
     def test_network_requests_are_centralized_in_http_helper(self):
         scripts = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"

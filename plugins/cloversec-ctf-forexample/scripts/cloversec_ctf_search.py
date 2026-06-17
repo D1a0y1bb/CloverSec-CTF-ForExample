@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.6.5 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.7.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -43,6 +43,20 @@ GENERIC_EVENT_QUERY_TERMS = {
     "rev",
     "forensics",
     "osint",
+}
+GITHUB_REPO_QUERY_STOPWORDS = {
+    "official",
+    "writeup",
+    "writeups",
+    "wp",
+    "challenge",
+    "challenges",
+    "archive",
+    "archives",
+    "past",
+    "team",
+    "repo",
+    "repository",
 }
 
 ARCHIVE_SEEDS = [
@@ -1055,35 +1069,68 @@ def normalize_query_key(query: str) -> str:
 
 
 def search_github_repositories(query: str, *, limit: int = 20) -> list[dict[str, Any]]:
-    params = {
-        "q": f"{query} ctf",
-        "sort": "stars",
-        "order": "desc",
-        "per_page": str(min(max(limit, 1), 50)),
-    }
-    payload = github_json("/search/repositories", params=params)
-    items = payload.get("items", []) if isinstance(payload, dict) else []
     results = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        results.append(
-            normalize_result(
-                provider="github",
-                kind="repository",
-                title=item.get("full_name") or item.get("name") or "",
-                url=item.get("html_url") or "",
-                summary=item.get("description") or "",
-                source_type="github",
-                confidence="medium",
-                metadata={
-                    "stars": item.get("stargazers_count", 0),
-                    "updated_at": item.get("updated_at", ""),
-                    "language": item.get("language", ""),
-                },
+    per_query_limit = max(3, min(max(limit, 1), 20))
+    for repo_query in github_repository_query_variants(query):
+        params = {"q": repo_query, "per_page": str(per_query_limit)}
+        payload = github_json("/search/repositories", params=params)
+        items = payload.get("items", []) if isinstance(payload, dict) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            results.append(
+                normalize_result(
+                    provider="github",
+                    kind="repository",
+                    title=item.get("full_name") or item.get("name") or "",
+                    url=item.get("html_url") or "",
+                    summary=item.get("description") or "",
+                    source_type="github",
+                    confidence="medium",
+                    metadata={
+                        "stars": item.get("stargazers_count", 0),
+                        "updated_at": item.get("updated_at", ""),
+                        "language": item.get("language", ""),
+                        "repo_search_query": repo_query,
+                    },
+                )
             )
-        )
-    return results
+        if len(dedupe_results(results)) >= limit:
+            break
+    return dedupe_results(results)[: max(limit, 0)]
+
+
+def github_repository_query_variants(query: str) -> list[str]:
+    compact = re.sub(r"\s+", " ", str(query or "")).strip()
+    if not compact:
+        return []
+    variants = [compact]
+    tokens = re.findall(r"[\w.-]+", compact, flags=re.I)
+    filtered = [token for token in tokens if token.lower() not in GITHUB_REPO_QUERY_STOPWORDS]
+    years = [token for token in filtered if re.fullmatch(r"20\d{2}", token)]
+    event_like = [
+        token
+        for token in filtered
+        if not re.fullmatch(r"20\d{2}", token)
+        and token.lower() not in GENERIC_EVENT_QUERY_TERMS
+        and token.lower() not in {"ucla", "ustc", "xdsec", "vidar"}
+    ]
+    if filtered and filtered != tokens:
+        variants.append(" ".join(filtered))
+    for event in event_like[:3]:
+        for year in years[:2]:
+            variants.append(f"{event} {year}")
+        variants.append(event)
+    variants.append(f"{compact} ctf")
+    output = []
+    seen = set()
+    for item in variants:
+        normalized = re.sub(r"\s+", " ", item).strip()
+        key = normalized.lower()
+        if normalized and key not in seen:
+            seen.add(key)
+            output.append(normalized)
+    return output[:8]
 
 
 def search_github_code(query: str, *, limit: int = 10) -> list[dict[str, Any]]:

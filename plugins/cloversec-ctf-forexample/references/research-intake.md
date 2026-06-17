@@ -70,6 +70,32 @@ Recovery hits are leads, not confirmations. They can improve recall for queries 
 
 Cold contests, removed attachments, expired netdisk links, and poorly indexed Chinese pages still require Agent web search, Chrome browser-assisted review, or user-provided entry URLs.
 
+## Real Recall Benchmark
+
+搜索验收不能只看关键词。`scripts/search_recall_benchmark.py` 使用 `references/search-recall-benchmark.json` 中人工核对过存在的公开资源，按 GitHub repo / URL 归一化比对是否命中。
+
+基准集优先覆盖国内公开资料，再补国外赛事：
+
+- 西电 XDSEC miniLCTF 2026：`XDSEC/miniLCTF_2026`
+- 中科大 Hackergame 2024：`USTC-Hackergame/hackergame2024-writeups`
+- HGame 2024：`vidar-team/HGAME2024_Writeup`
+- IrisCTF 2025：`IrisSec/IrisCTF-2025-Challenges`
+- LA CTF archive：`uclaacm/lactf-archive`
+- Google CTF：`google/google-ctf`
+
+运行方式：
+
+```bash
+python3 scripts/search_recall_benchmark.py \
+  --run-search \
+  --benchmark plugins/cloversec-ctf-forexample/references/search-recall-benchmark.json \
+  --input-dir docs/validation/search-recall-v0.7.0 \
+  --output docs/validation/search-recall-benchmark-v0.7.0.md \
+  --json-output docs/validation/search-recall-benchmark-v0.7.0.json
+```
+
+报告里的 `resource_recall` 是真实资源命中率。没有命中 expected resource 的 case 必须按实测结果修搜索策略，不能凭感觉增加规则。
+
 ## Source Evidence And Download Sandbox
 
 After `search-plus`, write evidence records:

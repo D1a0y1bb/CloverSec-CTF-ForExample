@@ -1,0 +1,115 @@
+{
+  "schema_version": "cloversec.ctf.search_recall_benchmark.v1",
+  "description": "真实搜索召回基准。expected_resources 均为人工核对过存在的公开资源，用 URL/repo 归一化命中，不用关键词命中代替。",
+  "verified_at": "2026-06-17",
+  "cases": [
+    {
+      "id": "xdu-minilctf-2026",
+      "query": "mini L-CTF 2026 XDSEC challenges writeups",
+      "years": [2026],
+      "sources": ["github", "seeds"],
+      "limit": 20,
+      "expected_resources": [
+        {
+          "id": "xdsec-minilctf-2026",
+          "label": "西电 XDSEC miniLCTF 2026 题目与题解仓库",
+          "type": "github_repo",
+          "value": "XDSEC/miniLCTF_2026",
+          "url": "https://github.com/XDSEC/miniLCTF_2026",
+          "required": true,
+          "verified_by": "gh repo view XDSEC/miniLCTF_2026"
+        }
+      ]
+    },
+    {
+      "id": "ustc-hackergame-2024",
+      "query": "USTC-Hackergame hackergame2024-writeups",
+      "years": [2024],
+      "sources": ["github", "seeds"],
+      "limit": 20,
+      "expected_resources": [
+        {
+          "id": "ustc-hackergame-2024-writeups",
+          "label": "中科大 Hackergame 2024 官方与非官方题解仓库",
+          "type": "github_repo",
+          "value": "USTC-Hackergame/hackergame2024-writeups",
+          "url": "https://github.com/USTC-Hackergame/hackergame2024-writeups",
+          "required": true,
+          "verified_by": "gh repo view USTC-Hackergame/hackergame2024-writeups"
+        }
+      ]
+    },
+    {
+      "id": "hgame-2024",
+      "query": "HGame 2024 Writeup Vidar Team",
+      "years": [2024],
+      "sources": ["github", "seeds"],
+      "limit": 20,
+      "expected_resources": [
+        {
+          "id": "vidar-hgame-2024-writeup",
+          "label": "Vidar Team HGAME 2024 官方与选手 Writeup 仓库",
+          "type": "github_repo",
+          "value": "vidar-team/HGAME2024_Writeup",
+          "url": "https://github.com/vidar-team/HGAME2024_Writeup",
+          "required": true,
+          "verified_by": "gh repo view vidar-team/HGAME2024_Writeup"
+        }
+      ]
+    },
+    {
+      "id": "irisctf-2025",
+      "query": "IrisCTF 2025 challenges",
+      "years": [2025],
+      "sources": ["github", "seeds"],
+      "limit": 20,
+      "expected_resources": [
+        {
+          "id": "irissec-irisctf-2025-challenges",
+          "label": "IrisSec IrisCTF 2025 官方题目仓库",
+          "type": "github_repo",
+          "value": "IrisSec/IrisCTF-2025-Challenges",
+          "url": "https://github.com/IrisSec/IrisCTF-2025-Challenges",
+          "required": true,
+          "verified_by": "gh repo view IrisSec/IrisCTF-2025-Challenges"
+        }
+      ]
+    },
+    {
+      "id": "lactf-archive",
+      "query": "LA CTF archive past challenges UCLA",
+      "years": [2024],
+      "sources": ["github", "seeds"],
+      "limit": 20,
+      "expected_resources": [
+        {
+          "id": "uclaacm-lactf-archive",
+          "label": "LA CTF 官方历史题目归档仓库",
+          "type": "github_repo",
+          "value": "uclaacm/lactf-archive",
+          "url": "https://github.com/uclaacm/lactf-archive",
+          "required": true,
+          "verified_by": "gh repo view uclaacm/lactf-archive"
+        }
+      ]
+    },
+    {
+      "id": "google-ctf",
+      "query": "Google CTF official challenge archive",
+      "years": [2024],
+      "sources": ["github", "seeds"],
+      "limit": 20,
+      "expected_resources": [
+        {
+          "id": "google-google-ctf",
+          "label": "Google CTF 官方题目归档仓库",
+          "type": "github_repo",
+          "value": "google/google-ctf",
+          "url": "https://github.com/google/google-ctf",
+          "required": true,
+          "verified_by": "gh repo view google/google-ctf"
+        }
+      ]
+    }
+  ]
+}

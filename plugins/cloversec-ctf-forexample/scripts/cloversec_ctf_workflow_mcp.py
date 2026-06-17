@@ -15,7 +15,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "0.6.5"
+SERVER_VERSION = "0.7.0"
 SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {
