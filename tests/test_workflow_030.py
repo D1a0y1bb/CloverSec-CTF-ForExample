@@ -46,8 +46,18 @@ class Workflow030Tests(unittest.TestCase):
             out = Path(tmp) / "run"
             workflow.init_workflow(event="DemoCTF", years=[2026], categories=["misc"], limit=1, out_dir=out)
             cases = [
-                {"case_id": "case-1", "metadata": {"名称": "A", "分类": "Misc"}, "flag": {"value": "", "type": "unknown", "sensitive": True}},
-                {"case_id": "case-2", "metadata": {"名称": "B", "分类": "Misc"}, "flag": {"value": "", "type": "unknown", "sensitive": True}},
+                {
+                    "case_id": "case-1",
+                    "metadata": {"名称": "A", "分类": "Misc"},
+                    "flag": {"value": "", "type": "unknown", "sensitive": True},
+                    "evidence": [{"source_url": "https://example.com/a", "title": "A writeup"}],
+                },
+                {
+                    "case_id": "case-2",
+                    "metadata": {"名称": "B", "分类": "Misc"},
+                    "flag": {"value": "", "type": "unknown", "sensitive": True},
+                    "evidence": [{"source_url": "https://example.com/b", "title": "B writeup"}],
+                },
             ]
             workflow.write_jsonl(out / "ctf_cases.jsonl", cases)
 
@@ -59,6 +69,68 @@ class Workflow030Tests(unittest.TestCase):
             state = json.loads((out / "workflow_state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["stages"]["research"]["status"], "completed")
             self.assertEqual(len(state["cases"]), 2)
+
+    def test_batch_apply_does_not_complete_without_real_stage_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            workflow.init_workflow(event="DemoCTF", years=[2026], categories=["misc"], limit=1, out_dir=out)
+            workflow.write_jsonl(
+                out / "ctf_cases.jsonl",
+                [{"case_id": "case-1", "metadata": {"名称": "A", "分类": "Misc"}}],
+            )
+
+            result = workflow.batch_orchestrate(workdir=out, stage="research", mode="apply")
+
+            self.assertEqual(result["completed"], [])
+            self.assertEqual(result["incomplete"], ["case-1"])
+            self.assertIn("缺少 source_url", result["errors"][0]["message"])
+            state = json.loads((out / "workflow_state.json").read_text(encoding="utf-8"))
+            self.assertNotEqual(state["stages"]["research"]["status"], "completed")
+
+    def test_batch_apply_blocks_when_previous_stage_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            workflow.init_workflow(event="DemoCTF", years=[2026], categories=["misc"], limit=1, out_dir=out)
+            workflow.write_jsonl(
+                out / "ctf_cases.jsonl",
+                [
+                    {
+                        "case_id": "case-1",
+                        "metadata": {"名称": "A", "分类": "Misc"},
+                        "evidence": [{"source_url": "https://example.com/a", "title": "A writeup"}],
+                    }
+                ],
+            )
+
+            result = workflow.batch_orchestrate(workdir=out, stage="archive", mode="apply")
+
+            self.assertEqual(result["completed"], [])
+            self.assertEqual(result["blocked"], ["case-1"])
+            self.assertEqual(result["errors"][0]["missing_dependency"], "download_accept")
+
+    def test_batch_apply_force_records_forced_but_still_checks_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            workflow.init_workflow(event="DemoCTF", years=[2026], categories=["misc"], limit=1, out_dir=out)
+            workflow.write_jsonl(
+                out / "ctf_cases.jsonl",
+                [
+                    {
+                        "case_id": "case-1",
+                        "metadata": {"名称": "A", "分类": "Misc"},
+                        "evidence": [{"source_url": "https://example.com/a", "title": "A writeup"}],
+                    }
+                ],
+            )
+            (out / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (out / "语雀粘贴表.md").write_text("| 名称 |\n|---|\n", encoding="utf-8")
+            (out / "最终报告.md").write_text("# 最终报告\n", encoding="utf-8")
+
+            result = workflow.batch_orchestrate(workdir=out, stage="final_report", mode="apply", force=True)
+
+            self.assertEqual(result["completed"], ["case-1"])
+            state = json.loads((out / "workflow_state.json").read_text(encoding="utf-8"))
+            self.assertTrue(state["cases"][0]["stages"]["final_report"]["forced"])
 
     def test_github_doctor_masks_token_and_reports_failures(self):
         def fake_run(command, capture_output, text, check, timeout):

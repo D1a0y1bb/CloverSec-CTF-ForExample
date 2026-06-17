@@ -30,6 +30,7 @@ def search_plus(
     compact: bool = True,
     compact_results: int = DEFAULT_COMPACT_RESULTS,
     direct_url_preview_bytes: int = DEFAULT_DIRECT_URL_PREVIEW_BYTES,
+    cache_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     years = years or []
     selected_sources = sources or search.DEFAULT_DISCOVER_SOURCES
@@ -37,7 +38,7 @@ def search_plus(
     source_manifests: list[dict[str, Any]] = []
     raw_results: list[dict[str, Any]] = []
 
-    base = search.discover(query, years=years, sources=selected_sources, limit=limit)
+    base = search.discover(query, years=years, sources=selected_sources, limit=limit, cache_dir=cache_dir)
     source_manifests.append({"name": "default-free-sources", "summary": base.get("summary", {})})
     raw_results.extend(base.get("results", []))
     errors.extend(base.get("errors", []))
@@ -376,6 +377,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--github-repo", action="append", default=[])
     parser.add_argument("--output", required=True)
     parser.add_argument("--compact-output")
+    parser.add_argument("--cache-dir")
     args = parser.parse_args(argv)
 
     agent_payload = json.loads(Path(args.agent_results).read_text(encoding="utf-8")) if args.agent_results else None
@@ -395,6 +397,7 @@ def main(argv: list[str] | None = None) -> int:
         github_repos=args.github_repo,
         output_path=args.output,
         compact=False,
+        cache_dir=args.cache_dir,
     )
     if args.compact_output:
         search.write_json(args.compact_output, compact_search_payload(full_payload))

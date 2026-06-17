@@ -102,3 +102,4 @@
 - `CloverSec-CTF-Build-Dockerizer` 不加入过时的内部 Web/Pwn 环境规则。可维护的增强方向是 Docker build/run/export/import、amd64 检查、`environment`、`docker_artifacts`、`xlsx_fields`。
 - `CloverSec-CTF-Writeup-Scaffold` 可以做渐进式加载、Agent 可读化、去掉不适合 Agent 阅读的空话，但不能影响原有手册生成能力。
 - 修改这两个源 skill 时，要同步更新本地 Codex skill 和插件内对应 skill，确保两边内容一致。
+- 主流程脚本可以按标准库优先维护；`cloversec-ctf-build-dockerizer` 的 YAML 配置和模板数据依赖 PyYAML。不要在 README、Release 或 skill 里暗示容器改造纯标准库即可运行。

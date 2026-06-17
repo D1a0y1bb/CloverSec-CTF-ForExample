@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "0.5.3"
+VERSION = "0.6.0"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 DELIVERY_DIRS = {

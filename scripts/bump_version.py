@@ -24,6 +24,7 @@ TARGETS = [
 ]
 
 TARGET_GLOBS = [
+    ROOT / "scripts" / "*.py",
     PLUGIN / "scripts" / "*.py",
     ROOT / "tests" / "test_*.py",
 ]

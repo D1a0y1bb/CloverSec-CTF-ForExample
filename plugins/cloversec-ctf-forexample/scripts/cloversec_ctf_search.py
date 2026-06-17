@@ -17,14 +17,14 @@ from datetime import datetime, timezone
 from html import unescape
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urljoin, urlparse
-from urllib.request import Request, urlopen
+
+import cloversec_ctf_http as http
 
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.5.3 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.6.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -811,38 +811,55 @@ def discover(
     years: list[int] | None = None,
     sources: list[str] | None = None,
     limit: int = 20,
+    cache_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     selected = sources or DEFAULT_DISCOVER_SOURCES
     results: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
     for source in selected:
+        cache_path = source_cache_path(cache_dir, query=query, years=years or [], source=source, limit=limit)
+        cached = read_source_cache(cache_path)
+        if cached is not None:
+            cached_results = cached.get("results", []) if isinstance(cached.get("results"), list) else []
+            for item in cached_results:
+                if isinstance(item, dict):
+                    item["cache_hit"] = True
+            results.extend(cached_results)
+            errors.extend([item for item in cached.get("errors", []) if isinstance(item, dict)])
+            continue
+        source_results: list[dict[str, Any]] = []
+        source_errors: list[dict[str, str]] = []
         try:
             if source == "github":
-                results.extend(search_github_repositories(query, limit=limit))
+                source_results.extend(search_github_repositories(query, limit=limit))
                 try:
-                    results.extend(search_github_code(query, limit=min(limit, 10)))
+                    source_results.extend(search_github_code(query, limit=min(limit, 10)))
                 except SearchSkipped as exc:
-                    errors.append({"provider": "github-code", "error": str(exc), "status": "skipped"})
+                    source_errors.append({"provider": "github-code", "error": str(exc), "status": "skipped", "error_kind": "missing_auth"})
             elif source == "github-code":
-                results.extend(search_github_code(query, limit=min(limit, 10)))
+                source_results.extend(search_github_code(query, limit=min(limit, 10)))
             elif source == "ctftime":
                 for year in years or []:
-                    results.extend(search_ctftime_events(year=year, query=query, limit=limit))
-                results.extend(search_ctftime_writeups(query=query, limit=limit))
+                    source_results.extend(search_ctftime_events(year=year, query=query, limit=limit))
+                source_results.extend(search_ctftime_writeups(query=query, limit=limit))
             elif source == "duckduckgo":
-                results.extend(search_duckduckgo(query, limit=limit))
+                source_results.extend(search_duckduckgo(query, limit=limit))
             elif source == "seeds":
-                results.extend(seed_results(query))
+                source_results.extend(seed_results(query))
             elif source == "ctf-platforms":
-                results.extend(platform_seed_results(query))
+                source_results.extend(platform_seed_results(query))
             elif source in SITE_SEARCH_PROFILES:
-                results.extend(search_site_profile(source, query, limit=limit))
+                source_results.extend(search_site_profile(source, query, limit=limit))
             else:
-                errors.append({"provider": source, "error": "unsupported source"})
+                source_errors.append({"provider": source, "error": "unsupported source", "status": "skipped", "error_kind": "unsupported_source"})
         except SearchSkipped as exc:
-            errors.append({"provider": source, "error": str(exc), "status": "skipped"})
+            source_errors.append({"provider": source, "error": str(exc), "status": "skipped", "error_kind": classify_error_kind(exc)})
         except Exception as exc:  # noqa: BLE001 - command line tool must keep provider failures isolated.
-            errors.append({"provider": source, "error": str(exc), "status": "failed"})
+            source_errors.append({"provider": source, "error": str(exc), "status": "failed", "error_kind": classify_error_kind(exc)})
+        if cache_path is not None:
+            write_source_cache(cache_path, {"results": source_results, "errors": source_errors})
+        results.extend(source_results)
+        errors.extend(source_errors)
 
     recovery = create_recall_recovery_plan(query, years=years or [], sources=selected, initial_results=results)
     if recovery["should_run"]:
@@ -869,6 +886,56 @@ def discover(
         },
         "errors": errors,
     }
+
+
+def source_cache_path(
+    cache_dir: str | Path | None,
+    *,
+    query: str,
+    years: list[int],
+    source: str,
+    limit: int,
+) -> Path | None:
+    if not cache_dir:
+        return None
+    key_payload = {"query": query, "years": years, "source": source, "limit": limit}
+    key = hashlib.sha256(json.dumps(key_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:20]
+    return Path(cache_dir) / f"{source}-{key}.json"
+
+
+def read_source_cache(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    payload["cache_hit"] = True
+    return payload
+
+
+def write_source_cache(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cached = dict(payload)
+    cached["cached_at"] = utc_now()
+    path.write_text(json.dumps(cached, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def classify_error_kind(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "timeout" in text or "timed out" in text:
+        return "timeout"
+    if "network_error" in text or "urlopen" in text or "failed to fetch" in text:
+        return "network_error"
+    if "403" in text or "forbidden" in text:
+        return "blocked_or_forbidden"
+    if "429" in text or "rate" in text:
+        return "rate_limited"
+    if "captcha" in text or "anti" in text:
+        return "blocked_by_captcha"
+    if "token" in text or "auth" in text:
+        return "missing_auth"
+    return "provider_error"
 
 
 def create_recall_recovery_plan(
@@ -1778,30 +1845,7 @@ def http_request(
     read_limit: int = DEFAULT_MAX_BYTES + 1,
 ) -> dict[str, Any]:
     validate_http_url(url)
-    merged_headers = {"User-Agent": USER_AGENT}
-    if headers:
-        merged_headers.update(headers)
-    request = Request(url, headers=merged_headers)
-    try:
-        with urlopen(request, timeout=timeout) as response:  # noqa: S310 - public-source fetch helper.
-            body = response.read(read_limit)
-            return {
-                "status": getattr(response, "status", 200),
-                "headers": {key.lower(): value for key, value in response.headers.items()},
-                "body": body,
-            }
-    except HTTPError as exc:
-        try:
-            body = exc.read(read_limit)
-            return {
-                "status": exc.code,
-                "headers": {key.lower(): value for key, value in exc.headers.items()},
-                "body": body,
-            }
-        finally:
-            exc.close()
-    except URLError as exc:
-        raise RuntimeError(f"failed to fetch {url}: {exc}") from exc
+    return http.http_get(url, headers=headers, timeout=timeout, read_limit=read_limit, user_agent=USER_AGENT)
 
 
 def validate_http_url(url: str) -> None:

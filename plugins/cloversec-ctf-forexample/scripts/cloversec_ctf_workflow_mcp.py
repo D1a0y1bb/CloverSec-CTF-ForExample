@@ -14,7 +14,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_container as container
 
 
-SERVER_VERSION = "0.5.3"
+SERVER_VERSION = "0.6.0"
 
 PLATFORM_CONTRACT = {
     "schema_version": "cloversec.ctf.platform_contract.v1",
@@ -138,6 +138,7 @@ TOOLS = [
                 "mode": {"type": "string", "enum": ["dry-run", "apply"]},
                 "cases_path": {"type": "string"},
                 "resume": {"type": "boolean"},
+                "force": {"type": "boolean"},
             },
             "required": ["workdir", "stage"],
         },
@@ -399,6 +400,7 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             mode=str(arguments.get("mode") or "dry-run"),
             cases_path=str(arguments.get("cases_path") or "") or None,
             resume=bool(arguments.get("resume", False)),
+            force=bool(arguments.get("force", False)),
         )
     if name == "cloversec_ctf_search_strategy":
         return {

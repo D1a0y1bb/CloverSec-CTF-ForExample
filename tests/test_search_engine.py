@@ -8,6 +8,7 @@ import zipfile
 from unittest import mock
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.error import URLError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,7 @@ sys.path.insert(0, str(SCRIPTS))
 import cloversec_ctf_search as search
 import cloversec_ctf_browser_search as browser_search
 import cloversec_ctf_search_plus as search_plus
+import cloversec_ctf_http as http
 
 
 class SearchEngineTests(unittest.TestCase):
@@ -41,6 +43,25 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertIn("https://github.com/google/google-ctf", urls)
         self.assertEqual(payload["summary"]["errors"], 0)
+
+    def test_discover_uses_source_cache_when_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = search.discover("google ctf archive", sources=["seeds"], limit=3, cache_dir=tmp)
+            with mock.patch.object(search, "seed_results", side_effect=AssertionError("cache was not used")):
+                second = search.discover("google ctf archive", sources=["seeds"], limit=3, cache_dir=tmp)
+
+        self.assertGreater(first["summary"]["total_results"], 0)
+        self.assertGreater(second["summary"]["total_results"], 0)
+        self.assertTrue(any(item.get("cache_hit") for item in second["results"]))
+
+    def test_shared_http_get_retries_transient_url_errors(self):
+        response = FakeHttpResponse(status=200, body=b"ok")
+        with mock.patch.object(http, "urlopen", side_effect=[URLError("timed out"), response]):
+            payload = http.http_get("https://example.com/demo", retries=1, backoff=0)
+
+        self.assertEqual(payload["status"], 200)
+        self.assertEqual(payload["body"], b"ok")
+        self.assertEqual(payload["attempts"], 2)
 
     def test_platform_seed_discover_returns_ctf_platforms(self):
         payload = search.discover("ctf platform", sources=["ctf-platforms"], limit=10)
@@ -1102,6 +1123,25 @@ class LocalServer:
             self.server.server_close()
         if self.thread:
             self.thread.join(timeout=5)
+
+
+class FakeHttpResponse:
+    def __init__(self, *, status: int, body: bytes):
+        self.status = status
+        self.body = body
+        self.headers = {"content-type": "text/plain"}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self, read_limit: int) -> bytes:
+        return self.body[:read_limit]
+
+    def geturl(self) -> str:
+        return "https://example.com/demo"
 
 
 if __name__ == "__main__":

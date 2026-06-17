@@ -31,6 +31,7 @@ TOOLS = [
                 "direct_urls": {"type": "array", "items": {"type": "string"}},
                 "github_repos": {"type": "array", "items": {}},
                 "output_path": {"type": "string"},
+                "cache_dir": {"type": "string"},
                 "compact": {"type": "boolean"},
                 "compact_results": {"type": "integer", "minimum": 1, "maximum": 20},
             },
@@ -50,7 +51,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-search-plus", "version": "0.5.3"},
+                    "serverInfo": {"name": "cloversec-ctf-search-plus", "version": "0.6.0"},
                 },
             )
         if method == "tools/list":
@@ -80,6 +81,7 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             direct_urls=[str(item) for item in arguments.get("direct_urls", [])],
             github_repos=arguments.get("github_repos", []),
             output_path=str(arguments.get("output_path") or "") or None,
+            cache_dir=str(arguments.get("cache_dir") or "") or None,
             compact=bool(arguments.get("compact", True)),
             compact_results=int(arguments.get("compact_results", search_plus.DEFAULT_COMPACT_RESULTS)),
         )

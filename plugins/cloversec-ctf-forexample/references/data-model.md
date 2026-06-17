@@ -441,7 +441,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py import-xl
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py summary ctf_cases.jsonl
 ```
 
-脚本只使用 Python 标准库，方便随 plugin 分发。
+主流程数据、搜索、收集、归档和报告脚本优先使用 Python 标准库，方便随 plugin 分发。容器改造能力 `cloversec-ctf-build-dockerizer` 需要 PyYAML 解析 YAML 配置。
 
 收集与资料整理脚本：
 

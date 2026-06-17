@@ -2,7 +2,7 @@
 
 ## `cloversec_ctf_data.py`
 
-统一数据模型工具，使用 Python 标准库实现。
+统一数据模型工具，使用 Python 标准库实现。容器改造相关脚本需要 PyYAML，安装命令见 Dockerizer 的 `scripts/requirements.txt`。
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_data.py validate-json ctf_case.json

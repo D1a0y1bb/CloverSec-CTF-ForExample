@@ -27,7 +27,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.5.3"
+WORKFLOW_VERSION = "0.6.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -44,6 +44,18 @@ STAGES = [
     "hub_prepare",
     "final_report",
 ]
+
+STAGE_DEPENDENCIES = {
+    "research": [],
+    "collect": ["research"],
+    "dedupe": ["collect"],
+    "download_preview": ["dedupe"],
+    "download_accept": ["download_preview"],
+    "archive": ["download_accept"],
+    "quality": ["archive"],
+    "hub_prepare": ["quality"],
+    "final_report": ["hub_prepare"],
+}
 
 WORKFLOW_DIRS = [
     "logs",
@@ -286,7 +298,9 @@ def execute_search_tasks(
 
     base.mkdir(parents=True, exist_ok=True)
     search_dir = base / "evidence" / "search"
+    search_cache_dir = search_dir / "cache"
     search_dir.mkdir(parents=True, exist_ok=True)
+    search_cache_dir.mkdir(parents=True, exist_ok=True)
     (base / "snapshots").mkdir(parents=True, exist_ok=True)
     (base / "evidence").mkdir(parents=True, exist_ok=True)
 
@@ -316,6 +330,7 @@ def execute_search_tasks(
             github_repos=github_repos or [],
             output_path=output_path,
             compact=False,
+            cache_dir=search_cache_dir,
         )
         all_results.extend([item for item in payload.get("results", []) if isinstance(item, dict)])
         all_errors.extend([item for item in payload.get("errors", []) if isinstance(item, dict)])
@@ -1203,6 +1218,7 @@ def batch_orchestrate(
     mode: str = "dry-run",
     cases_path: str | Path | None = None,
     resume: bool = False,
+    force: bool = False,
 ) -> dict[str, Any]:
     if stage not in STAGES:
         raise ValueError(f"unsupported stage: {stage}")
@@ -1217,9 +1233,21 @@ def batch_orchestrate(
     skipped = []
     planned = []
     completed = []
+    blocked = []
+    incomplete = []
     errors: list[dict[str, Any]] = []
     existing_cases = {item.get("case_id"): item for item in state.get("cases", []) if isinstance(item, dict)}
+    case_map = {case_id: case for case_id, case in zip(case_ids, cases)}
 
+    if not case_ids:
+        errors.append(
+            {
+                "case_id": "",
+                "stage": stage,
+                "status": "blocked",
+                "message": f"{cases_file.as_posix()} 没有可处理 case，不能把 {stage} 标记为完成。",
+            }
+        )
     for case_id in case_ids:
         case_state = existing_cases.get(case_id, {"case_id": case_id, "stages": {}})
         stage_state = case_state.setdefault("stages", {}).get(stage, {})
@@ -1229,18 +1257,36 @@ def batch_orchestrate(
             continue
         planned.append(case_id)
         if mode == "apply":
-            case_state["stages"][stage] = {
-                "status": "completed",
-                "started_at": utc_now(),
-                "finished_at": utc_now(),
-                "evidence_path": "",
-                "errors": [],
-            }
-            completed.append(case_id)
+            dependency_errors = workflow_dependency_errors(state, case_state, case_map.get(case_id, {}), case_id, stage, base, force=force)
+            if dependency_errors:
+                case_state["stages"][stage] = stage_state_payload(
+                    "blocked",
+                    errors=dependency_errors,
+                    forced=False,
+                )
+                blocked.append(case_id)
+                errors.extend(dependency_errors)
+            else:
+                check = check_stage_completion(base, stage, case_map.get(case_id, {}), case_id)
+                status = str(check.get("status") or "incomplete")
+                case_state["stages"][stage] = stage_state_payload(
+                    status,
+                    evidence_path=str(check.get("evidence_path") or ""),
+                    errors=check.get("errors", []),
+                    forced=force,
+                )
+                if status == "completed":
+                    completed.append(case_id)
+                elif status == "blocked":
+                    blocked.append(case_id)
+                else:
+                    incomplete.append(case_id)
+                errors.extend(check.get("errors", []))
         else:
             case_state["stages"][stage] = {
                 "status": "planned",
                 "planned_at": utc_now(),
+                "forced": force,
                 "errors": [],
             }
         existing_cases[case_id] = case_state
@@ -1248,11 +1294,19 @@ def batch_orchestrate(
     state["cases"] = list(existing_cases.values())
     state["updated_at"] = utc_now()
     state["resume"] = {"last_stage": stage, "last_case_id": completed[-1] if completed else "", "can_resume": True}
+    stage_status = overall_stage_status(mode=mode, planned=planned, completed=completed, skipped=skipped, blocked=blocked, incomplete=incomplete)
     state["stages"][stage] = {
-        "status": "completed" if mode == "apply" else "planned",
+        "status": stage_status,
         "started_at": utc_now(),
         "finished_at": utc_now() if mode == "apply" else "",
-        "summary": {"planned": len(planned), "completed": len(completed), "skipped": len(skipped)},
+        "summary": {
+            "planned": len(planned),
+            "completed": len(completed),
+            "skipped": len(skipped),
+            "blocked": len(blocked),
+            "incomplete": len(incomplete),
+            "forced": force,
+        },
         "errors": errors,
     }
     result = {
@@ -1263,17 +1317,264 @@ def batch_orchestrate(
         "cases_path": cases_file.as_posix(),
         "planned": planned,
         "completed": completed,
+        "blocked": blocked,
+        "incomplete": incomplete,
         "skipped": skipped,
+        "forced": force,
         "errors": errors,
         "workflow_state_path": state_path.as_posix(),
     }
     if mode == "apply":
         base.mkdir(parents=True, exist_ok=True)
         write_json(state_path, state)
-        append_log(base, f"stage {stage} applied for {len(completed)} cases")
+        append_log(base, f"stage {stage} applied: completed={len(completed)} blocked={len(blocked)} incomplete={len(incomplete)} force={force}")
     else:
         result["dry_run_note"] = "No workflow_state.json changes were written."
     return result
+
+
+def stage_state_payload(
+    status: str,
+    *,
+    evidence_path: str = "",
+    errors: list[dict[str, Any]] | None = None,
+    forced: bool = False,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "started_at": utc_now(),
+        "finished_at": utc_now() if status in {"completed", "blocked", "incomplete"} else "",
+        "evidence_path": evidence_path,
+        "errors": errors or [],
+        "forced": forced,
+    }
+
+
+def overall_stage_status(
+    *,
+    mode: str,
+    planned: list[str],
+    completed: list[str],
+    skipped: list[str],
+    blocked: list[str],
+    incomplete: list[str],
+) -> str:
+    if mode != "apply":
+        return "planned"
+    if not planned and not skipped:
+        return "blocked"
+    if len(completed) + len(skipped) == len(planned) + len(skipped) and not blocked and not incomplete:
+        return "completed"
+    if completed or skipped:
+        return "partial"
+    if blocked:
+        return "blocked"
+    return "incomplete"
+
+
+def workflow_dependency_errors(
+    state: dict[str, Any],
+    case_state: dict[str, Any],
+    case: dict[str, Any],
+    case_id: str,
+    stage: str,
+    workdir: Path,
+    *,
+    force: bool = False,
+) -> list[dict[str, Any]]:
+    if force:
+        return []
+    errors = []
+    for dependency in STAGE_DEPENDENCIES.get(stage, []):
+        dep_state = case_state.get("stages", {}).get(dependency, {}) if isinstance(case_state.get("stages"), dict) else {}
+        if dep_state.get("status") == "completed":
+            continue
+        dep_check = check_stage_completion(workdir, dependency, case, case_id)
+        if dep_check.get("status") == "completed":
+            continue
+        global_stage = state.get("stages", {}).get(dependency, {}) if isinstance(state.get("stages"), dict) else {}
+        if global_stage.get("status") == "completed" and not dep_check.get("errors"):
+            continue
+        errors.append(
+            {
+                "case_id": case_id,
+                "stage": stage,
+                "status": "blocked",
+                "missing_dependency": dependency,
+                "message": f"{stage} 需要先完成 {dependency}。如确实要跳过，请显式使用 force。",
+                "dependency_errors": dep_check.get("errors", [])[:5],
+            }
+        )
+    return errors
+
+
+def check_stage_completion(workdir: Path, stage: str, case: dict[str, Any], case_id: str) -> dict[str, Any]:
+    if stage == "research":
+        return check_research_completion(workdir, case, case_id)
+    if stage == "collect":
+        return check_collect_completion(workdir, case_id)
+    if stage == "dedupe":
+        return check_dedupe_completion(workdir, case_id)
+    if stage == "download_preview":
+        return check_download_preview_completion(workdir, case_id)
+    if stage == "download_accept":
+        return check_download_accept_completion(workdir, case, case_id)
+    if stage == "archive":
+        return check_archive_completion(workdir, case, case_id)
+    if stage == "quality":
+        return check_quality_completion(workdir, case_id)
+    if stage == "hub_prepare":
+        return check_hub_prepare_completion(workdir, case, case_id)
+    if stage == "final_report":
+        return check_final_report_completion(workdir, case_id)
+    return completion_error(stage, case_id, f"unsupported stage: {stage}")
+
+
+def completion_ok(stage: str, evidence_path: Path | str, *, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "stage": stage,
+        "status": "completed",
+        "evidence_path": Path(evidence_path).as_posix() if evidence_path else "",
+        "errors": [],
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+def completion_error(stage: str, case_id: str, message: str, *, status: str = "incomplete") -> dict[str, Any]:
+    return {
+        "stage": stage,
+        "status": status,
+        "evidence_path": "",
+        "errors": [{"case_id": case_id, "stage": stage, "status": status, "message": message}],
+    }
+
+
+def check_research_completion(workdir: Path, case: dict[str, Any], case_id: str) -> dict[str, Any]:
+    cases_path = workdir / "ctf_cases.jsonl"
+    if not cases_path.exists():
+        return completion_error("research", case_id, f"缺少 {cases_path.as_posix()}", status="blocked")
+    if not case_has_source_evidence(case):
+        return completion_error("research", case_id, "case 缺少 source_url 或 evidence 来源，不能确认 research 已完成。")
+    evidence_path = workdir / "evidence" / "source_evidence.json"
+    return completion_ok("research", evidence_path if evidence_path.exists() else cases_path)
+
+
+def check_collect_completion(workdir: Path, case_id: str) -> dict[str, Any]:
+    candidates = workdir / "material_candidates.json"
+    if candidates.exists():
+        payload = read_json(candidates)
+        if payload.get("resource_candidates") or payload.get("download_preview_path") or payload.get("repo_previews"):
+            return completion_ok("collect", candidates)
+    search_results = workdir / "search_results.json"
+    if search_results.exists() and any((workdir / name).exists() for name in ["download_preview.json", "resource_route.json"]):
+        return completion_ok("collect", search_results)
+    return completion_error("collect", case_id, "缺少 material_candidates.json、download_preview.json 或 resource_route.json。")
+
+
+def check_dedupe_completion(workdir: Path, case_id: str) -> dict[str, Any]:
+    candidates = sorted(workdir.glob("*dedupe*.json")) + sorted((workdir / "reports").glob("*dedupe*.json")) if (workdir / "reports").exists() else sorted(workdir.glob("*dedupe*.json"))
+    for path in candidates:
+        if path.is_file():
+            return completion_ok("dedupe", path)
+    return completion_error("dedupe", case_id, "缺少 dedupe 候选或 apply-dedupe 输出。")
+
+
+def check_download_preview_completion(workdir: Path, case_id: str) -> dict[str, Any]:
+    preview = workdir / "download_preview.json"
+    if preview.exists():
+        payload = read_json(preview)
+        if payload.get("records") or payload.get("summary", {}).get("total", 0) == 0:
+            return completion_ok("download_preview", preview)
+    return completion_error("download_preview", case_id, "缺少 download_preview.json。")
+
+
+def check_download_accept_completion(workdir: Path, case: dict[str, Any], case_id: str) -> dict[str, Any]:
+    accepted_dir = workdir / "downloads_accepted"
+    if accepted_dir.exists() and any(path.is_file() for path in accepted_dir.rglob("*")):
+        return completion_ok("download_accept", accepted_dir)
+    for path in case_local_paths(case):
+        if path.exists():
+            return completion_ok("download_accept", path)
+    return completion_error("download_accept", case_id, "缺少 downloads_accepted 文件或 case 中可访问的本地附件/源码路径。")
+
+
+def check_archive_completion(workdir: Path, case: dict[str, Any], case_id: str) -> dict[str, Any]:
+    archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
+    manifest = str(archive_info.get("manifest_path") or "").strip()
+    if manifest and Path(manifest).exists():
+        return completion_ok("archive", manifest)
+    for path in workdir.rglob("archive_manifest.json"):
+        if path.is_file() and json_file_mentions_case(path, case_id):
+            return completion_ok("archive", path)
+    return completion_error("archive", case_id, "缺少该 case 对应的 archive_manifest.json。")
+
+
+def check_quality_completion(workdir: Path, case_id: str) -> dict[str, Any]:
+    for path in workdir.rglob("quality_review.json"):
+        if path.is_file() and (case_id in path.as_posix() or json_file_mentions_case(path, case_id)):
+            return completion_ok("quality", path)
+    summary = workdir / "quality_summary.json"
+    if summary.exists():
+        return completion_ok("quality", summary)
+    return completion_error("quality", case_id, "缺少 quality_review.json 或 quality_summary.json。")
+
+
+def check_hub_prepare_completion(workdir: Path, case: dict[str, Any], case_id: str) -> dict[str, Any]:
+    if isinstance(case.get("hub_fields"), dict) and case.get("hub_fields"):
+        return completion_ok("hub_prepare", workdir / "ctf_cases.jsonl")
+    for filename in ["hub_upload_manifest.json", "hub_session_state.json", "hub_fields.json"]:
+        for path in workdir.rglob(filename):
+            if path.is_file() and (case_id in path.as_posix() or json_file_mentions_case(path, case_id)):
+                return completion_ok("hub_prepare", path)
+    return completion_error("hub_prepare", case_id, "缺少 Hub 字段、hub_upload_manifest.json 或 hub_session_state.json。")
+
+
+def check_final_report_completion(workdir: Path, case_id: str) -> dict[str, Any]:
+    required = ["最终归档表.xlsx", "语雀粘贴表.md", "最终报告.md"]
+    paths = [next((path for path in workdir.rglob(name) if path.is_file()), None) for name in required]
+    if all(paths):
+        return completion_ok("final_report", paths[0] or "")
+    return completion_error("final_report", case_id, "缺少最终归档表.xlsx、语雀粘贴表.md 或 最终报告.md。")
+
+
+def case_has_source_evidence(case: dict[str, Any]) -> bool:
+    if any(str(case.get(key) or "").strip() for key in ["source_url", "url"]):
+        return True
+    research = case.get("research") if isinstance(case.get("research"), dict) else {}
+    if any(str(research.get(key) or "").strip() for key in ["source_url", "url", "query"]):
+        return True
+    for key in ["evidence", "sources"]:
+        rows = case.get(key) if isinstance(case.get(key), list) else research.get(key) if isinstance(research.get(key), list) else []
+        for item in rows:
+            if isinstance(item, dict) and any(str(item.get(field) or "").strip() for field in ["source_url", "url", "title"]):
+                return True
+    return False
+
+
+def case_local_paths(case: dict[str, Any]) -> list[Path]:
+    paths: list[Path] = []
+    for key in ["attachments", "source_files"]:
+        for item in case.get(key, []) if isinstance(case.get(key), list) else []:
+            if not isinstance(item, dict):
+                continue
+            for field in ["path", "local_path", "accepted_path"]:
+                value = str(item.get(field) or "").strip()
+                if value:
+                    paths.append(Path(value))
+    return paths
+
+
+def json_file_mentions_case(path: Path, case_id: str) -> bool:
+    if not case_id:
+        return True
+    try:
+        payload = read_json(path)
+    except Exception:  # noqa: BLE001 - completion checks should not crash workflow updates.
+        return False
+    text = json.dumps(payload, ensure_ascii=False)
+    return case_id in text
 
 
 def github_doctor(*, sample_query: str = "ctf writeup", output_path: str | Path | None = None) -> dict[str, Any]:
@@ -2063,6 +2364,7 @@ def main(argv: list[str] | None = None) -> int:
     batch_parser.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
     batch_parser.add_argument("--cases")
     batch_parser.add_argument("--resume", action="store_true")
+    batch_parser.add_argument("--force", action="store_true")
     batch_parser.add_argument("--output", required=True)
 
     github_parser = subparsers.add_parser("github-doctor", help="check gh auth and GitHub search availability")
@@ -2170,7 +2472,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "batch":
-        payload = batch_orchestrate(workdir=args.workdir, stage=args.stage, mode=args.mode, cases_path=args.cases, resume=args.resume)
+        payload = batch_orchestrate(
+            workdir=args.workdir,
+            stage=args.stage,
+            mode=args.mode,
+            cases_path=args.cases,
+            resume=args.resume,
+            force=args.force,
+        )
         write_json(args.output, payload)
         print(f"wrote {args.output}")
         return 0
