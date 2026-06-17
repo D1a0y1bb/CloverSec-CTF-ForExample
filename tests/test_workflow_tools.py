@@ -63,6 +63,12 @@ class WorkflowToolTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+            plugin_show = subprocess.run(
+                [sys.executable, str(PLUGIN_SCRIPTS / "show_progress.py"), str(state_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
             auth = subprocess.run(
                 [
                     sys.executable,
@@ -87,6 +93,8 @@ class WorkflowToolTests(unittest.TestCase):
             self.assertIn("# 当前批次进度", human_show.stdout)
             self.assertIn("需要处理：1", human_show.stdout)
             self.assertIn("case-1", human_show.stdout)
+            self.assertIn("case-1", plugin_show.stdout)
+            self.assertIn("# 当前批次进度", plugin_show.stdout)
             self.assertIn("case_id", table_show.stdout)
             self.assertTrue(Path(auth_payload["authorization_path"]).exists())
             migrated = json.loads(state_path.read_text(encoding="utf-8"))
