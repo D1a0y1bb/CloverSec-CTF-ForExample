@@ -32,7 +32,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.7.0"
+WORKFLOW_VERSION = "0.7.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -270,6 +270,7 @@ def init_workflow(
                 "cases": 0,
                 "missing_material": 0,
                 "pending_user": 0,
+                "failed": 0,
                 "output": workdir.as_posix(),
             }
         ),
@@ -425,6 +426,7 @@ def execute_search_tasks(
                 "cases": len(cases),
                 "missing_material": status_counts["missing_material"],
                 "pending_user": status_counts["pending_user"],
+                "failed": status_counts["failed"],
                 "output": base.as_posix(),
             }
         ),
@@ -465,6 +467,7 @@ def execute_search_tasks(
                 "cases": len(cases),
                 "missing_material": status_counts["missing_material"],
                 "pending_user": status_counts["pending_user"],
+                "failed": status_counts["failed"],
                 "output": base.as_posix(),
             }
         ),
@@ -1142,6 +1145,7 @@ def render_next_steps(task_plan: dict[str, Any]) -> str:
 def user_status_counts(cases: list[dict[str, Any]]) -> dict[str, int]:
     missing_material = 0
     pending_user = 0
+    failed = 0
     for case in cases:
         research = case.get("research") if isinstance(case.get("research"), dict) else {}
         status = str(research.get("reproducibility_status") or case.get("status") or "")
@@ -1149,24 +1153,58 @@ def user_status_counts(cases: list[dict[str, Any]]) -> dict[str, int]:
             missing_material += 1
         if research.get("requires_user_confirmation") or str(case.get("status") or "").startswith("pending"):
             pending_user += 1
-    return {"missing_material": missing_material, "pending_user": pending_user}
+        if str(case.get("status") or "").lower() in {"failed", "error", "broken"}:
+            failed += 1
+        stages = case.get("stages") if isinstance(case.get("stages"), dict) else {}
+        if any(isinstance(item, dict) and item.get("status") == "failed" for item in stages.values()):
+            failed += 1
+    return {"missing_material": missing_material, "pending_user": pending_user, "failed": failed}
 
 
 def render_current_status(payload: dict[str, Any]) -> str:
     years = ", ".join(str(item) for item in payload.get("years", []) if str(item).strip()) or "未指定"
     categories = ", ".join(str(item) for item in payload.get("categories", []) if str(item).strip()) or "未指定"
+    cases = int(payload.get("cases", 0) or 0)
+    missing_material = int(payload.get("missing_material", 0) or 0)
+    pending_user = int(payload.get("pending_user", 0) or 0)
+    failed = int(payload.get("failed", 0) or 0)
+    next_steps = []
+    if failed:
+        next_steps.append("先查看失败题目的日志和质量检查报告。")
+    if missing_material:
+        next_steps.append("缺材料的题目需要继续搜索、浏览器辅助搜索或人工补入口。")
+    if pending_user:
+        next_steps.append("待人工确认的题目需要确认分类、资源来源、Hub 字段或 Docker 操作。")
+    if not next_steps:
+        next_steps.append("可以继续执行下一阶段，或查看最终输出目录。")
     return "\n".join(
         [
             "# 当前状态",
             "",
+            "## 批次",
+            "",
             f"- 任务：{payload.get('event') or '未命名'}",
             f"- 年份：{years}",
             f"- 方向：{categories}",
-            f"- 状态：{payload.get('status') or '处理中'}",
-            f"- 已形成题目清单：{payload.get('cases', 0)} 题",
-            f"- 缺材料：{payload.get('missing_material', 0)} 题",
-            f"- 待人工确认：{payload.get('pending_user', 0)} 题",
-            f"- 文件位置：`{payload.get('output', '')}`",
+            f"- 工作目录：`{payload.get('output', '')}`",
+            "",
+            "## 进度",
+            "",
+            f"- 当前状态：{payload.get('status') or '处理中'}",
+            f"- 已形成题目清单：{cases} 题",
+            f"- 缺材料：{missing_material} 题",
+            f"- 待人工确认：{pending_user} 题",
+            f"- 失败：{failed} 题",
+            "",
+            "## 下一步",
+            "",
+            *[f"- {item}" for item in next_steps],
+            "",
+            "## 常用文件",
+            "",
+            f"- 题目清单：`{Path(payload.get('output', '')) / 'ctf_cases.jsonl' if payload.get('output') else ''}`",
+            f"- 工作流状态：`{Path(payload.get('output', '')) / 'workflow_state.json' if payload.get('output') else ''}`",
+            f"- 过程日志：`{Path(payload.get('output', '')) / 'logs' if payload.get('output') else ''}`",
             "",
         ]
     )
@@ -1674,6 +1712,7 @@ def write_current_status_from_state(base: Path) -> None:
                 "cases": len(cases),
                 "missing_material": counts["missing_material"],
                 "pending_user": counts["pending_user"],
+                "failed": counts["failed"],
                 "output": base.as_posix(),
             }
         ),

@@ -243,14 +243,19 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             payload = final.create_final_outputs([case], tmp_path / "final")
             rows = data.read_xlsx(tmp_path / "final" / "最终归档表.xlsx")
             yuque = (tmp_path / "final" / "语雀粘贴表.md").read_text(encoding="utf-8")
+            report = (tmp_path / "final" / "最终报告.md").read_text(encoding="utf-8")
 
             self.assertEqual(payload["summary"]["total"], 1)
             self.assertEqual(payload["summary"]["xlsx_readback_rows"], 1)
+            self.assertEqual(payload["summary"]["human_handoff_paths"]["最终归档表"], (tmp_path / "final" / "最终归档表.xlsx").as_posix())
+            self.assertEqual(payload["summary"]["human_handoff_paths"]["语雀粘贴表"], (tmp_path / "final" / "语雀粘贴表.md").as_posix())
             self.assertTrue((tmp_path / "final" / "archive.xlsx").exists())
             self.assertTrue((tmp_path / "final" / "yuque_table.md").exists())
             self.assertTrue((tmp_path / "final" / "final_report.md").exists())
             self.assertEqual(rows[0]["Flag"], "flag{stage-six-full-flag}")
             self.assertIn("flag{stage-six-full-flag}", yuque)
+            self.assertIn("## 对人交付文件", report)
+            self.assertIn("最终归档表.xlsx", report)
             self.assertGreater(payload["summary"]["remaining_actions"], 0)
             self.assertTrue(
                 any("验证状态为部分通过" in item for item in payload["remaining_actions"])
@@ -646,7 +651,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.7.0")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.7.1")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

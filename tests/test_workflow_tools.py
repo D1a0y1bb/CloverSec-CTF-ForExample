@@ -11,6 +11,7 @@ PLUGIN_SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
 sys.path.insert(0, str(PLUGIN_SCRIPTS))
 
 import cloversec_ctf_i18n as i18n
+import cloversec_ctf_workflow as workflow
 
 
 class WorkflowToolTests(unittest.TestCase):
@@ -22,7 +23,15 @@ class WorkflowToolTests(unittest.TestCase):
                 json.dumps(
                     {
                         "run_id": "demo",
-                        "cases": [{"case_id": "case-1", "stages": {"research": {"status": "completed"}}}],
+                        "cases": [
+                            {
+                                "case_id": "case-1",
+                                "stages": {
+                                    "research": {"status": "completed"},
+                                    "quality": {"status": "failed"},
+                                },
+                            }
+                        ],
                     },
                     ensure_ascii=False,
                 ),
@@ -38,6 +47,18 @@ class WorkflowToolTests(unittest.TestCase):
             subprocess.run([sys.executable, str(ROOT / "scripts" / "migrate_workflow_state.py"), str(state_path), "--cases", str(cases_path)], check=True)
             show = subprocess.run(
                 [sys.executable, str(ROOT / "scripts" / "show_progress.py"), str(state_path), "--json", "--watch", "--iterations", "1"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            human_show = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "show_progress.py"), str(state_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            table_show = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "show_progress.py"), str(state_path), "--table"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -61,6 +82,12 @@ class WorkflowToolTests(unittest.TestCase):
             progress = json.loads(show.stdout)
             auth_payload = json.loads(auth.stdout)
             self.assertEqual(progress["rows"][0]["research"], "completed")
+            self.assertEqual(progress["rows"][0]["quality"], "failed")
+            self.assertEqual(progress["totals"]["needs_attention"], 1)
+            self.assertIn("# 当前批次进度", human_show.stdout)
+            self.assertIn("需要处理：1", human_show.stdout)
+            self.assertIn("case-1", human_show.stdout)
+            self.assertIn("case_id", table_show.stdout)
             self.assertTrue(Path(auth_payload["authorization_path"]).exists())
             migrated = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(migrated["schema_version"], "cloversec.ctf.workflow.state.v1")
@@ -68,6 +95,28 @@ class WorkflowToolTests(unittest.TestCase):
             migrated_case = json.loads(cases_path.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(migrated_case["schema_version"], "cloversec.ctf.case.v1")
             self.assertEqual(migrated_case["metadata"]["名称"], "Old Case")
+
+    def test_current_status_markdown_is_user_readable_chinese(self):
+        text = workflow.render_current_status(
+            {
+                "run_id": "demo",
+                "event": "DemoCTF",
+                "years": [2026],
+                "categories": ["web"],
+                "status": "已完成搜索，等待材料识别",
+                "cases": 3,
+                "missing_material": 1,
+                "pending_user": 1,
+                "failed": 1,
+                "output": "/tmp/demo",
+            }
+        )
+
+        self.assertIn("## 批次", text)
+        self.assertIn("## 进度", text)
+        self.assertIn("## 下一步", text)
+        self.assertIn("失败：1 题", text)
+        self.assertIn("缺材料的题目需要继续搜索", text)
 
     def test_authorize_batch_rejects_hub_final_submit(self):
         with tempfile.TemporaryDirectory() as tmp:
