@@ -23,6 +23,7 @@ import cloversec_ctf_archive_runner as archive_runner
 import cloversec_ctf_data as data
 import cloversec_ctf_container as container
 import cloversec_ctf_final as final_reporter
+import cloversec_ctf_handoff as handoff
 import cloversec_ctf_http as http
 import cloversec_ctf_i18n as i18n
 import cloversec_ctf_quality_runner as quality_runner
@@ -32,7 +33,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.7.2"
+WORKFLOW_VERSION = "0.8.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -400,6 +401,11 @@ def execute_search_tasks(
     }
     write_json(search_results_path, aggregate)
     write_jsonl(base / "ctf_cases.jsonl", cases)
+    handoff_payload = handoff.write_collection_handoff(cases, base)
+    aggregate["next_files"]["collection_xlsx"] = handoff_payload.get("xlsx", "")
+    aggregate["next_files"]["collection_jsonl"] = handoff_payload.get("jsonl", "")
+    aggregate["next_files"]["collection_schema"] = handoff_payload.get("schema", "")
+    write_json(search_results_path, aggregate)
     update_workflow_collect_state(
         base,
         stage="research",
@@ -410,6 +416,7 @@ def execute_search_tasks(
             "cases": len(cases),
             "evidence_records": 0,
             "download_preview_records": 0,
+            "handoff_xlsx": handoff_payload.get("xlsx", ""),
             "note": "搜索结果和 ctf_cases.jsonl 已写入，正在继续写证据和下载预览。",
         },
         errors=all_errors,
@@ -596,6 +603,7 @@ def route_resource(
             output_path=container_path,
         )
     route = build_resource_route(source_root, classification, container_payload, classification_path, container_path if container_payload else None)
+    handoff_payload = handoff.write_resource_handoff(classification, base)
     route_path = base / "resource_route.json"
     write_json(route_path, route)
     write_text(base / "resource_route_report.md", render_resource_route_report(route))
@@ -606,6 +614,7 @@ def route_resource(
         "resource_classification_path": classification_path.as_posix(),
         "container_inference_path": container_path.as_posix() if container_payload else "",
         "resource_route_path": route_path.as_posix(),
+        "handoff": handoff_payload,
         "recommended_next": route.get("recommended_next", {}),
         "dockerizer_handoff": route.get("dockerizer_handoff", {}),
         "summary": route.get("summary", {}),

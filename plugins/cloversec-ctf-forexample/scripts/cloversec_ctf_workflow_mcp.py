@@ -6,16 +6,19 @@ from __future__ import annotations
 import json
 import sys
 import traceback
+from pathlib import Path
 from typing import Any
 
 import cloversec_ctf_audit as audit
 import cloversec_ctf_container as container
+import cloversec_ctf_data as data
+import cloversec_ctf_handoff as handoff
 import cloversec_ctf_mcp_runtime as mcp_runtime
 import cloversec_ctf_resource as resource
 import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "0.7.2"
+SERVER_VERSION = "0.8.0"
 SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {
@@ -127,6 +130,20 @@ TOOLS = [
                 "max_files": {"type": "integer"},
             },
             "required": ["root"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_handoff_tables",
+        "description": "Create Chinese xlsx/jsonl/schema handoff tables from ctf_cases.jsonl, search_results.json, or resource_classification.json.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cases_path": {"type": "string"},
+                "manifest_path": {"type": "string"},
+                "classification_path": {"type": "string"},
+                "output_dir": {"type": "string"},
+            },
+            "required": ["output_dir"],
         },
     },
     {
@@ -421,6 +438,16 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             output_dir=str(arguments.get("output_dir") or "") or None,
             max_files=int(arguments.get("max_files", 2000)),
         )
+    if name == "cloversec_ctf_handoff_tables":
+        output_dir = str(arguments.get("output_dir") or "")
+        payload: dict[str, Any] = {"output_dir": output_dir}
+        if arguments.get("cases_path"):
+            payload["collection"] = handoff.write_collection_handoff(data.load_cases(str(arguments.get("cases_path") or "")), output_dir)
+        if arguments.get("manifest_path"):
+            payload["search"] = handoff.write_search_handoff(read_json(str(arguments.get("manifest_path") or "")), output_dir)
+        if arguments.get("classification_path"):
+            payload["resource"] = handoff.write_resource_handoff(read_json(str(arguments.get("classification_path") or "")), output_dir)
+        return payload
     if name == "cloversec_ctf_workflow_batch":
         return workflow.batch_orchestrate(
             workdir=str(arguments.get("workdir") or ""),
@@ -564,6 +591,10 @@ def compact(payload: dict[str, Any]) -> dict[str, Any]:
         "search_task_count": len(payload.get("task_plan", {}).get("search_tasks", [])),
         "next_steps": payload.get("task_plan", {}).get("next_steps", []),
     }
+
+
+def read_json(path: str) -> Any:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def response(request_id: Any, result: Any) -> dict[str, Any]:

@@ -25,6 +25,7 @@
 - 当前 Agent 有联网搜索工具时，优先使用 Agent 搜索 Google/Baidu/全网结果，再导入插件数据模型。
 - GitHub code search 优先使用本机 `gh auth login` 或 `GITHUB_TOKEN` / `GH_TOKEN`；默认不要求付费搜索 API key。
 - 搜索、抓取、下载必须写入来源 URL、访问时间、hash、HTTP 状态和失败原因。
+- 收集阶段必须同时写 `赛事题目信息收集表.xlsx/jsonl/schema.json`，资源识别阶段必须写 `资源整理与处理建议表.xlsx/jsonl/schema.json`，需要容器改造的题必须写 `Dockerizer交接表.xlsx/jsonl/schema.json`。
 - 批量任务必须维护 `workflow_state.json`，支持 `dry-run`、`apply` 和 `resume`。
 - 外部附件必须先进入 `downloads_sandbox/` 做安全预览，确认后再进入题目目录。
 - 下载后或用户提供目录后，先运行资源识别，输出 `resource_classification.json`，再决定进入 Dockerizer、附件题检查或手册流程。
@@ -105,6 +106,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discove
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py source-evidence --manifest search_results.json --evidence-dir evidence --snapshots-dir snapshots
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py download-sandbox --manifest search_results.json --output-dir .
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py classify challenge-dir --output classification/resource_classification.json
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py classify challenge-dir --output classification/resource_classification.json --handoff-dir classification
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py dedupe --cases ctf_cases.jsonl --output dedupe_candidates.json
 ```
 
@@ -119,6 +121,7 @@ MCP 入口：
 - `cloversec_ctf_dedupe_candidates`
 - `cloversec_ctf_dedupe_apply`
 - `cloversec_ctf_download_sandbox`
+- `cloversec_ctf_handoff_tables`
 - `cloversec_ctf_platform_contract`
 - `cloversec_ctf_resource_classify`
 - `cloversec_ctf_search_plus`

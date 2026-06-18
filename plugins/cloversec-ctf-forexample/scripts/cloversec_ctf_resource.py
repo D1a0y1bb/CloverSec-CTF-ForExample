@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Any
 
 import cloversec_ctf_search as search
+import cloversec_ctf_handoff as handoff
 
 
 SCHEMA_VERSION = "cloversec.ctf.resource_classification.v1"
-VERSION = "0.7.2"
+VERSION = "0.8.0"
 
 TEXT_EXTENSIONS = {
     ".c",
@@ -598,6 +599,7 @@ def main(argv: list[str] | None = None) -> int:
     classify_parser.add_argument("--max-files", type=int, default=2000)
     classify_parser.add_argument("--max-text-bytes", type=int, default=65536)
     classify_parser.add_argument("--archive-preview-entries", type=int, default=200)
+    classify_parser.add_argument("--handoff-dir", default="", help="also write resource and Dockerizer handoff tables")
 
     args = parser.parse_args(argv)
     if args.command == "classify":
@@ -608,7 +610,10 @@ def main(argv: list[str] | None = None) -> int:
             max_text_bytes=args.max_text_bytes,
             archive_preview_entries=args.archive_preview_entries,
         )
-        print(json.dumps({"output": args.output, "project_type": payload["summary"]["project_type"]}, ensure_ascii=False))
+        result = {"output": args.output, "project_type": payload["summary"]["project_type"]}
+        if args.handoff_dir:
+            result["handoff"] = handoff.write_resource_handoff(payload, args.handoff_dir)
+        print(json.dumps(result, ensure_ascii=False))
         return 0
     parser.error("unknown command")
     return 2

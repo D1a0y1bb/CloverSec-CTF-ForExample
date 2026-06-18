@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.7.2-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.8.0-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -30,14 +30,14 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.7.2
+Git 引用：v0.8.0
 稀疏路径：留空
 ```
 
 也可以用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.7.2
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.8.0
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -78,9 +78,9 @@ python3 scripts/doctor.py
 
 | 你可以这样说 | 插件通常会做什么 | 主要产物 |
 | --- | --- | --- |
-| `帮我收集 2024 LA CTF 的 Web 题、WP 和附件线索` | 搜索公开来源，生成题目清单和证据 | `search_results.json`、`ctf_cases.jsonl`、`evidence/` |
+| `帮我收集 2024 LA CTF 的 Web 题、WP 和附件线索` | 搜索公开来源，生成题目清单、中文收集表和证据 | `search_results.json`、`ctf_cases.jsonl`、`赛事题目信息收集表.xlsx` |
 | `根据这个 ctf_cases.jsonl 收集附件和 writeup` | 下载预览、GitHub Release/tree 预览、记录 hash 和失败原因 | `downloads_sandbox/`、`material_candidates.json` |
-| `识别这个题目目录下一步怎么处理` | 判断 Docker/compose/source/attachment/writeup 等资源类型 | `resource_classification.json`、`resource_route.json` |
+| `识别这个题目目录下一步怎么处理` | 判断 Docker/compose/source/attachment/writeup 等资源类型，并生成中文处理建议 | `resource_classification.json`、`资源整理与处理建议表.xlsx`、`Dockerizer交接表.xlsx` |
 | `这个源码题整理成平台容器交付` | 交给 `cloversec-ctf-build-dockerizer` 做平台化改造 | `Dockerfile`、`start.sh`、`changeflag.sh`、`flag` |
 | `这个附件题检查后归档` | 检查压缩包、hash、解压、路径风险 | `attachment_manifest.json` |
 | `根据题目目录生成手册和 Hub 字段` | 生成中文正式手册、Hub 字段、xlsx 字段 | `题目解题手册.md`、`hub_fields.json`、`xlsx_fields.json` |
@@ -148,9 +148,9 @@ python3 scripts/authorize_batch.py --workdir runs/xxxxxxxxx --action docker_buil
 python3 scripts/search_recall_benchmark.py \
   --run-search \
   --benchmark plugins/cloversec-ctf-forexample/references/search-recall-benchmark.json \
-  --input-dir docs/validation/search-recall-v0.7.2 \
-  --output docs/validation/search-recall-benchmark-v0.7.2.md \
-  --json-output docs/validation/search-recall-benchmark-v0.7.2.json
+  --input-dir docs/validation/search-recall-v0.8.0 \
+  --output docs/validation/search-recall-benchmark-v0.8.0.md \
+  --json-output docs/validation/search-recall-benchmark-v0.8.0.json
 ```
 
 这个基准不是看关键词有没有出现，而是看已人工核对过存在的公开资源是否被搜到。当前基准覆盖西电 XDSEC miniLCTF、中科大 Hackergame、HGame、IrisCTF、LA CTF 和 Google CTF，按 GitHub repo / URL 归一化命中统计召回。
@@ -161,6 +161,7 @@ python3 scripts/search_recall_benchmark.py \
 | --- | --- |
 | Workflow intake | 从年份、赛事、方向、数量创建任务目录、搜索计划和状态文件 |
 | Research intake | 多来源搜索、Agent 联网搜索结果导入、浏览器可见结果导入 |
+| Handoff tables | 生成中文 xlsx、JSONL 和 schema，让人能看、Agent 能继续处理 |
 | Asset collection | 下载预览、GitHub Release/tree 预览、hash、失败原因 |
 | Resource classifier | 识别源码、Dockerfile、compose、附件、writeup、截图、二进制、pcap |
 | Container validator | 提取端口、启动命令、Flag 路径和 Dockerizer 交接信息 |
@@ -193,6 +194,18 @@ python3 scripts/search_recall_benchmark.py \
 
 容器题最终要满足 `/start.sh`、`/changeflag.sh`、`/flag`、端口、linux/amd64、镜像 tar 和内部 xlsx 字段要求。直接 `docker build/run` 只能作为验证证据，不能替代 Dockerizer 平台改造。
 
+## Handoff Files
+
+0.8.0 开始，插件会把“给人看的表”和“给 Agent 继续处理的数据”一起生成，不再只给一堆 JSON。
+
+| 阶段 | 给人看的文件 | 给 Agent 的文件 | 作用 |
+| --- | --- | --- | --- |
+| 题目信息收集 | `赛事题目信息收集表.xlsx` | `赛事题目信息收集表.jsonl`、`ctf_cases.jsonl` | 看清每道题是不是可处理、缺什么材料、下一步做什么 |
+| 资源识别 | `资源整理与处理建议表.xlsx` | `资源整理与处理建议表.jsonl` | 看清每个文件是源码、附件、WP、截图还是未知资源 |
+| Dockerizer 交接 | `Dockerizer交接表.xlsx` | `Dockerizer交接表.jsonl` | 源码题、Dockerfile、compose、镜像 tar 和 Web/Pwn 服务题进入 Dockerizer |
+
+表格字段是中文，方便人工接手；JSONL 的行内容和表格一致，方便后续 Agent 继续处理。已有 Dockerfile 或 compose 只能当迁移输入，不能直接算 CloverSec 平台交付件。
+
 ## References
 
 - [工作流说明](plugins/cloversec-ctf-forexample/references/workflow.md)
@@ -213,7 +226,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scripts/package_plugin_release.py
 ```
 
-发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v0.7.2`；正文第一行使用 `# CloverSec CTF For Example 0.7.2`。
+发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v0.8.0`；正文第一行使用 `# CloverSec CTF For Example 0.8.0`。
 
 ## License
 

@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.7.2 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.8.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -1736,6 +1736,9 @@ def infer_case_category(result: dict[str, Any]) -> str:
     category = str(metadata.get("category") or metadata.get("raw_category") or "").strip()
     if category:
         return display_category(category)
+    path_category = infer_category_from_github_path(result)
+    if path_category:
+        return display_category(path_category)
     haystack = f"{result.get('title', '')} {result.get('url', '')} {result.get('summary', '')}"
     categories = sorted(detect_categories(haystack))
     if not categories:
@@ -1779,9 +1782,83 @@ def infer_case_title(result: dict[str, Any]) -> str:
     metadata = challenge_metadata_for_result(result)
     if str(metadata.get("name") or "").strip():
         return str(metadata.get("name")).strip()[:120]
+    path_title = infer_challenge_name_from_github_path(result)
+    if path_title:
+        return path_title[:120]
     title = str(result.get("title") or "").strip()
     title = re.sub(r"\s*[-|]\s*(Writeup|WP|题解|复现).*$", "", title, flags=re.I)
     return title[:120] or str(result.get("title") or "").strip()
+
+
+def infer_category_from_github_path(result: dict[str, Any]) -> str:
+    parts = github_path_parts(result)
+    for part in parts:
+        lowered = normalize_category_token(part)
+        if lowered in CATEGORY_TERMS or lowered in CATEGORY_ALIASES:
+            return CATEGORY_ALIASES.get(lowered, lowered)
+    return ""
+
+
+def infer_challenge_name_from_github_path(result: dict[str, Any]) -> str:
+    parts = github_path_parts(result)
+    if not parts:
+        return ""
+    filename = parts[-1].lower()
+    if filename in CHALLENGE_METADATA_NAMES or filename in {"readme.md", "readme.txt", "writeup.md", "wp.md", "solve.py", "solver.py"}:
+        parts = parts[:-1]
+    if not parts:
+        return ""
+    ignored = {
+        "challenge",
+        "challenges",
+        "ctf",
+        "ctfs",
+        "writeup",
+        "writeups",
+        "wp",
+        "officialwriteups",
+        "official-writeups",
+        "attachments",
+        "attachment",
+        "src",
+        "source",
+        "sources",
+    }
+    candidates = []
+    for part in reversed(parts):
+        token = normalize_category_token(part)
+        if not token or token in ignored or token in CATEGORY_TERMS or token in CATEGORY_ALIASES:
+            continue
+        if re.fullmatch(r"20\d{2}", token):
+            continue
+        candidates.append(part)
+    if not candidates:
+        return ""
+    return humanize_path_name(candidates[0])
+
+
+def github_path_parts(result: dict[str, Any]) -> list[str]:
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    path = str(metadata.get("path") or "")
+    if not path:
+        parsed = urlparse(str(result.get("url") or ""))
+        segments = [item for item in parsed.path.split("/") if item]
+        if "blob" in segments:
+            blob_index = segments.index("blob")
+            path = "/".join(segments[blob_index + 2 :])
+        elif "tree" in segments:
+            tree_index = segments.index("tree")
+            path = "/".join(segments[tree_index + 2 :])
+    return [item for item in Path(path).parts if item not in {".", "/"}]
+
+
+def normalize_category_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def humanize_path_name(value: str) -> str:
+    cleaned = re.sub(r"[_-]+", " ", value).strip()
+    return cleaned or value
 
 
 def missing_reason_for_result(result: dict[str, Any], *, category: str, event: str, years: list[str]) -> str:

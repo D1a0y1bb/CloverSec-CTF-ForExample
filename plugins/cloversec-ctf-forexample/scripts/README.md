@@ -38,6 +38,43 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py run \
 
 `run` 会写 `workflow_engine_run.json`、`logs/workflow_engine.jsonl` 和 `当前状态.md`。真实 Docker、下载接受、Hub 最终提交、retag 执行仍需要用户确认。
 
+## `doctor.py`
+
+环境和安装包自检工具。仓库根目录和安装后的插件目录都可以运行。
+
+```bash
+python3 scripts/doctor.py
+python3 scripts/doctor.py --json --installed
+```
+
+`--installed` 会额外检查插件包内的 `plugin.json`、`.mcp.json`、图标、搜索召回基准、进度脚本和交接表脚本是否存在，并检查核心模块能否导入。它适合升级插件后确认本机 Codex 缓存里拿到的是完整版本。
+
+## `cloversec_ctf_handoff.py`
+
+把搜索、题目清单和资源识别结果导出成中文 xlsx、JSONL 和 schema。xlsx 给人看，JSONL 给后续 Agent 继续处理。
+
+```bash
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_handoff.py search \
+  --manifest search_results.json \
+  --output-dir handoff
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_handoff.py collection \
+  --cases ctf_cases.jsonl \
+  --output-dir handoff
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_handoff.py resource \
+  --classification resource_classification.json \
+  --output-dir handoff
+```
+
+常见输出：
+
+- `赛事题目信息收集表.xlsx` / `.jsonl` / `.schema.json`
+- `资源整理与处理建议表.xlsx` / `.jsonl` / `.schema.json`
+- `Dockerizer交接表.xlsx` / `.jsonl` / `.schema.json`
+
+源码题、Dockerfile、compose、镜像 tar 和 Web/Pwn 服务题会进入 `Dockerizer交接表`，其中 `确认动作` 固定写 `confirmation_action=dockerizer`。
+
 ## `cloversec_ctf_collect.py`
 
 收集与资料整理工具。
@@ -207,6 +244,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 - `cloversec_ctf_hub_validate_manifest`
 - `cloversec_ctf_hub_apply_upload_results`
 - `cloversec_ctf_resource_classify`
+- `cloversec_ctf_handoff_tables`
 - `cloversec_ctf_container_infer`
 - `cloversec_ctf_results_to_cases`
 - `cloversec_ctf_visible_content_evidence`

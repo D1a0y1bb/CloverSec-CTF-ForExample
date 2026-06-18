@@ -4,6 +4,14 @@
 
 Search results must keep `source_url`, `title`, `snippet`, `provider`, `confidence`, `evidence`, `layer`, `score`, and `quality_issues`.
 
+Research output must also be usable by people. After writing `search_results.json` and `ctf_cases.jsonl`, create the handoff files:
+
+- `赛事题目信息收集表.xlsx`
+- `赛事题目信息收集表.jsonl`
+- `赛事题目信息收集表.schema.json`
+
+The xlsx is for review and assignment; the JSONL has the same rows for later Agent steps. Each row must make it clear whether the item is processable, only a lead, missing source/attachment, or waiting for user confirmation.
+
 Default MCP entrypoint:
 
 - Use `cloversec_ctf_workflow_init` first when the user gives year/event/category/count and needs a new batch task.
@@ -126,6 +134,10 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py discove
   --limit 20 \
   --output search_results.json \
   --cases-jsonl ctf_cases.jsonl
+
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_handoff.py search \
+  --manifest search_results.json \
+  --output-dir .
 
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_search.py ctftime-events \
   --year 2025 \

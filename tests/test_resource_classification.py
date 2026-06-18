@@ -129,6 +129,52 @@ class ResourceClassificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(payload["summary"]["project_type"], "writeup_only")
 
+    def test_cli_writes_handoff_tables_for_dockerizer_route(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "case"
+            root.mkdir()
+            (root / "Dockerfile").write_text("FROM python:3.12-slim\nCOPY app.py /app.py\n", encoding="utf-8")
+            (root / "docker-compose.yml").write_text(
+                "services:\n  web:\n    build: .\n    ports:\n      - '8080:80'\n    command: python /app.py\n",
+                encoding="utf-8",
+            )
+            (root / "app.py").write_text("print('hello')\n", encoding="utf-8")
+            output = Path(tmp) / "resource_classification.json"
+            handoff_dir = Path(tmp) / "交接表"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS / "cloversec_ctf_resource.py"),
+                    "classify",
+                    str(root),
+                    "--output",
+                    str(output),
+                    "--handoff-dir",
+                    str(handoff_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            payload = json.loads(result.stdout)
+            docker_rows = [
+                json.loads(line)
+                for line in (handoff_dir / "Dockerizer交接表.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            resource_xlsx_exists = (handoff_dir / "资源整理与处理建议表.xlsx").exists()
+            dockerizer_xlsx_exists = (handoff_dir / "Dockerizer交接表.xlsx").exists()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(resource_xlsx_exists)
+        self.assertTrue(dockerizer_xlsx_exists)
+        self.assertEqual(payload["handoff"]["dockerizer"]["rows"], 1)
+        self.assertEqual(docker_rows[0]["确认动作"], "confirmation_action=dockerizer")
+        self.assertIn("Dockerfile", docker_rows[0]["Dockerfile"])
+        self.assertIn("8080:80", docker_rows[0]["端口线索"])
+        self.assertIn("command: python /app.py", docker_rows[0]["启动命令"])
+
     def test_workflow_mcp_lists_resource_classify_tool(self):
         server = SCRIPTS / "cloversec_ctf_workflow_mcp.py"
         messages = [

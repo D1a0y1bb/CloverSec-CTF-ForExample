@@ -75,6 +75,39 @@ class McpServerProtocolTests(unittest.TestCase):
                 self.assertTrue(rows)
                 self.assertTrue(all(row["status"] == "ok" for row in rows))
 
+    def test_workflow_mcp_handoff_tables_from_cases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runtime_dir = tmp_path / "mcp-runtime"
+            cases_path = tmp_path / "ctf_cases.jsonl"
+            output_dir = tmp_path / "交接表"
+            case = {
+                "case_id": "case-demo-0001",
+                "metadata": {"年份": "2026", "赛事来源": "Demo CTF", "分类": "Web", "名称": "baby sql"},
+                "research": {"reproducibility_status": "writeup_only", "source_url": "https://example.com/wp"},
+                "asset_collection": {"writeup_candidates": [{"url": "https://example.com/wp"}]},
+            }
+            cases_path.write_text(json.dumps(case, ensure_ascii=False) + "\n", encoding="utf-8")
+
+            responses = call_mcp_server(
+                SCRIPTS / "cloversec_ctf_workflow_mcp.py",
+                "cloversec_ctf_handoff_tables",
+                {"cases_path": cases_path.as_posix(), "output_dir": output_dir.as_posix()},
+                runtime_dir=runtime_dir,
+            )
+            payload = json.loads(responses[2]["result"]["content"][0]["text"])
+            rows = [
+                json.loads(line)
+                for line in (output_dir / "赛事题目信息收集表.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            xlsx_exists = (output_dir / "赛事题目信息收集表.xlsx").exists()
+
+        self.assertEqual(payload["collection"]["rows"], 1)
+        self.assertTrue(xlsx_exists)
+        self.assertEqual(rows[0]["题目"], "baby sql")
+        self.assertEqual(rows[0]["可处理性"], "不可交付：缺源码/附件")
+
 
 def call_mcp_server(script: Path, tool_name: str, arguments: dict, *, runtime_dir: Path) -> list[dict]:
     requests = [

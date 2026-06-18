@@ -12,6 +12,7 @@ sys.path.insert(0, str(PLUGIN_SCRIPTS))
 
 import cloversec_ctf_i18n as i18n
 import cloversec_ctf_workflow as workflow
+import cloversec_ctf_handoff as handoff
 
 
 class WorkflowToolTests(unittest.TestCase):
@@ -147,7 +148,7 @@ class WorkflowToolTests(unittest.TestCase):
 
     def test_doctor_json_reports_capabilities(self):
         result = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "doctor.py"), "--json"],
+            [sys.executable, str(ROOT / "scripts" / "doctor.py"), "--json", "--installed"],
             check=True,
             capture_output=True,
             text=True,
@@ -155,6 +156,8 @@ class WorkflowToolTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertIn("capabilities", payload)
         self.assertIn("dockerizer", payload["capabilities"])
+        self.assertEqual(payload["capabilities"]["installed_package"], "available")
+        self.assertTrue(any(item["id"] == "show_progress" and item["status"] == "ok" for item in payload["checks"]))
 
     def test_i18n_catalog_loads_key_user_messages(self):
         self.assertIn("Hub 最终提交", i18n.text("hub.final_submit_batch_forbidden"))
@@ -243,6 +246,37 @@ class WorkflowToolTests(unittest.TestCase):
             self.assertEqual(payload["summary"]["matched_required_resources"], 1)
             self.assertEqual(payload["cases"][0]["status"], "pass")
             self.assertEqual(payload["cases"][1]["status"], "needs_review")
+
+    def test_handoff_tables_write_collection_xlsx_jsonl_and_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = {
+                "case_id": "case-1",
+                "metadata": {"年份": "2026", "赛事来源": "DemoCTF", "名称": "baby sql", "分类": "Web", "材料状态": "缺附件或源码"},
+                "research": {
+                    "material_level": "writeup_candidate",
+                    "reproducibility_status": "writeup_only",
+                    "source_url": "https://example.com/wp",
+                    "source_title": "baby sql writeup",
+                    "next_action": "继续搜索附件",
+                },
+                "asset_collection": {"writeup_candidates": [{"url": "https://example.com/wp"}]},
+                "confidence": "medium",
+                "requires_user_confirmation": True,
+                "missing_reason": "只有题解线索，缺官方附件或源码",
+                "evidence": [{"source_url": "https://example.com/wp"}],
+            }
+
+            payload = handoff.write_collection_handoff([case], root)
+            rows = [json.loads(line) for line in Path(payload["jsonl"]).read_text(encoding="utf-8").splitlines()]
+            xlsx_exists = Path(payload["xlsx"]).exists()
+            schema_exists = Path(payload["schema"]).exists()
+
+        self.assertTrue(xlsx_exists)
+        self.assertTrue(schema_exists)
+        self.assertEqual(rows[0]["题目"], "baby sql")
+        self.assertEqual(rows[0]["可处理性"], "不可交付：缺源码/附件")
+        self.assertEqual(rows[0]["WP URL"], "https://example.com/wp")
 
     def test_network_requests_are_centralized_in_http_helper(self):
         scripts = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"

@@ -119,6 +119,26 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(cases[0]["evidence"][0]["source_url"], "https://github.com/uclaacm/lactf-archive")
         self.assertEqual(cases[0]["metadata"]["材料状态"], "待材料检查")
 
+    def test_results_to_cases_extracts_challenge_name_from_github_tree_path(self):
+        result = search.normalize_result(
+            provider="github-tree",
+            kind="raw_file",
+            title="demo/demo/challenges/web/baby-sql/challenge.yml",
+            url="https://github.com/demo/demo/blob/main/challenges/web/baby-sql/challenge.yml",
+            summary="GitHub repository file from recursive tree",
+            source_type="github",
+            confidence="high",
+            metadata={"path": "challenges/web/baby-sql/challenge.yml"},
+        )
+        result["layer"] = "confirmed_challenge"
+        result["score"] = 90
+        manifest = {"query": "DemoCTF 2026 web", "years": [2026], "results": [result]}
+
+        cases = search.results_to_cases(manifest)
+
+        self.assertEqual(cases[0]["metadata"]["名称"], "baby sql")
+        self.assertEqual(cases[0]["metadata"]["分类"], "Web")
+
     def test_results_to_cases_writes_search_gap_leads_when_no_case_matches(self):
         manifest = {
             "query": "祥云杯 2024 pwn writeup",
