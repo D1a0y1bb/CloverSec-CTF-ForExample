@@ -172,6 +172,24 @@ class V033AuditManualHubTests(unittest.TestCase):
             self.assertEqual(payload["xlsx_fields_patch"]["是否通过"], "否")
             self.assertIn(payload["xlsx_fields_patch"]["验证状态"], {"未验证", "部分通过"})
 
+    def test_manual_quality_accepts_internal_dynamic_flag_type_against_hub_display_value(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["metadata"].pop("Flag类型", None)
+
+            payload = manual_quality.check_manual_quality(
+                case=case,
+                manual_markdown=sample_manual(),
+                hub_fields=sample_hub_fields(),
+                output_dir=tmp_path / "manual-quality",
+            )
+            flag_type_checks = [item for item in payload["checks"] if item["name"] == "Hub 一致性 Flag类型"]
+
+        self.assertEqual(payload["xlsx_fields_patch"]["Flag类型"], "动态Flag")
+        self.assertEqual(flag_type_checks[0]["status"], "pass")
+        self.assertFalse(any("case=dynamic" in item["message"] for item in payload["checks"]))
+
     def test_manual_quality_fails_when_screenshot_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -398,7 +416,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.8.0")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.8.1")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

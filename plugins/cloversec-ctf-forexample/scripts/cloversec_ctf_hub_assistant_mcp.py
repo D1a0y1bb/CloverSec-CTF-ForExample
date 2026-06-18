@@ -13,7 +13,7 @@ import cloversec_ctf_mcp_runtime as mcp_runtime
 import cloversec_ctf_retag as retag
 
 
-SERVER_VERSION = "0.8.0"
+SERVER_VERSION = "0.8.1"
 SERVER_NAME = "cloversec-ctf-hub-assistant"
 
 

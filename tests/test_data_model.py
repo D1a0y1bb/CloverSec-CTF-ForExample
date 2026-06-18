@@ -94,6 +94,16 @@ class DataModelTests(unittest.TestCase):
         self.assertEqual(rows[0]["名称"], "拿不到的flag")
         self.assertEqual(list(rows[0].keys()), data.XLSX_FIELDS)
 
+    def test_case_to_xlsx_row_maps_internal_flag_type_to_display_value(self):
+        dynamic_case = sample_case(metadata={**sample_case()["metadata"], "Flag类型": ""})
+        static_case = sample_case(
+            metadata={**sample_case()["metadata"], "Flag类型": ""},
+            flag={"value": "flag{static}", "type": "static", "sensitive": True},
+        )
+
+        self.assertEqual(data.case_to_xlsx_row(dynamic_case)["Flag类型"], "动态Flag")
+        self.assertEqual(data.case_to_xlsx_row(static_case)["Flag类型"], "静态Flag")
+
     def test_xlsx_stdlib_writer_switch_still_round_trips(self):
         case = sample_case()
         with tempfile.TemporaryDirectory() as tmp:

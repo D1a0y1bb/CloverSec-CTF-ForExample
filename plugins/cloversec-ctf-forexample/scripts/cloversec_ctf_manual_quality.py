@@ -14,7 +14,7 @@ from typing import Any
 import cloversec_ctf_data as data
 
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 SCHEMA_VERSION = "cloversec.ctf.manual_quality.v1"
 REQUIRED_METADATA_FIELDS = ["名称", "分类", "题目类型", "Flag类型"]
 REQUIRED_HUB_FIELDS = ["题目标题", "题目内容", "题目来源", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级", "添加关键字"]
@@ -199,7 +199,7 @@ def check_hub_consistency(case: dict[str, Any], hub_fields: dict[str, Any], manu
         if not current or not expected:
             status = "warn"
             message = "无法比较，字段不完整"
-        elif normalize_text(current) == normalize_text(expected):
+        elif normalize_hub_compare(hub_key, current) == normalize_hub_compare(hub_key, expected):
             status = "pass"
             message = "与 case 字段一致"
         else:
@@ -321,6 +321,12 @@ def manual_step_density(manual: str) -> int:
 
 def normalize_text(value: str) -> str:
     return re.sub(r"\s+", "", value.strip().lower())
+
+
+def normalize_hub_compare(field: str, value: str) -> str:
+    if field == "Flag类型":
+        return normalize_text(data.normalize_flag_type_for_display(value))
+    return normalize_text(value)
 
 
 def safe_id(value: str) -> str:

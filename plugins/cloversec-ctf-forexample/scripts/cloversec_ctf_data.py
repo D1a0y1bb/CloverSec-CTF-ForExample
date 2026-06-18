@@ -52,7 +52,19 @@ XLSX_FIELDS = [
 
 REQUIRED_XLSX_FIELDS = ["名称", "分类", "题目类型", "Flag类型", "Flag", "验证状态"]
 
-FLAG_TYPES = {"static", "dynamic", "unknown", "静态Flag", "动态Flag", "未知"}
+FLAG_TYPES = {"static", "dynamic", "unknown", "静态Flag", "动态Flag", "未知", "静态", "动态"}
+FLAG_TYPE_DISPLAY_MAP = {
+    "static": "静态Flag",
+    "dynamic": "动态Flag",
+    "unknown": "未知",
+    "静态": "静态Flag",
+    "动态": "动态Flag",
+    "静态flag": "静态Flag",
+    "动态flag": "动态Flag",
+    "静态Flag": "静态Flag",
+    "动态Flag": "动态Flag",
+    "未知": "未知",
+}
 CONFIDENCE_VALUES = {"high", "medium", "low"}
 
 STATUS_ENUMS = {
@@ -144,8 +156,15 @@ def case_to_xlsx_row(case: dict[str, Any]) -> dict[str, str]:
     flag = case.get("flag") if isinstance(case.get("flag"), dict) else {}
     row = {field: _string(metadata.get(field, "")) for field in XLSX_FIELDS}
     row["Flag"] = _string(flag.get("value") or metadata.get("Flag") or row["Flag"])
-    row["Flag类型"] = _string(metadata.get("Flag类型") or flag.get("type") or row["Flag类型"])
+    row["Flag类型"] = normalize_flag_type_for_display(metadata.get("Flag类型") or flag.get("type") or row["Flag类型"])
     return row
+
+
+def normalize_flag_type_for_display(value: Any) -> str:
+    text = _string(value).strip()
+    if not text:
+        return ""
+    return FLAG_TYPE_DISPLAY_MAP.get(text, FLAG_TYPE_DISPLAY_MAP.get(text.lower(), text))
 
 
 def load_cases(path: str | Path) -> list[dict[str, Any]]:
