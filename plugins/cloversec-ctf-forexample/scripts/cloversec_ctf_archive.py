@@ -30,7 +30,7 @@ def create_archive_package(
     output_root: str | Path,
     *,
     copy_files: bool = True,
-    copy_image_tars: bool = False,
+    copy_image_tars: bool = True,
 ) -> dict[str, Any]:
     root = Path(output_root)
     archive_dir = root / archive_folder_name(case)
@@ -144,7 +144,7 @@ def create_batch_archive(
     output_root: str | Path,
     *,
     copy_files: bool = True,
-    copy_image_tars: bool = False,
+    copy_image_tars: bool = True,
 ) -> dict[str, Any]:
     root = Path(output_root)
     root.mkdir(parents=True, exist_ok=True)
@@ -281,6 +281,8 @@ def _copy_or_record(
     force_reference: bool = False,
 ) -> list[dict[str, Any]]:
     source = Path(str(item.get("path") or ""))
+    if source.is_dir():
+        return _copy_or_record_directory(source, target_dir, role, copy_files, force_reference=force_reference)
     if not source.is_file():
         issues.append(f"missing {role}: {source}")
         return []
@@ -295,6 +297,27 @@ def _copy_or_record(
         record_path = source
         status = "referenced"
     return [_file_record(record_path, role, target_dir.parent, status=status)]
+
+
+def _copy_or_record_directory(
+    source: Path,
+    target_dir: Path,
+    role: str,
+    copy_files: bool,
+    *,
+    force_reference: bool = False,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for child in sorted(path for path in source.rglob("*") if path.is_file() and path.name != ".DS_Store"):
+        relative = child.relative_to(source)
+        target = target_dir / relative
+        if copy_files and not force_reference:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(child, target)
+            records.append(_file_record(target, role, target_dir.parent, status="copied"))
+        else:
+            records.append(_file_record(child, role, target_dir.parent, status="referenced"))
+    return records
 
 
 def _file_record(path: Path, role: str, archive_dir: Path, *, status: str = "present") -> dict[str, Any]:
@@ -336,7 +359,8 @@ def main(argv: list[str] | None = None) -> int:
     package_parser.add_argument("--output-root", required=True)
     package_parser.add_argument("--output-case")
     package_parser.add_argument("--no-copy", action="store_true")
-    package_parser.add_argument("--copy-image-tars", action="store_true")
+    package_parser.add_argument("--copy-image-tars", dest="copy_image_tars", action="store_true", default=True)
+    package_parser.add_argument("--no-copy-image-tars", dest="copy_image_tars", action="store_false")
 
     batch_parser = subparsers.add_parser("batch", help="create archive packages for ctf_cases.jsonl")
     batch_parser.add_argument("--cases", required=True)
@@ -344,7 +368,8 @@ def main(argv: list[str] | None = None) -> int:
     batch_parser.add_argument("--output-cases")
     batch_parser.add_argument("--final-output-dir")
     batch_parser.add_argument("--no-copy", action="store_true")
-    batch_parser.add_argument("--copy-image-tars", action="store_true")
+    batch_parser.add_argument("--copy-image-tars", dest="copy_image_tars", action="store_true", default=True)
+    batch_parser.add_argument("--no-copy-image-tars", dest="copy_image_tars", action="store_false")
 
     args = parser.parse_args(argv)
     if args.command == "package":

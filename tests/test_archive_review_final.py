@@ -121,7 +121,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
 
             self.assertTrue((archive_dir / "题目源码" / "src.py").exists())
             self.assertTrue((archive_dir / "题目源码" / "challenge.zip").exists())
-            self.assertFalse((archive_dir / "题目镜像" / "web.tar").exists())
+            self.assertTrue((archive_dir / "题目镜像" / "web.tar").exists())
             self.assertTrue((archive_dir / "题目手册" / "WEB-Web1.md").exists())
             self.assertFalse((archive_dir / "题目手册" / "截图").exists())
             self.assertFalse((archive_dir / "过程证据").exists())
@@ -129,9 +129,30 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertEqual(manifest["xlsx_fields"]["是否归档"], "是")
             self.assertEqual(updated["metadata"]["是否归档"], "是")
             self.assertEqual(updated["metadata"]["归档目录"], archive_dir.as_posix())
-            self.assertEqual(updated["metadata"]["环境包/附件包路径"], case["docker_artifacts"]["tar_path"])
+            self.assertEqual(updated["metadata"]["环境包/附件包路径"], "题目镜像/web.tar")
             image_records = [item for item in manifest["files"] if item["role"] == "image_tar"]
-            self.assertEqual(image_records[0]["status"], "referenced")
+            self.assertEqual(image_records[0]["status"], "copied")
+
+    def test_archive_package_copies_source_directory_contents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            src_dir = tmp_path / "srcdir"
+            (src_dir / "backend").mkdir(parents=True)
+            (src_dir / "Dockerfile").write_text("FROM busybox\n", encoding="utf-8")
+            (src_dir / "backend" / "server.js").write_text("console.log('ok')\n", encoding="utf-8")
+            (src_dir / ".DS_Store").write_bytes(b"junk")
+            case["source_files"] = [{"path": src_dir.as_posix(), "name": "srcdir"}]
+            case["metadata"]["验证状态"] = "通过"
+            case["metadata"]["是否通过"] = "是"
+
+            manifest = archive.create_archive_package(case, tmp_path / "archive")
+            archive_dir = Path(manifest["archive_dir"])
+
+            self.assertTrue((archive_dir / "题目源码" / "Dockerfile").exists())
+            self.assertTrue((archive_dir / "题目源码" / "backend" / "server.js").exists())
+            self.assertFalse((archive_dir / "题目源码" / ".DS_Store").exists())
+            self.assertTrue(any(item["relative_path"] == "题目源码/Dockerfile" for item in manifest["files"]))
 
     def test_archive_package_dedupes_same_manual_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -158,18 +179,18 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue(any("验证状态为未验证" in issue for issue in manifest["issues"]))
             self.assertTrue(any("是否通过为否" in issue for issue in manifest["issues"]))
 
-    def test_archive_package_can_copy_image_tars_when_explicitly_requested(self):
+    def test_archive_package_can_reference_image_tars_when_requested(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
-            manifest = archive.create_archive_package(case, tmp_path / "archive", copy_image_tars=True)
+            manifest = archive.create_archive_package(case, tmp_path / "archive", copy_image_tars=False)
 
             archive_dir = Path(manifest["archive_dir"])
 
-            self.assertTrue((archive_dir / "题目镜像" / "web.tar").exists())
+            self.assertFalse((archive_dir / "题目镜像" / "web.tar").exists())
             image_records = [item for item in manifest["files"] if item["role"] == "image_tar"]
-            self.assertEqual(image_records[0]["status"], "copied")
-            self.assertEqual(manifest["xlsx_fields"]["环境包/附件包路径"], "题目镜像/web.tar")
+            self.assertEqual(image_records[0]["status"], "referenced")
+            self.assertEqual(manifest["xlsx_fields"]["环境包/附件包路径"], case["docker_artifacts"]["tar_path"])
 
     def test_quality_review_keeps_unexecuted_docker_and_solve_checks_as_skip(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -470,7 +491,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertIn("缺少截图", review_checks["screenshot-files"]["message"])
             self.assertGreaterEqual(quality_payload["summary"]["with_failures"], 1)
 
-    def test_delivery_package_writes_chinese_handoff_without_copying_large_image_tars(self):
+    def test_delivery_package_writes_chinese_handoff_and_copies_image_tars(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             workdir = tmp_path / "work" / "ctf-2026-collection"
@@ -504,12 +525,36 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((delivery_dir / "Web-EZSmuggler" / "题目源码" / "Dockerfile").exists())
             self.assertTrue((delivery_dir / "Web-EZSmuggler" / "题目手册" / "WEB-EZsmuggler.md").exists())
             self.assertEqual(manifest["summary"]["package_issues"], 0)
-            self.assertFalse((delivery_dir / "Web-EZSmuggler" / "题目镜像" / "l7-smuggler_latest.tar").exists())
+            self.assertTrue((delivery_dir / "Web-EZSmuggler" / "题目镜像" / "l7-smuggler_latest.tar").exists())
             self.assertFalse(any(path.name == ".DS_Store" for path in delivery_dir.rglob("*")))
             self.assertFalse(any(path.suffix in {".json", ".jsonl"} for path in delivery_dir.rglob("*") if path.is_file()))
             self.assertEqual({path.name for path in delivery_dir.iterdir() if path.is_file()}, {"最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"})
             self.assertFalse(any(path.name.startswith(("01-", "02-", "03-", "04-", "05-", "06-", "07-", "99-")) for path in delivery_dir.iterdir()))
-            self.assertTrue(any(item["status"] == "referenced" and item["subdir"] == "题目镜像" for item in manifest["files"]))
+            self.assertTrue(any(item["status"] == "copied" and item.get("subdir") == "题目镜像" for item in manifest["files"]))
+
+    def test_delivery_package_can_reference_image_tars_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work" / "ctf-2026-collection"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir(parents=True)
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            archive_dir = workdir / "archive" / "Web-EZSmuggler"
+            (archive_dir / "题目镜像").mkdir(parents=True)
+            (archive_dir / "题目镜像" / "l7-smuggler_latest.tar").write_bytes(b"tar")
+
+            manifest = delivery.create_delivery_package(
+                workdir=workdir,
+                outputs_dir=outputs,
+                output_dir=tmp_path / "交付包",
+                copy_image_tars=False,
+            )
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertFalse((delivery_dir / "Web-EZSmuggler" / "题目镜像" / "l7-smuggler_latest.tar").exists())
+            self.assertTrue(any(item["status"] == "referenced" and item.get("subdir") == "题目镜像" for item in manifest["files"]))
 
     def test_delivery_package_does_not_require_optional_stage_reports(self):
         with tempfile.TemporaryDirectory() as tmp:

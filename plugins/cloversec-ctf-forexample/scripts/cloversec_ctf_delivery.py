@@ -30,7 +30,7 @@ def create_delivery_package(
     outputs_dir: str | Path | None = None,
     output_dir: str | Path | None = None,
     copy_limit: int = DEFAULT_COPY_LIMIT,
-    copy_image_tars: bool = False,
+    copy_image_tars: bool = True,
 ) -> dict[str, Any]:
     work = Path(workdir)
     if not work.exists():
@@ -472,7 +472,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--outputs-dir", default="")
     parser.add_argument("--output-dir", default="")
     parser.add_argument("--copy-limit", type=int, default=DEFAULT_COPY_LIMIT)
-    parser.add_argument("--copy-image-tars", action="store_true")
+    parser.add_argument("--copy-image-tars", dest="copy_image_tars", action="store_true", default=True)
+    parser.add_argument("--no-copy-image-tars", dest="copy_image_tars", action="store_false")
     args = parser.parse_args(argv)
     manifest = create_delivery_package(
         workdir=args.workdir,

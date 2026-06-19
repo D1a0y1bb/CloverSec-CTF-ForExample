@@ -20,7 +20,7 @@ def run_archive_workflow(
     output_cases: str | Path = "",
     final_output_dir: str | Path = "",
     copy_files: bool = True,
-    copy_image_tars: bool = False,
+    copy_image_tars: bool = True,
 ) -> dict[str, Any]:
     root = Path(output_root)
     root.mkdir(parents=True, exist_ok=True)
@@ -156,7 +156,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-cases", default="")
     parser.add_argument("--final-output-dir", default="")
     parser.add_argument("--no-copy", action="store_true")
-    parser.add_argument("--copy-image-tars", action="store_true")
+    parser.add_argument("--copy-image-tars", dest="copy_image_tars", action="store_true", default=True)
+    parser.add_argument("--no-copy-image-tars", dest="copy_image_tars", action="store_false")
     parser.add_argument("--compact-output")
     args = parser.parse_args(argv)
     payload = run_archive_workflow(
