@@ -4,7 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from openpyxl import load_workbook
+try:
+    from openpyxl import load_workbook
+except ImportError:  # pragma: no cover - CI may not install optional xlsx styling dependency.
+    load_workbook = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +20,7 @@ import cloversec_ctf_search as search
 
 
 class CollectionHumanOutputTests(unittest.TestCase):
+    @unittest.skipUnless(load_workbook, "openpyxl is optional; skip detailed xlsx style inspection when unavailable")
     def test_collection_human_xlsx_matches_golden_style(self):
         case = {
             "case_id": "case-1",
