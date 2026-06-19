@@ -91,6 +91,8 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertIn("### 2.12 题目解答", manual)
         self.assertIn("#### 解题步骤", manual)
         self.assertIn("#### Flag", manual)
+        self.assertNotIn("#### 命令输出", manual)
+        self.assertNotIn("#### 截图说明", manual)
         self.assertIn("flag{stage-five-full-flag}", manual)
 
     def test_screenshot_plan_uses_stable_names(self):

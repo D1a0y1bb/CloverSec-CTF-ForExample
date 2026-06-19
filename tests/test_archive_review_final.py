@@ -556,6 +556,31 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertFalse((delivery_dir / "Web-EZSmuggler" / "题目镜像" / "l7-smuggler_latest.tar").exists())
             self.assertTrue(any(item["status"] == "referenced" and item.get("subdir") == "题目镜像" for item in manifest["files"]))
 
+    def test_delivery_package_copies_image_tars_over_general_copy_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work" / "ctf-2026-collection"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir(parents=True)
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            archive_dir = workdir / "archive" / "Web-EZSmuggler"
+            (archive_dir / "题目镜像").mkdir(parents=True)
+            image_tar = archive_dir / "题目镜像" / "l7-smuggler_latest.tar"
+            image_tar.write_bytes(b"tar-over-limit")
+
+            manifest = delivery.create_delivery_package(
+                workdir=workdir,
+                outputs_dir=outputs,
+                output_dir=tmp_path / "交付包",
+                copy_limit=1,
+            )
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertTrue((delivery_dir / "Web-EZSmuggler" / "题目镜像" / "l7-smuggler_latest.tar").exists())
+            self.assertTrue(any(item["status"] == "copied" and item.get("subdir") == "题目镜像" for item in manifest["files"]))
+
     def test_delivery_package_does_not_require_optional_stage_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

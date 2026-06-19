@@ -104,8 +104,6 @@ def render_manual(case: dict[str, Any], hub_fields: dict[str, Any]) -> str:
     knowledge = _list_text(writeup.get("knowledge_points")) or ["待人工确认：需要根据题面、源码或 WP 补充考察点。"]
     tools = _list_text(writeup.get("tools")) or _split_tools(metadata.get("解题工具")) or ["待人工确认：需要根据解题过程补充工具。"]
     steps = _list_text(writeup.get("step_process")) or _list_text(writeup.get("steps"))
-    command_outputs = _list_text(writeup.get("command_outputs")) or _list_text(writeup.get("commands"))
-    screenshots = _list_text(writeup.get("screenshots")) or _archive_screenshot_names(case)
     attachments = _manual_attachment_lines(case, writeup, metadata)
     docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
     build_commands, tar_commands = _deploy_commands(case, docker_artifacts)
@@ -113,8 +111,6 @@ def render_manual(case: dict[str, Any], hub_fields: dict[str, Any]) -> str:
     keywords = _list_text(hub_fields.get("添加关键字"))
     target = _string(writeup.get("goal") or "获取题目 Flag，并与内部归档表中的完整 Flag 保持一致。")
     step_lines = _solve_step_lines(steps)
-    output_lines = _command_output_lines(command_outputs, flag_value)
-    screenshot_lines = screenshots or ["待人工确认：需要补充解题过程截图。"]
 
     lines = [
         "## 1 题目设计部署信息",
@@ -217,12 +213,6 @@ def render_manual(case: dict[str, Any], hub_fields: dict[str, Any]) -> str:
         "",
         "#### Flag",
         flag_value or "待人工确认",
-        "",
-        "#### 命令输出",
-        *output_lines,
-        "",
-        "#### 截图说明",
-        *_numbered(screenshot_lines),
         "",
     ]
     if keywords:

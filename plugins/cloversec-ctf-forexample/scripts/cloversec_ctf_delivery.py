@@ -184,12 +184,13 @@ def copy_challenge_archives(
                 for source in sorted(path for path in source_subdir.rglob("*") if path.is_file()):
                     relative = source.relative_to(source_subdir)
                     is_image_tar = subdir == "题目镜像" and source.suffix.lower() in IMAGE_SUFFIXES
+                    effective_copy_limit = source.stat().st_size if is_image_tar and copy_image_tars else copy_limit
                     target = target_subdir / relative
                     record = copy_or_reference(
                         source,
                         target,
                         key=f"challenge:{subdir}",
-                        copy_limit=copy_limit,
+                        copy_limit=effective_copy_limit,
                         force_reference=is_image_tar and not copy_image_tars,
                         extra={"challenge": case_dir.name, "subdir": subdir},
                     )
