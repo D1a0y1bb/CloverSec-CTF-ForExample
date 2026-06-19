@@ -13,17 +13,16 @@ from pathlib import Path
 from typing import Any
 
 import cloversec_ctf_data as data
+import cloversec_ctf_naming as naming
 
 
-ARCHIVE_SUBDIRS = ["源码", "附件", "镜像", "手册", "截图", "清单"]
 ROLE_DIRS = {
-    "source": "源码",
-    "attachment": "附件",
-    "image_tar": "镜像",
-    "writeup": "手册",
-    "screenshot": "截图",
-    "manifest": "清单",
+    "source": "题目源码",
+    "attachment": "题目源码",
+    "image_tar": "题目镜像",
+    "writeup": "题目手册",
 }
+GENERIC_MANUAL_NAMES = {"manual.md", "writeup.md", "题目解题手册.md"}
 
 
 def create_archive_package(
@@ -35,17 +34,16 @@ def create_archive_package(
 ) -> dict[str, Any]:
     root = Path(output_root)
     archive_dir = root / archive_folder_name(case)
-    for subdir in ARCHIVE_SUBDIRS:
-        (archive_dir / subdir).mkdir(parents=True, exist_ok=True)
+    attachment_only = is_attachment_archive(case)
 
     issues: list[str] = []
     files: list[dict[str, Any]] = []
 
     for item in _iter_path_items(case.get("source_files"), default_role="source"):
-        files.extend(_copy_or_record(item, archive_dir / ROLE_DIRS["source"], "source", copy_files, issues))
+        files.extend(_copy_or_record(item, archive_dir / role_dir("source", attachment_only), "source", copy_files, issues))
 
     for item in _iter_path_items(case.get("attachments"), default_role="attachment"):
-        files.extend(_copy_or_record(item, archive_dir / ROLE_DIRS["attachment"], "attachment", copy_files, issues))
+        files.extend(_copy_or_record(item, archive_dir / role_dir("attachment", attachment_only), "attachment", copy_files, issues))
 
     docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
     tar_path = docker_artifacts.get("tar_path")
@@ -53,7 +51,7 @@ def create_archive_package(
         files.extend(
             _copy_or_record(
                 {"path": tar_path},
-                archive_dir / ROLE_DIRS["image_tar"],
+                archive_dir / role_dir("image_tar", attachment_only),
                 "image_tar",
                 copy_files and copy_image_tars,
                 issues,
@@ -64,7 +62,7 @@ def create_archive_package(
     writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
     manual_inputs: list[dict[str, Any]] = []
     seen_manual_paths: set[str] = set()
-    for key in ["formal_manual_path", "manual_path", "manual_filled_draft", "manual_template"]:
+    for key in ["formal_manual_path", "manual_path"]:
         manual_path = str(writeup.get(key) or "").strip()
         if not manual_path:
             continue
@@ -72,22 +70,18 @@ def create_archive_package(
         if normalized in seen_manual_paths:
             continue
         seen_manual_paths.add(normalized)
-        if key == "manual_template" and any(item.get("name") == "题目解题手册.md" for item in manual_inputs):
-            continue
-        manual_inputs.append({"path": manual_path, "name": "题目解题手册.md" if key != "manual_template" else "手册模板.md"})
+        manual_name = Path(manual_path).name or naming.manual_filename(manual_fields(case))
+        if manual_name in GENERIC_MANUAL_NAMES:
+            manual_name = naming.manual_filename(manual_fields(case))
+        manual_inputs.append({"path": manual_path, "name": manual_name})
     if manual_inputs:
         for item in manual_inputs:
-            files.extend(_copy_or_record(item, archive_dir / ROLE_DIRS["writeup"], "writeup", copy_files, issues))
+            files.extend(_copy_or_record(item, archive_dir / role_dir("writeup", attachment_only), "writeup", copy_files, issues))
     else:
-        issues.append("missing writeup: writeup.manual_path/manual_filled_draft/manual_template 为空")
+        issues.append("missing writeup: writeup.manual_path/formal_manual_path 为空")
 
     archive = case.get("archive") if isinstance(case.get("archive"), dict) else {}
     screenshot_inputs = _iter_path_items(archive.get("screenshots"), default_role="screenshot")
-    if screenshot_inputs:
-        for item in screenshot_inputs:
-            files.extend(_copy_or_record(item, archive_dir / ROLE_DIRS["screenshot"], "screenshot", copy_files, issues))
-    else:
-        issues.append("missing screenshot: archive.screenshots 为空")
     issues.extend(_verification_issues(case))
 
     image_paths = [item["relative_path"] for item in files if item["role"] == "image_tar"]
@@ -99,6 +93,7 @@ def create_archive_package(
         "archive_dir": archive_dir.as_posix(),
         "files": files,
         "issues": issues,
+        "screenshot_references": screenshot_inputs,
         "summary": {
             "file_count": len(files),
             "issue_count": len(issues),
@@ -112,7 +107,10 @@ def create_archive_package(
             "环境包/附件包路径": ";".join(image_paths or attachment_paths),
         },
     }
-    manifest_path = archive_dir / ROLE_DIRS["manifest"] / "archive_manifest.json"
+    manifest_path = root / "_cache" / archive_folder_name(case) / "archive_manifest.json"
+    manifest["manifest_path"] = manifest_path.as_posix()
+    manifest["archive_subdirs"] = sorted(path.name for path in archive_dir.iterdir() if path.is_dir()) if archive_dir.exists() else []
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return manifest
 
@@ -121,7 +119,7 @@ def apply_archive_outputs(case: dict[str, Any], manifest: dict[str, Any]) -> dic
     updated = copy.deepcopy(case)
     updated.setdefault("metadata", {})
     updated.setdefault("archive", {})
-    updated["archive"]["manifest_path"] = str(Path(manifest["archive_dir"]) / ROLE_DIRS["manifest"] / "archive_manifest.json")
+    updated["archive"]["manifest_path"] = str(manifest.get("manifest_path") or "")
     updated["archive"]["files"] = copy.deepcopy(manifest.get("files", []))
     updated["archive"]["issues"] = copy.deepcopy(manifest.get("issues", []))
     for key, value in manifest.get("xlsx_fields", {}).items():
@@ -169,7 +167,7 @@ def create_batch_archive(
         "manifests": manifests,
         "updated_cases": updated_cases,
     }
-    batch_dir = root / "_batch"
+    batch_dir = root / "_cache"
     batch_dir.mkdir(parents=True, exist_ok=True)
     (batch_dir / "batch_archive_summary.json").write_text(
         json.dumps({"summary": summary, "manifests": manifests}, ensure_ascii=False, indent=2) + "\n",
@@ -221,9 +219,32 @@ def render_batch_archive_report(payload: dict[str, Any]) -> str:
 
 def archive_folder_name(case: dict[str, Any]) -> str:
     metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
-    case_id = str(case.get("case_id") or metadata.get("HUB编号") or "case").strip()
-    title = str(metadata.get("名称") or metadata.get("题目标题") or "untitled").strip()
-    return f"{_safe_name(case_id)}-{_safe_name(title)}".strip("-") or "case-untitled"
+    return naming.challenge_dir_name(metadata)
+
+
+def is_attachment_archive(case: dict[str, Any]) -> bool:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
+    has_source = bool(case.get("source_files"))
+    has_image = bool(str(docker_artifacts.get("tar_path") or "").strip())
+    question_type = str(metadata.get("题目类型") or metadata.get("resource_type") or "")
+    return (not has_source and not has_image) or ("附件" in question_type and not has_image)
+
+
+def expected_archive_subdirs(case: dict[str, Any]) -> list[str]:
+    return list(naming.ATTACHMENT_CHALLENGE_SUBDIRS if is_attachment_archive(case) else naming.CONTAINER_CHALLENGE_SUBDIRS)
+
+
+def role_dir(role: str, attachment_only: bool) -> str:
+    if role == "attachment":
+        return "题目附件" if attachment_only else "题目源码"
+    return ROLE_DIRS[role]
+
+
+def manual_fields(case: dict[str, Any]) -> dict[str, Any]:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    hub_fields = case.get("hub_fields") if isinstance(case.get("hub_fields"), dict) else {}
+    return {**metadata, **hub_fields}
 
 
 def sha256_file(path: Path) -> str:
@@ -299,7 +320,7 @@ def _safe_name(value: str) -> str:
 
 def _safe_filename(value: str) -> str:
     name = Path(value).name
-    return _safe_name(name)
+    return naming.clean_name(name)
 
 
 def _escape_table(value: Any) -> str:
@@ -332,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.output_case:
             updated = apply_archive_outputs(case, manifest)
             Path(args.output_case).write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"wrote {Path(manifest['archive_dir']) / 'manifests' / 'archive_manifest.json'}")
+        print(f"wrote {manifest.get('manifest_path', '')}")
         return 0
 
     if args.command == "batch":
@@ -344,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
             import cloversec_ctf_final as final
 
             final.create_final_outputs(payload["updated_cases"], args.final_output_dir)
-        summary_path = Path(args.output_root) / "_batch" / "batch_archive_summary.json"
+        summary_path = Path(args.output_root) / "_cache" / "batch_archive_summary.json"
         print(f"wrote {summary_path}")
         return 0
 

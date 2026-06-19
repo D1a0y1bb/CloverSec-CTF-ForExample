@@ -98,15 +98,15 @@ class McpServerProtocolTests(unittest.TestCase):
             payload = json.loads(responses[2]["result"]["content"][0]["text"])
             rows = [
                 json.loads(line)
-                for line in (output_dir / "赛事题目信息收集表.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (output_dir / "collection_machine.jsonl").read_text(encoding="utf-8").splitlines()
                 if line.strip()
             ]
             xlsx_exists = (output_dir / "赛事题目信息收集表.xlsx").exists()
 
         self.assertEqual(payload["collection"]["rows"], 1)
         self.assertTrue(xlsx_exists)
-        self.assertEqual(rows[0]["题目"], "baby sql")
-        self.assertEqual(rows[0]["可处理性"], "不可交付：缺源码/附件")
+        self.assertEqual(rows[0]["case_id"], "case-demo-0001")
+        self.assertEqual(rows[0]["xlsx_fields"]["名称"], "baby sql")
 
 
 def call_mcp_server(script: Path, tool_name: str, arguments: dict, *, runtime_dir: Path) -> list[dict]:

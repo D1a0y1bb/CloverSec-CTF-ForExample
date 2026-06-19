@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.8.1-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.9.9-beta-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -30,14 +30,14 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v0.8.1
+Git 引用：v0.9.9-beta
 稀疏路径：留空
 ```
 
 也可以用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.8.1
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v0.9.9-beta
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -148,9 +148,9 @@ python3 scripts/authorize_batch.py --workdir runs/xxxxxxxxx --action docker_buil
 python3 scripts/search_recall_benchmark.py \
   --run-search \
   --benchmark plugins/cloversec-ctf-forexample/references/search-recall-benchmark.json \
-  --input-dir docs/validation/search-recall-v0.8.1 \
-  --output docs/validation/search-recall-benchmark-v0.8.1.md \
-  --json-output docs/validation/search-recall-benchmark-v0.8.1.json
+  --input-dir docs/validation/search-recall-v0.9.9-beta \
+  --output docs/validation/search-recall-benchmark-v0.9.9-beta.md \
+  --json-output docs/validation/search-recall-benchmark-v0.9.9-beta.json
 ```
 
 这个基准不是看关键词有没有出现，而是看已人工核对过存在的公开资源是否被搜到。当前基准覆盖西电 XDSEC miniLCTF、中科大 Hackergame、HGame、IrisCTF、LA CTF 和 Google CTF，按 GitHub repo / URL 归一化命中统计召回。
@@ -226,7 +226,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scripts/package_plugin_release.py
 ```
 
-发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v0.8.1`；正文第一行使用 `# CloverSec CTF For Example 0.8.1`。
+发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v0.9.9-beta`；正文第一行使用 `# CloverSec CTF For Example 0.9.9-beta`。
 
 ## License
 

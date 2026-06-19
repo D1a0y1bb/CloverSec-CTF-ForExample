@@ -10,28 +10,11 @@ from pathlib import Path
 from typing import Any
 
 import cloversec_ctf_data as data
+import cloversec_ctf_collect as collect
 import cloversec_ctf_search as search
 
 
-COLLECTION_FIELDS = [
-    "记录ID",
-    "年份",
-    "赛事",
-    "赛事类型",
-    "分类",
-    "题目",
-    "可处理性",
-    "材料情况",
-    "WP状态",
-    "WP URL",
-    "附件源码URL",
-    "来源等级",
-    "缺失原因",
-    "下一步动作",
-    "Dockerizer交接",
-    "来源URL",
-    "证据编号",
-]
+COLLECTION_FIELDS = collect.COLLECTION_HUMAN_FIELDS
 
 RESOURCE_FIELDS = [
     "记录ID",
@@ -58,20 +41,38 @@ DOCKERIZER_FIELDS = [
     "启动命令",
     "Flag路径",
     "缺失项",
-    "确认动作",
+    "自动动作",
     "下一步动作",
 ]
 
 
 def write_collection_handoff(cases: list[dict[str, Any]], output_dir: str | Path) -> dict[str, Any]:
+    base = Path(output_dir)
+    base.mkdir(parents=True, exist_ok=True)
     rows = collection_rows_from_cases(cases)
-    return write_handoff_group(
-        output_dir,
-        table_name="赛事题目信息收集表",
-        fields=COLLECTION_FIELDS,
-        rows=rows,
-        description="前期收集阶段的人和 Agent 共用工作表。",
+    xlsx_path = base / "赛事题目信息收集表.xlsx"
+    jsonl_path = base / "collection_machine.jsonl"
+    schema_path = base / "赛事题目信息收集表.schema.json"
+    collect.write_collection_human_xlsx(cases, xlsx_path)
+    collect.write_collection_machine_jsonl(cases, jsonl_path)
+    write_json(
+        schema_path,
+        {
+            "schema_version": "cloversec.ctf.collection_human_table.v1",
+            "title": "赛事题目信息收集表",
+            "description": "前期收集阶段的人看表。机器字段在 collection_machine.jsonl。",
+            "fields": [{"name": field, "type": "string", "required": field in {"时间年份", "赛事名称", "题目分类", "题目名称"}} for field in COLLECTION_FIELDS],
+            "material_status_values": search.COLLECTION_MATERIAL_STATUSES,
+            "row_count": len(rows),
+        },
     )
+    return {
+        "table_name": "赛事题目信息收集表",
+        "rows": len(rows),
+        "xlsx": xlsx_path.as_posix(),
+        "jsonl": jsonl_path.as_posix(),
+        "schema": schema_path.as_posix(),
+    }
 
 
 def write_resource_handoff(classification: dict[str, Any], output_dir: str | Path) -> dict[str, Any]:
@@ -104,34 +105,7 @@ def write_search_handoff(manifest: dict[str, Any], output_dir: str | Path) -> di
 
 
 def collection_rows_from_cases(cases: list[dict[str, Any]]) -> list[dict[str, str]]:
-    rows: list[dict[str, str]] = []
-    for index, case in enumerate(cases, start=1):
-        metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
-        research = case.get("research") if isinstance(case.get("research"), dict) else {}
-        assets = case.get("asset_collection") if isinstance(case.get("asset_collection"), dict) else {}
-        evidence = case.get("evidence") if isinstance(case.get("evidence"), list) else []
-        evidence_id = (evidence[0] or {}).get("evidence_id") if evidence and isinstance(evidence[0], dict) else ""
-        row = {
-            "记录ID": str(case.get("case_id") or f"case-{index:04d}"),
-            "年份": str(metadata.get("年份") or ""),
-            "赛事": str(metadata.get("赛事来源") or ""),
-            "赛事类型": str(metadata.get("赛事类型") or ""),
-            "分类": str(metadata.get("分类") or ""),
-            "题目": str(metadata.get("名称") or metadata.get("题目名称") or research.get("source_title") or ""),
-            "可处理性": processing_grade_for_case(case),
-            "材料情况": str(research.get("material_status") or assets.get("material_status") or metadata.get("材料状态") or ""),
-            "WP状态": writeup_status_for_case(case),
-            "WP URL": first_candidate_url(assets.get("writeup_candidates")),
-            "附件源码URL": first_candidate_url(assets.get("attachment_candidates")),
-            "来源等级": str(case.get("confidence") or research.get("material_level") or ""),
-            "缺失原因": str(case.get("missing_reason") or research.get("missing_reason") or assets.get("missing_reason") or ""),
-            "下一步动作": str(research.get("next_action") or next_action_for_case(case)),
-            "Dockerizer交接": dockerizer_flag_for_case(case),
-            "来源URL": str(research.get("source_url") or first_evidence_url(evidence)),
-            "证据编号": str(evidence_id or ""),
-        }
-        rows.append(row)
-    return rows
+    return collect.collection_human_rows(cases)
 
 
 def resource_rows_from_classification(classification: dict[str, Any]) -> list[dict[str, str]]:
@@ -193,8 +167,8 @@ def dockerizer_rows_from_classification(classification: dict[str, Any]) -> list[
         "启动命令": command_hints,
         "Flag路径": ";".join(flag_files),
         "缺失项": ";".join(missing),
-        "确认动作": "confirmation_action=dockerizer",
-        "下一步动作": "交给 cloversec-ctf-build-dockerizer 改造成 CloverSec 平台交付件；现有 Dockerfile/compose 只作为迁移输入。",
+        "自动动作": "auto_action=auto-render",
+        "下一步动作": f"交给 cloversec-ctf-build-dockerizer 自动生成 CloverSec 平台交付件并做静态校验；推荐命令：python3 scripts/workflow.py auto-render --project-dir {root}",
     }
     return [row]
 

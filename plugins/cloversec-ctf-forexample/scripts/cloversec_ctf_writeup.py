@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import cloversec_ctf_naming as naming
+
 
 DIFFICULTY_LEVELS = {
     "1": {"编号": "1", "难度等级": "超简单（Basic）", "题目难度": "★", "描述": "签到，基础题目，1-5分钟左右"},
@@ -78,145 +80,231 @@ def build_hub_fields(case: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "开放端口": _string(metadata.get("开放端口")),
         "解题工具": _string(metadata.get("解题工具") or ", ".join(_list_text(writeup.get("tools")))),
         "备注": remark,
-        "手册状态": "草稿",
+        "手册状态": "正式",
     }
     return {"hub_fields": hub_fields, "xlsx_fields": xlsx_fields}
 
 
-def render_manual(case: dict[str, Any], hub_fields: dict[str, Any], filled: bool = True) -> str:
+def render_manual(case: dict[str, Any], hub_fields: dict[str, Any]) -> str:
     writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
     metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
     name = _string(hub_fields.get("题目标题"))
-    difficulty = _string(hub_fields.get("题目难度"))
+    category = _string(hub_fields.get("题目分类") or metadata.get("分类"))
+    difficulty = _string(hub_fields.get("题目难度") or metadata.get("星级"))
+    difficulty_level = _string(hub_fields.get("题目难度等级") or hub_fields.get("题目等级"))
     score = _string(hub_fields.get("题目分值"))
     flag_value = _string(hub_fields.get("题目Flag"))
-    prerequisites = _list_text(writeup.get("prerequisites")) or ["（待填写）"]
-    knowledge = _list_text(writeup.get("knowledge_points")) or ["（待填写）"]
-    tools = _list_text(writeup.get("tools")) or _split_tools(hub_fields.get("解题工具")) or ["（待填写）"]
-    steps = _list_text(writeup.get("steps")) or ["（待填写题目信息）", "（待填写解题过程）"]
-    command_outputs = _list_text(writeup.get("command_outputs")) or _list_text(writeup.get("commands")) or ["（待补充关键命令与输出）"]
-    screenshots = _list_text(writeup.get("screenshots")) or ["（待补充截图文件名和说明）"]
-    attachments = _list_text(writeup.get("attachments")) or _list_text(metadata.get("附件说明")) or ["（待说明附件名称、用途和校验方式）"]
-    environment = _list_text(writeup.get("environment")) or [
-        _string(metadata.get("开放端口") and f"开放端口：{metadata.get('开放端口')}") or "（待补充环境启动方式）"
-    ]
-    description = _string(writeup.get("description") or hub_fields.get("题目内容") or "（待填写）")
-    if not filled:
-        name = "（请输入题目名称）"
-        difficulty = "（请输入题目难度）"
-        score = "（请输入题目分值）"
-        flag_value = "（请输入 Flag）"
-        description = "（请输入题目描述）"
+    flag_type = _string(hub_fields.get("Flag类型"))
+    source = _string(hub_fields.get("题目来源") or metadata.get("题目来源") or metadata.get("赛事来源"))
+    challenge_type = _string(hub_fields.get("题目类型") or metadata.get("题目类型"))
+    resource_level = _string(hub_fields.get("资源等级") or metadata.get("资源等级"))
+    remark = _string(hub_fields.get("题目备注") or metadata.get("备注"))
+    description = _string(writeup.get("description") or hub_fields.get("题目内容") or "待人工确认：题目描述缺少可靠来源。")
+    prerequisites = _list_text(writeup.get("prerequisites")) or ["待人工确认：需要根据题面和源码补充前置知识。"]
+    knowledge = _list_text(writeup.get("knowledge_points")) or ["待人工确认：需要根据题面、源码或 WP 补充考察点。"]
+    tools = _list_text(writeup.get("tools")) or _split_tools(metadata.get("解题工具")) or ["待人工确认：需要根据解题过程补充工具。"]
+    steps = _list_text(writeup.get("step_process")) or _list_text(writeup.get("steps"))
+    command_outputs = _list_text(writeup.get("command_outputs")) or _list_text(writeup.get("commands"))
+    screenshots = _list_text(writeup.get("screenshots")) or _archive_screenshot_names(case)
+    attachments = _manual_attachment_lines(case, writeup, metadata)
+    docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
+    build_commands, tar_commands = _deploy_commands(case, docker_artifacts)
+    unexpected = _list_text(writeup.get("unexpected_tests")) or ["已按现有资料检查常规解法；非预期测试结果待人工复核。"]
+    keywords = _list_text(hub_fields.get("添加关键字"))
+    target = _string(writeup.get("goal") or "获取题目 Flag，并与内部归档表中的完整 Flag 保持一致。")
+    step_lines = _solve_step_lines(steps)
+    output_lines = _command_output_lines(command_outputs, flag_value)
+    screenshot_lines = screenshots or ["待人工确认：需要补充解题过程截图。"]
 
     lines = [
-        f"# {name if filled else '题目解题手册'}",
+        "## 1 题目设计部署信息",
         "",
-        "## 题目说明",
+        "### 1.1 题目名称",
+        name,
         "",
-        f"- 题目名称：{name}",
-        f"- 题目分类：{_string(hub_fields.get('题目分类')) or '（待填写）'}",
-        f"- 题目难度：{difficulty}",
-        f"- 题目分值：{score}",
+        "### 1.2 题目描述",
+        description,
+        "",
+        "### 1.3 题目难度",
+        difficulty or difficulty_level or "待人工确认",
+        "",
+        "### 1.4 考察信息",
+        *_plus_list(knowledge),
+        "",
+        "### 1.5 旗帜信息",
+        f"● Flag 类型：{flag_type or '待人工确认'}",
+        f"● 原始静态 flag：`{flag_value or '待人工确认'}`",
+        "● 动态 Flag 题以平台 `/flag` 和 `/changeflag.sh` 为准；静态 Flag 题以归档字段为准。",
+        "",
+        "### 1.6 附件情况",
+        *_dot_list(attachments),
+        "",
+        "### 1.7 部署方式",
+        "#### 1.7.1 Dockerfile 构建启动",
+        _bash_block(build_commands),
+        "",
+        "#### 1.7.2 Tar 镜像包导入启动",
+        _bash_block(tar_commands),
+        "",
+        "### 1.8 非预期测试",
+        *_plus_list(unexpected),
+        "",
+        "## 2 HUB上传部分&题解信息",
+        "",
+        "### 2.1 题目标题",
+        _plain_block([name]),
+        "",
+        "### 2.2 题目内容",
+        _plain_block([description]),
+        "",
+        "### 2.3 Flag类型",
+        _plain_block([flag_type or "待人工确认"]),
+        "",
+        "### 2.4 题目Flag",
+        _plain_block([flag_value or "待人工确认"]),
+        "",
+        "### 2.5 题目来源",
+        _plain_block([source or "待人工确认"]),
+        "",
+        "### 2.6 题目分类",
+        _plain_block([category or "待人工确认"]),
+        "",
+        "### 2.7 题目分值",
+        _plain_block([score or "待人工确认"]),
+        "",
+        "### 2.8 题目等级",
+        _plain_block([_string(metadata.get("题目等级") or metadata.get("难度编号") or difficulty_level or difficulty or "待人工确认")]),
+        "",
+        "### 2.9 题目类型",
+        _plain_block([challenge_type or "待人工确认"]),
+        "",
+        "### 2.10 资源等级",
+        _plain_block([resource_level or "待人工确认"]),
+        "",
+        "### 2.11 题目备注",
+        _plain_block([remark or "无"]),
+        "",
+        "---",
+        "",
+        "### 2.12 题目解答",
+        "",
+        "#### 题目描述",
+        "##### 题目名称",
+        name,
+        "",
+        "##### 题目难度",
+        difficulty or difficulty_level or "待人工确认",
+        "",
+        "##### 题目分值",
+        score or "待人工确认",
         "",
         description,
         "",
-        "## 环境说明",
+        "#### 前置知识",
+        *_numbered(prerequisites),
+        "",
+        "#### 考察知识点",
+        *_numbered(knowledge),
+        "",
+        "#### 解题工具",
+        *_numbered(tools),
+        "",
+        "#### 题目目标",
+        target,
+        "",
+        "#### 解题步骤",
+        *step_lines,
+        "",
+        "#### Flag",
+        flag_value or "待人工确认",
+        "",
+        "#### 命令输出",
+        *output_lines,
+        "",
+        "#### 截图说明",
+        *_numbered(screenshot_lines),
         "",
     ]
-    lines.extend(_numbered(environment))
-    lines.extend(["", "## 附件说明", ""])
-    lines.extend(_numbered(attachments))
-    lines.extend(["", "## 前置知识", ""])
-    lines.extend(_numbered(prerequisites))
-    lines.extend(["", "## 考察知识点", ""])
-    lines.extend(_numbered(knowledge))
-    lines.extend(["", "## 解题工具", ""])
-    lines.extend(_numbered(tools))
-    lines.extend(["", "## 解题步骤", ""])
-    lines.extend(_numbered(steps))
-    lines.extend(["", "## 命令输出", ""])
-    lines.extend(_numbered(command_outputs))
-    lines.extend(["", "## 截图说明", ""])
-    lines.extend(_numbered(screenshots))
-    lines.extend(
-        [
-            "",
-            "## Flag",
-            "",
-            flag_value,
-            "",
-            "## 复现说明",
-            "",
-            "1、按环境说明准备题目资源。",
-            "2、按解题步骤执行，核对命令输出和截图。",
-            "3、最终得到的 Flag 需要与内部 xlsx 字段保持一致。",
-            "",
-        ]
-    )
-    return "\n".join(lines)
-
-
-def render_manual_template(case: dict[str, Any], hub_fields: dict[str, Any]) -> str:
-    return "\n".join(
-        [
-            "# 题目解题手册",
-            "",
-            "## 题目说明",
-            "",
-            "- 题目名称：（待填写）",
-            "- 题目分类：（待填写）",
-            "- 题目难度：（待填写）",
-            "- 题目分值：（待填写）",
-            "",
-            "（待填写题目内容）",
-            "",
-            "## 环境说明",
-            "",
-            "1、（待填写环境启动方式、端口、附件使用方式）",
-            "",
-            "## 附件说明",
-            "",
-            "1、（待填写附件名称、用途、hash 或来源说明）",
-            "",
-            "## 前置知识",
-            "",
-            "1、（待填写）",
-            "",
-            "## 考察知识点",
-            "",
-            "1、（待填写）",
-            "",
-            "## 解题工具",
-            "",
-            "1、（待填写）",
-            "",
-            "## 解题步骤",
-            "",
-            "1、（待填写完整步骤）",
-            "",
-            "## 命令输出",
-            "",
-            "1、（待填写关键命令和输出）",
-            "",
-            "## 截图说明",
-            "",
-            "1、（待填写截图文件名和说明）",
-            "",
-            "## Flag",
-            "",
-            "（待填写完整 Flag）",
-            "",
-            "## 复现说明",
-            "",
-            "1、（待填写复现检查结果）",
-            "",
-        ]
-    )
+    if keywords:
+        lines.extend(["### 2.13 添加关键字", "、".join(keywords), ""])
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def validate_hub_fields(hub_fields: dict[str, Any]) -> list[str]:
     required = ["题目标题", "Flag类型", "题目Flag", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级"]
     return [f"{field} is required" for field in required if not _string(hub_fields.get(field)).strip()]
+
+
+def _manual_attachment_lines(case: dict[str, Any], writeup: dict[str, Any], metadata: dict[str, Any]) -> list[str]:
+    values = _list_text(writeup.get("attachments")) or _list_text(metadata.get("附件说明"))
+    for item in case.get("attachments", []) if isinstance(case.get("attachments"), list) else []:
+        if isinstance(item, dict):
+            path = _string(item.get("path") or item.get("local_path"))
+            name = _string(item.get("name") or Path(path).name)
+        else:
+            path = _string(item)
+            name = Path(path).name
+        if name:
+            values.append(f"{name}：{path or '路径待人工确认'}")
+    return values or ["本题未声明附件；如后续补充附件，需要同步更新手册和归档表。"]
+
+
+def _archive_screenshot_names(case: dict[str, Any]) -> list[str]:
+    archive = case.get("archive") if isinstance(case.get("archive"), dict) else {}
+    names: list[str] = []
+    for item in archive.get("screenshots", []) if isinstance(archive.get("screenshots"), list) else []:
+        if isinstance(item, dict):
+            path = _string(item.get("path") or item.get("local_path"))
+            name = _string(item.get("name") or Path(path).name)
+        else:
+            path = _string(item)
+            name = Path(path).name
+        if name:
+            names.append(f"{name}：用于证明解题过程或运行状态。")
+    return names
+
+
+def _deploy_commands(case: dict[str, Any], docker_artifacts: dict[str, Any]) -> tuple[list[str], list[str]]:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    title = naming.clean_name(metadata.get("名称") or metadata.get("题目名称") or "challenge").lower()
+    image_name = _string(docker_artifacts.get("image_name") or f"cloversec/{title}:latest")
+    tar_path = _string(docker_artifacts.get("tar_path") or f"{title}_latest.tar")
+    ports = _list_text(docker_artifacts.get("ports")) or _split_tools(metadata.get("开放端口"))
+    port_arg = f"-p {ports[0]}" if ports else "# 待人工确认端口映射"
+    build_commands = [
+        f"docker build --platform linux/amd64 -t {image_name} .",
+        f"docker run --rm {port_arg} --name {title} {image_name}",
+    ]
+    tar_commands = [
+        f"docker load -i {tar_path}",
+        f"docker run --rm {port_arg} --name {title} {image_name}",
+    ]
+    question_type = _string(metadata.get("题目类型"))
+    if "附件" in question_type or not docker_artifacts:
+        return ["附件题不需要 Docker 构建，直接使用 `题目附件/` 中的原始附件。"], ["附件题不需要镜像包导入。"]
+    return build_commands, tar_commands
+
+
+def _solve_step_lines(steps: list[str]) -> list[str]:
+    if not steps:
+        return ["待人工确认：当前资料没有可验证的完整解题过程，不能编造步骤。"]
+    return _numbered(steps)
+
+
+def _command_output_lines(command_outputs: list[str], flag_value: str) -> list[str]:
+    if command_outputs:
+        return _numbered(command_outputs)
+    if flag_value:
+        return ["```text", flag_value, "```"]
+    return ["待人工确认：缺少命令输出或运行截图。"]
+
+
+def _bash_block(commands: list[str]) -> str:
+    return "```bash\n" + "\n".join(commands) + "\n```"
+
+
+def _plain_block(values: list[str]) -> str:
+    return "```plain\n" + "\n".join(values) + "\n```"
 
 
 def _difficulty_key(value: Any) -> str:
@@ -263,6 +351,14 @@ def _numbered(values: list[str]) -> list[str]:
     return [f"{index}、{value}" for index, value in enumerate(values, start=1)]
 
 
+def _plus_list(values: list[str]) -> list[str]:
+    return [f"+ {value}" for value in values]
+
+
+def _dot_list(values: list[str]) -> list[str]:
+    return [f"● {value}" for value in values]
+
+
 def _string(value: Any) -> str:
     if value is None:
         return ""
@@ -273,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="CloverSec CTF writeup and Hub field utilities")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    render_parser = subparsers.add_parser("render", help="render hub fields and manual drafts")
+    render_parser = subparsers.add_parser("render", help="render hub fields and formal manual")
     render_parser.add_argument("case_json")
     render_parser.add_argument("--output-dir", required=True)
 
@@ -292,9 +388,9 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(fields["xlsx_fields"], ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        (output_dir / "manual_template.md").write_text(render_manual_template(case, hub_fields), encoding="utf-8")
-        formal_manual = render_manual(case, hub_fields, filled=True)
-        (output_dir / "manual_filled_draft.md").write_text(formal_manual, encoding="utf-8")
+        formal_manual = render_manual(case, hub_fields)
+        manual_name = naming.manual_filename(hub_fields)
+        (output_dir / manual_name).write_text(formal_manual, encoding="utf-8")
         (output_dir / "题目解题手册.md").write_text(formal_manual, encoding="utf-8")
         print(f"wrote {output_dir}")
         return 0

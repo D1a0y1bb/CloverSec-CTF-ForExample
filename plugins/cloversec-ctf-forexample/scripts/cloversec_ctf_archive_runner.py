@@ -28,7 +28,9 @@ def run_archive_workflow(
     archive_payload = archive.create_batch_archive(cases, root, copy_files=copy_files, copy_image_tars=copy_image_tars)
     archived_cases = archive_payload["updated_cases"]
 
-    output_cases_path = Path(output_cases) if str(output_cases).strip() else root / "_batch" / "ctf_cases.archived.jsonl"
+    cache_dir = root / "_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    output_cases_path = Path(output_cases) if str(output_cases).strip() else cache_dir / "ctf_cases.archived.jsonl"
     archive.write_cases_jsonl(archived_cases, output_cases_path)
 
     final_dir = Path(final_output_dir) if str(final_output_dir).strip() else root / "_final"
@@ -36,8 +38,8 @@ def run_archive_workflow(
 
     resource_index = build_resource_index(archive_payload["manifests"])
     missing_report = build_missing_report(archive_payload, final_payload)
-    resource_index_path = root / "_batch" / "resource_index.json"
-    missing_report_path = root / "_batch" / "missing_report.md"
+    resource_index_path = cache_dir / "resource_index.json"
+    missing_report_path = cache_dir / "missing_report.md"
     resource_index_path.write_text(json.dumps(resource_index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     missing_report_path.write_text(render_missing_report(missing_report), encoding="utf-8")
 
@@ -68,7 +70,7 @@ def run_archive_workflow(
             "final_dir": final_dir.as_posix(),
         },
     }
-    workflow_path = root / "_batch" / "archive_workflow.json"
+    workflow_path = cache_dir / "archive_workflow.json"
     workflow_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     payload["paths"]["workflow"] = workflow_path.as_posix()
     return payload

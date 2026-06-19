@@ -18,7 +18,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "0.8.1"
+SERVER_VERSION = "0.9.9-beta"
 SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {
@@ -39,7 +39,7 @@ PLATFORM_CONTRACT = {
     ],
     "reference_only": ["upstream Dockerfile", "docker-compose.yml", "README run command", "existing image tar"],
     "blocking_fields": {
-        "confirmation_action": "dockerizer",
+        "auto_action": "auto-render",
         "failure_category": "platform_conversion_required",
         "next_skill": "cloversec-ctf-build-dockerizer",
         "can_archive": False,

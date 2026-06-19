@@ -22,7 +22,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Create CloverSec CTF search recall benchmark report")
     parser.add_argument("--benchmark", default=DEFAULT_BENCHMARK.as_posix())
     parser.add_argument("--input-dir", default="docs/validation/search-recall")
-    parser.add_argument("--output", default="docs/validation/search-recall-benchmark-v0.8.1.md")
+    parser.add_argument("--output", default="docs/validation/search-recall-benchmark-v0.9.9-beta.md")
     parser.add_argument("--json-output", default="")
     parser.add_argument("--run-search", action="store_true", help="run search-plus for each benchmark case before evaluation")
     parser.add_argument("--source", action="append", default=[], help="override sources for every case")

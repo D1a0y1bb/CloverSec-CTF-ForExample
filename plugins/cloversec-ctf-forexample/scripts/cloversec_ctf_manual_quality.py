@@ -14,20 +14,23 @@ from typing import Any
 import cloversec_ctf_data as data
 
 
-VERSION = "0.8.1"
+VERSION = "0.9.9-beta"
 SCHEMA_VERSION = "cloversec.ctf.manual_quality.v1"
 REQUIRED_METADATA_FIELDS = ["名称", "分类", "题目类型", "Flag类型"]
 REQUIRED_HUB_FIELDS = ["题目标题", "题目内容", "题目来源", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级", "添加关键字"]
-MANUAL_SECTION_PATTERNS = {
-    "description": [r"题目描述", r"题目内容", r"Challenge"],
-    "knowledge": [r"考点", r"知识点", r"漏洞点"],
-    "environment": [r"环境", r"部署", r"Docker", r"端口"],
-    "steps": [r"解题", r"步骤", r"利用", r"复现"],
-    "command_output": [r"命令输出", r"执行结果", r"输出", r"\$ ", r"```"],
-    "flag": [r"Flag", r"flag"],
-    "attachments": [r"附件", r"资源", r"源码"],
-    "screenshots": [r"截图", r"图片", r"\.png", r"\.jpg", r"\.jpeg", r"\.webp"],
-}
+REQUIRED_TOP_SECTIONS = ["## 1 题目设计部署信息", "## 2 HUB上传部分&题解信息"]
+REQUIRED_DESIGN_SUBSECTIONS = [f"### 1.{index} " for index in range(1, 9)]
+REQUIRED_HUB_SUBSECTIONS = [f"### 2.{index} " for index in range(1, 13)]
+REQUIRED_SOLVE_SUBSECTIONS = [
+    "#### 题目描述",
+    "#### 前置知识",
+    "#### 考察知识点",
+    "#### 解题工具",
+    "#### 题目目标",
+    "#### 解题步骤",
+    "#### Flag",
+]
+LEGACY_HEADINGS = ["## 题目说明", "## 环境说明", "## 命令输出", "## 截图说明", "## 复现说明"]
 
 
 def check_manual_quality(
@@ -45,7 +48,7 @@ def check_manual_quality(
         hub_fields = hub_fields or {}
     checks = []
     checks.extend(check_case_fields(case))
-    checks.extend(check_manual_sections(manual_markdown))
+    checks.extend(check_manual_sections(manual_markdown, attachment_case=is_attachment_case(case)))
     checks.extend(check_manual_references(case, manual_markdown, archive_manifest=archive_manifest, resource_manifest=resource_manifest))
     checks.extend(check_hub_consistency(case, hub_fields, manual_markdown))
     xlsx_patch = build_xlsx_fields_patch(case, checks)
@@ -93,7 +96,7 @@ def check_case_fields(case: dict[str, Any]) -> list[dict[str, Any]]:
     return checks
 
 
-def check_manual_sections(manual: str) -> list[dict[str, Any]]:
+def check_manual_sections(manual: str, *, attachment_case: bool = False) -> list[dict[str, Any]]:
     checks = []
     text_len = len(re.sub(r"\s+", "", manual))
     checks.append(
@@ -105,7 +108,7 @@ def check_manual_sections(manual: str) -> list[dict[str, Any]]:
             evidence={"text_length": text_len},
         )
     )
-    placeholder_count = sum(manual.count(item) for item in ["（待填写", "（待补充", "请输入", "TODO", "TBD"])
+    placeholder_count = sum(manual.count(item) for item in ["（待填写", "（待补充", "请输入", "TODO", "TBD", "xxx", "【", "（请输入", "（待"])
     checks.append(
         check(
             "manual-placeholders",
@@ -115,11 +118,79 @@ def check_manual_sections(manual: str) -> list[dict[str, Any]]:
             evidence={"placeholder_count": placeholder_count},
         )
     )
-    for section_id, patterns in MANUAL_SECTION_PATTERNS.items():
-        found = any(re.search(pattern, manual, flags=re.I) for pattern in patterns)
-        status = "pass" if found else "fail"
-        message = "已找到相关内容" if found else "手册中未找到清楚的相关段落"
-        checks.append(check(f"manual-section-{section_id}", f"手册段落 {section_id}", status, message))
+    has_top = all(section in manual for section in REQUIRED_TOP_SECTIONS)
+    checks.append(
+        check(
+            "manual-structure-two-part",
+            "两段式手册结构",
+            "pass" if has_top or attachment_case else "fail",
+            "已包含两段式主章节" if has_top else ("附件题允许简化结构" if attachment_case else "缺少两段式主章节"),
+        )
+    )
+    required = list(REQUIRED_DESIGN_SUBSECTIONS) + list(REQUIRED_HUB_SUBSECTIONS) + list(REQUIRED_SOLVE_SUBSECTIONS)
+    missing = [item for item in required if item not in manual]
+    status = "pass" if not missing else ("warn" if attachment_case and all(item.startswith("### 1.7") for item in missing) else "fail")
+    checks.append(
+        check(
+            "manual-required-subsections",
+            "必需章节",
+            status,
+            "必需章节齐全" if not missing else "缺少章节：" + "、".join(missing[:12]),
+            evidence={"missing": missing},
+        )
+    )
+    headings = re.findall(r"^#{2,4}\s+(.+?)\s*$", manual, flags=re.M)
+    duplicates = sorted({item for item in headings if headings.count(item) > 1})
+    checks.append(
+        check(
+            "manual-duplicate-headings",
+            "重复章节标题",
+            "pass" if not duplicates else "fail",
+            "未发现重复章节" if not duplicates else "重复章节：" + "、".join(duplicates[:10]),
+            evidence={"duplicates": duplicates},
+        )
+    )
+    legacy = [item for item in LEGACY_HEADINGS if re.search(rf"^{re.escape(item)}\s*$", manual, flags=re.M)]
+    checks.append(
+        check(
+            "manual-legacy-residue",
+            "旧版扁平标题残留",
+            "pass" if not legacy else "fail",
+            "未发现旧版标题" if not legacy else "仍存在旧版标题：" + "、".join(legacy),
+            evidence={"legacy_headings": legacy},
+        )
+    )
+    flag_consistency = manual_flag_consistency(manual)
+    checks.append(
+        check(
+            "manual-flag-consistency",
+            "Flag 一致性",
+            "pass" if flag_consistency["consistent"] else "fail",
+            "三处 Flag 一致" if flag_consistency["consistent"] else "手册内 Flag 不一致",
+            evidence=flag_consistency,
+        )
+    )
+    deploy_consistency = manual_deploy_consistency(manual)
+    deploy_status = "pass" if deploy_consistency["consistent"] or attachment_case else "fail"
+    checks.append(
+        check(
+            "manual-deploy-consistency",
+            "部署命令一致性",
+            deploy_status,
+            "部署命令一致" if deploy_consistency["consistent"] else ("附件题不要求镜像部署命令" if attachment_case else "1.7.1 与 1.7.2 部署信息不一致"),
+            evidence=deploy_consistency,
+        )
+    )
+    step_substance = manual_step_substance(manual)
+    checks.append(
+        check(
+            "manual-step-substance",
+            "解题步骤有效性",
+            "pass" if step_substance["has_evidence"] else "fail",
+            "解题步骤包含命令、路径、URL 或代码证据" if step_substance["has_evidence"] else "解题步骤缺少可复核证据",
+            evidence=step_substance,
+        )
+    )
     step_density = manual_step_density(manual)
     checks.append(
         check(
@@ -317,6 +388,89 @@ def manual_step_density(manual: str) -> int:
     count += len(re.findall(r"`[^`]{4,}`", manual))
     count += len(re.findall(r"```", manual)) // 2
     return count
+
+
+def is_attachment_case(case: dict[str, Any]) -> bool:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    question_type = str(metadata.get("题目类型") or "")
+    return "附件" in question_type
+
+
+def manual_flag_consistency(manual: str) -> dict[str, Any]:
+    flags = re.findall(r"flag\{[^}\n]+\}", manual, flags=re.I)
+    unique = sorted({item for item in flags})
+    return {
+        "flag_count": len(flags),
+        "unique_count": len(unique),
+        "consistent": bool(flags) and len(unique) == 1,
+        "flag_sha256": sha256_text(unique[0]) if len(unique) == 1 else "",
+    }
+
+
+def manual_deploy_consistency(manual: str) -> dict[str, Any]:
+    dockerfile_section = section_between(manual, "#### 1.7.1 Dockerfile 构建启动", ["#### 1.7.2 Tar 镜像包导入启动"])
+    tar_section = section_between(manual, "#### 1.7.2 Tar 镜像包导入启动", ["### 1.8 非预期测试"])
+    if "附件题不需要" in dockerfile_section and "附件题不需要" in tar_section:
+        return {"consistent": True, "reason": "attachment"}
+    docker_runs = docker_run_facts(dockerfile_section)
+    tar_runs = docker_run_facts(tar_section)
+    if not docker_runs or not tar_runs:
+        return {"consistent": False, "dockerfile": docker_runs, "tar": tar_runs}
+    image_match = bool(set(docker_runs["images"]) & set(tar_runs["images"]))
+    port_match = not docker_runs["ports"] or not tar_runs["ports"] or bool(set(docker_runs["ports"]) & set(tar_runs["ports"]))
+    return {
+        "consistent": image_match and port_match,
+        "dockerfile": docker_runs,
+        "tar": tar_runs,
+        "image_match": image_match,
+        "port_match": port_match,
+    }
+
+
+def docker_run_facts(section: str) -> dict[str, list[str]]:
+    images = []
+    ports = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("docker run"):
+            continue
+        port_match = re.findall(r"(?:^|\s)-p\s+([^\s]+)", stripped)
+        ports.extend(port_match)
+        tokens = stripped.split()
+        if tokens:
+            images.append(tokens[-1])
+    return {"images": images, "ports": ports}
+
+
+def manual_step_substance(manual: str) -> dict[str, Any]:
+    section = section_between(manual, "#### 解题步骤", ["#### Flag", "#### 命令输出", "## "])
+    evidence_patterns = [
+        r"```",
+        r"`[^`]{4,}`",
+        r"\b(?:python|curl|nc|docker|burp|sqlmap|dirsearch|gdb|strings|socket)\b",
+        r"https?://",
+        r"/[A-Za-z0-9_.\-/]+",
+        r"flag\{[^}\n]+\}",
+    ]
+    matches = [pattern for pattern in evidence_patterns if re.search(pattern, section, flags=re.I)]
+    has_placeholder = "待人工确认" in section or "不能编造步骤" in section
+    return {
+        "has_evidence": bool(matches) and not has_placeholder,
+        "matched_patterns": matches,
+        "has_placeholder": has_placeholder,
+        "section_length": len(section.strip()),
+    }
+
+
+def section_between(manual: str, start: str, end_markers: list[str]) -> str:
+    start_index = manual.find(start)
+    if start_index == -1:
+        return ""
+    content_start = start_index + len(start)
+    end_indexes = [manual.find(marker, content_start) for marker in end_markers]
+    end_indexes = [index for index in end_indexes if index != -1]
+    content_end = min(end_indexes) if end_indexes else len(manual)
+    return manual[content_start:content_end]
 
 
 def normalize_text(value: str) -> str:

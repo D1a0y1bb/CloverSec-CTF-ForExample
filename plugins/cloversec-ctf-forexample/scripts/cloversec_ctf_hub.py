@@ -58,6 +58,42 @@ HUB_FORM_FIELDS = [
     {"hub_label": "其他附件", "payload_key": "other_attached", "source_key": "upload_files", "selector": ".upload-file-two", "required": False},
 ]
 
+HUB_AI_FILL_FIELDS = [
+    "题目标题",
+    "题目内容",
+    "Flag类型",
+    "题目Flag",
+    "题目来源",
+    "题目分类",
+    "题目分值",
+    "题目等级",
+    "题目类型",
+    "资源等级",
+    "题目备注",
+    "关键字",
+]
+HUB_HUMAN_CONFIRM_FIELDS = [
+    "题目分类ID",
+    "题目解答",
+    "上传附件",
+    "其他附件",
+    "截图",
+]
+AI_PAYLOAD_KEYS = {
+    "name",
+    "desc",
+    "flag",
+    "source",
+    "classify",
+    "keyword",
+    "flag_type",
+    "test_type",
+    "score",
+    "level",
+    "resource_level",
+}
+HUMAN_PAYLOAD_KEYS = {"answer", "classify_id", "upload_results", "screenshots"}
+
 
 CLASSIFY_TEXT_KEYS = ["题目分类", "classify_label", "classify_name", "name", "label", "title"]
 CLASSIFY_ID_KEYS = ["题目分类ID", "classify_id", "id", "value", "key"]
@@ -102,6 +138,54 @@ def normalize_hub_fields(case: dict[str, Any], hub_fields: dict[str, Any], manua
 def set_hub_field_if_empty(fields: dict[str, Any], key: str, value: Any) -> None:
     if not _string(fields.get(key)):
         fields[key] = value
+
+
+def classify_hub_fields(
+    hub_fields: dict[str, Any],
+    *,
+    classify_resolution: dict[str, Any] | None = None,
+    manual_path: str = "",
+) -> dict[str, Any]:
+    """Split Hub fields into AI-fillable values and human confirmation items."""
+    classify_resolution = classify_resolution or resolve_hub_classify(hub_fields)
+    ai_fields = {}
+    for field in HUB_AI_FILL_FIELDS:
+        value = hub_fields.get(field)
+        if field == "关键字":
+            value = hub_fields.get("添加关键字")
+        ai_fields[field] = value
+    human_fields = {
+        "题目分类ID": {
+            "status": "ready" if classify_resolution.get("id") else "needs_user_confirm",
+            "value": classify_resolution.get("id") or "",
+            "label": classify_resolution.get("label") or _string(hub_fields.get("题目分类")),
+            "reason": "Hub 页面需要选择真实分类 ID，不能只写中文分类文本。",
+        },
+        "题目解答": {
+            "status": "needs_user_confirm",
+            "value": "",
+            "source_path": manual_path,
+            "reason": "题目解答会写入 Hub 富文本区域，提交前需要人工查看格式和图片。",
+        },
+        "上传附件": {
+            "status": "needs_user_confirm",
+            "reason": "附件上传结果来自 Hub 页面可见返回，不能由本地路径代替。",
+        },
+        "其他附件": {
+            "status": "needs_user_confirm",
+            "reason": "镜像 tar 或其他附件上传结果需要页面确认。",
+        },
+        "截图": {
+            "status": "needs_user_confirm",
+            "reason": "截图内容和上传位置需要提交前人工核对。",
+        },
+    }
+    return {
+        "ai_fill_fields": ai_fields,
+        "human_confirm_fields": human_fields,
+        "ai_field_names": HUB_AI_FILL_FIELDS,
+        "human_confirm_field_names": HUB_HUMAN_CONFIRM_FIELDS,
+    }
 
 
 def manual_section_excerpt(markdown: str, headings: list[str], *, max_chars: int = 500) -> str:
@@ -149,8 +233,6 @@ def create_submission_package(
         directory.mkdir(parents=True, exist_ok=True)
 
     (fields_dir / "hub_fields.json").write_text(json.dumps(hub_fields, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (fields_dir / "hub_fields_preview.json").write_text(json.dumps(hub_fields, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (manual_dir / "manual_filled_draft.md").write_text(manual_markdown, encoding="utf-8")
     (manual_dir / "题目解题手册.md").write_text(manual_markdown, encoding="utf-8")
 
     upload_files: list[dict[str, Any]] = []
@@ -188,6 +270,7 @@ def create_submission_package(
     manifest = {
         "case_id": case.get("case_id", ""),
         "hub_fields": hub_fields,
+        "field_classification": classify_hub_fields(hub_fields, manual_path=(manual_dir / "题目解题手册.md").as_posix()),
         "manual_markdown": manual_markdown,
         "upload_files": upload_files,
         "upload_results": [],
@@ -231,12 +314,10 @@ def create_hub_draft(
     normalized_fields = manifest.get("hub_fields", {}) if isinstance(manifest.get("hub_fields"), dict) else hub_fields
     form_payload = create_hub_form_payload(normalized_fields, manifest=manifest, classify_options=classify_options)
     validation = validate_hub_form_payload(form_payload, manifest=manifest)
-    browser_plan = create_browser_assist_plan(manifest, classify_options=classify_options)
-    chrome_plan = create_chrome_assist_plan(manifest, classify_options=classify_options)
-    diff = create_hub_diff(case, hub_fields, form_payload, validation)
+    fill_plan = create_chrome_assist_plan(manifest, classify_options=classify_options)
     draft = {
         "schema_version": "cloversec.ctf.hub_draft.v1",
-        "version": "0.8.1",
+        "version": "0.9.9-beta",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -255,18 +336,14 @@ def create_hub_draft(
         "validation": validation,
         "upload_manifest_path": (root / "hub_upload_manifest.json").as_posix(),
         "manual_path": (root / "manual" / "题目解题手册.md").as_posix(),
-        "browser_plan_path": (root / "hub_browser_plan.json").as_posix(),
-        "chrome_plan_path": (root / "hub_chrome_plan.json").as_posix(),
-        "diff_report_path": (root / "hub_diff_report.md").as_posix(),
+        "fill_plan_path": (root / "hub_fill_plan.json").as_posix(),
         "confirmation_path": (root / "Hub提交前确认.md").as_posix(),
-        "security_boundaries": browser_plan.get("security_boundaries", []),
+        "security_boundaries": fill_plan.get("security_boundaries", []),
     }
     write_json(root / "hub_draft.json", draft)
     write_json(root / "hub_upload_manifest.json", manifest)
-    write_json(root / "hub_browser_plan.json", browser_plan)
-    write_json(root / "hub_chrome_plan.json", chrome_plan)
+    write_json(root / "hub_fill_plan.json", fill_plan)
     write_text(root / "hub_screenshot_checklist.md", render_screenshot_checklist(manifest))
-    write_text(root / "hub_diff_report.md", render_hub_diff(diff))
     write_text(root / "Hub提交前确认.md", render_hub_confirmation(case, normalized_fields, form_payload, validation, manifest))
     return draft
 
@@ -281,21 +358,24 @@ def create_hub_review_state(
     reviewer: str = "",
     review_comment: str = "",
     visible_page: dict[str, Any] | None = None,
+    hub_id_confirmed: bool = False,
 ) -> dict[str, Any]:
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
     visible_page = visible_page or {}
-    ids = split_hub_ids(hub_id=hub_id, visible_page=visible_page)
-    final_hub_id = ids["hub_challenge_id"]
-    hub_record_id = ids["hub_record_id"]
+    gate = hub_id_gate(hub_id=hub_id, visible_page=visible_page, user_confirmed=hub_id_confirmed)
+    final_hub_id = gate["hub_id"]
+    hub_record_id = gate["hub_record_id"]
     status_notes = []
     if not final_hub_id and review_status in {"approved", "passed", "通过"}:
         status_notes.append("审核状态显示通过，但缺少 Hub 编号，需要人工补充可见编号。")
     if final_hub_id:
         status_notes.append("已获得 Hub 编号，可以进入镜像命名和 retag 计划。")
+    elif gate.get("candidate_hub_id"):
+        status_notes.append("已发现疑似 Hub 编号，但还没有用户确认，不能用于 retag 或 xlsx。")
     state = {
         "schema_version": "cloversec.ctf.hub_review_state.v1",
-        "version": "0.8.1",
+        "version": "0.9.9-beta",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -311,9 +391,10 @@ def create_hub_review_state(
             "title": str(visible_page.get("title") or ""),
             "captured_at": str(visible_page.get("captured_at") or ""),
         },
-        "retag_required": bool(final_hub_id),
+        "hub_id_gate": gate,
+        "retag_required": bool(gate["can_backfill_tag"]),
         "retag_task": {
-            "status": "ready" if final_hub_id else "needs_hub_id",
+            "status": "ready" if gate["can_backfill_tag"] else gate["status"],
             "hub_id": final_hub_id,
             "HUB编号": final_hub_id,
             "required_outputs": ["image_naming_plan.json", "retag_inputs.json", "tar_name", "image_tag", "xlsx_fields"],
@@ -354,7 +435,7 @@ def create_hub_session_state(
     resolved_hub_id = ids["hub_challenge_id"]
     state = {
         "schema_version": "cloversec.ctf.hub_session_state.v1",
-        "version": "0.8.1",
+        "version": "0.9.9-beta",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or draft.get("case_id") or manifest.get("case_id") or ""),
         "case_title": case_title(case) or str(draft.get("case_title") or ""),
@@ -692,9 +773,21 @@ def validate_hub_form_payload(payload: dict[str, Any], *, manifest: dict[str, An
         blockers.append("upload_results")
     if missing_screenshots:
         blockers.append("screenshots")
+    ai_missing = [key for key in missing if key in AI_PAYLOAD_KEYS]
+    human_blockers = [key for key in blockers if key in HUMAN_PAYLOAD_KEYS or key not in AI_PAYLOAD_KEYS]
+    ai_ready = not ai_missing
+    if not blockers:
+        status = "ready"
+    elif ai_ready:
+        status = "ai_ready_pending_human"
+    else:
+        status = "needs_input"
     return {
-        "status": "ready" if not blockers else "needs_input",
+        "status": status,
+        "ai_ready": ai_ready,
         "missing": missing,
+        "ai_missing": ai_missing,
+        "human_blockers": human_blockers,
         "blockers": blockers,
         "classify_resolution": classify_resolution,
         "pending_uploads": pending_uploads,
@@ -808,6 +901,31 @@ def split_hub_ids(*, hub_id: str = "", visible_page: dict[str, Any] | None = Non
     record_candidates = [visible_record, explicit, visible_formal]
     record = next((item for item in record_candidates if item and item != formal and not is_formal_hub_id(item)), "")
     return {"hub_challenge_id": formal, "hub_record_id": record}
+
+
+def hub_id_gate(*, hub_id: str = "", visible_page: dict[str, Any] | None = None, user_confirmed: bool = False) -> dict[str, Any]:
+    ids = split_hub_ids(hub_id=hub_id, visible_page=visible_page)
+    formal = ids["hub_challenge_id"]
+    record = ids["hub_record_id"]
+    if not formal:
+        status = "needs_hub_id"
+        reason = "没有发现正式 Hub 编号，不能用于镜像 tag 或 xlsx 回填。"
+    elif not user_confirmed:
+        status = "needs_user_confirm"
+        reason = "已发现疑似正式 Hub 编号，但需要用户确认这是审核通过后的题目编号。"
+    else:
+        status = "ready_to_backfill"
+        reason = "正式 Hub 编号已由用户确认，可以用于 retag 和 xlsx。"
+    return {
+        "status": status,
+        "hub_id": formal if status == "ready_to_backfill" else "",
+        "candidate_hub_id": formal,
+        "hub_record_id": record,
+        "user_confirmed": bool(user_confirmed),
+        "can_backfill_tag": status == "ready_to_backfill",
+        "can_backfill_xlsx": status == "ready_to_backfill",
+        "reason": reason,
+    }
 
 
 def is_formal_hub_id(value: str) -> bool:
@@ -951,7 +1069,7 @@ def create_hub_diff(
         )
     return {
         "schema_version": "cloversec.ctf.hub_diff.v1",
-        "version": "0.8.1",
+        "version": "0.9.9-beta",
         "case_id": str(case.get("case_id") or ""),
         "comparisons": comparisons,
         "validation": validation,
@@ -1010,6 +1128,7 @@ def render_screenshot_checklist(manifest: dict[str, Any]) -> str:
 
 
 def render_hub_review_state(state: dict[str, Any]) -> str:
+    gate = state.get("hub_id_gate", {}) if isinstance(state.get("hub_id_gate"), dict) else {}
     lines = [
         "# Hub 审核状态",
         "",
@@ -1017,7 +1136,9 @@ def render_hub_review_state(state: dict[str, Any]) -> str:
         f"- 提交状态：{state.get('submission_status', '')}",
         f"- 审核状态：{state.get('review_status', '')}",
         f"- HUB编号：{state.get('HUB编号') or state.get('hub_id', '')}",
+        f"- 候选 HUB 编号：{gate.get('candidate_hub_id', '')}",
         f"- 页面记录 ID：{state.get('hub_record_id', '')}",
+        f"- 编号确认状态：{gate.get('status', '')}",
         f"- 需要 retag：{'是' if state.get('retag_required') else '否'}",
         "",
         "## 退回/审核意见",
@@ -1031,7 +1152,7 @@ def render_hub_review_state(state: dict[str, Any]) -> str:
     if retag_task.get("status") == "ready":
         lines.append("- 使用 Hub 编号生成镜像命名计划和 retag 输入。")
     else:
-        lines.append("- 等待人工提供 Hub 编号或可见页面编号。")
+        lines.append(f"- {gate.get('reason') or '等待人工提供并确认正式 Hub 编号。'}")
     if state.get("notes"):
         lines.extend(["", "## 说明", ""])
         lines.extend(f"- {item}" for item in state["notes"])
@@ -1216,6 +1337,7 @@ def main(argv: list[str] | None = None) -> int:
     review_state_parser.add_argument("--reviewer", default="")
     review_state_parser.add_argument("--review-comment", default="")
     review_state_parser.add_argument("--visible-page")
+    review_state_parser.add_argument("--hub-id-confirmed", action="store_true")
 
     session_parser = subparsers.add_parser("session-state", help="write Hub browser/Chrome assisted filling session state")
     session_parser.add_argument("--output-dir", required=True)
@@ -1283,6 +1405,7 @@ def main(argv: list[str] | None = None) -> int:
             reviewer=args.reviewer,
             review_comment=args.review_comment,
             visible_page=visible_page,
+            hub_id_confirmed=args.hub_id_confirmed,
         )
         print(f"wrote {Path(args.output_dir) / 'hub_review_state.json'}")
         return 0

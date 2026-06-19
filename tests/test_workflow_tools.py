@@ -118,14 +118,31 @@ class WorkflowToolTests(unittest.TestCase):
                 "pending_user": 1,
                 "failed": 1,
                 "output": "/tmp/demo",
+                "recommended_next_stage": "archive",
+                "recent_timing": {"stage": "quality", "duration_ms": 90500},
             }
         )
 
         self.assertIn("## 批次", text)
         self.assertIn("## 进度", text)
         self.assertIn("## 下一步", text)
+        self.assertIn("推荐处理阶段：生成题目归档", text)
+        self.assertIn("最近阶段：质量检查", text)
+        self.assertIn("最近耗时：1.5 分钟", text)
         self.assertIn("失败：1 题", text)
         self.assertIn("缺材料的题目需要继续搜索", text)
+
+    def test_stage_timing_is_recorded_for_engine_events(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            event = {"stage": "quality", "status": "completed", "finished_at": "2026-06-20T00:00:00Z", "duration_ms": 30000}
+
+            workflow.append_stage_timing(root, event)
+            latest = workflow.latest_stage_timing(root)
+
+            self.assertEqual(latest["stage"], "quality")
+            self.assertEqual(latest["duration_text"], "30.0 秒")
+            self.assertTrue((root / "cache" / "workflow_timing.jsonl").exists())
 
     def test_authorize_batch_rejects_hub_final_submit(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -252,7 +269,7 @@ class WorkflowToolTests(unittest.TestCase):
             root = Path(tmp)
             case = {
                 "case_id": "case-1",
-                "metadata": {"年份": "2026", "赛事来源": "DemoCTF", "名称": "baby sql", "分类": "Web", "材料状态": "缺附件或源码"},
+                "metadata": {"年份": "2026", "赛事来源": "DemoCTF", "名称": "baby sql", "分类": "Web", "材料状态": "公开 WP 线索"},
                 "research": {
                     "material_level": "writeup_candidate",
                     "reproducibility_status": "writeup_only",
@@ -271,12 +288,15 @@ class WorkflowToolTests(unittest.TestCase):
             rows = [json.loads(line) for line in Path(payload["jsonl"]).read_text(encoding="utf-8").splitlines()]
             xlsx_exists = Path(payload["xlsx"]).exists()
             schema_exists = Path(payload["schema"]).exists()
+            schema = json.loads(Path(payload["schema"]).read_text(encoding="utf-8"))
 
         self.assertTrue(xlsx_exists)
         self.assertTrue(schema_exists)
-        self.assertEqual(rows[0]["题目"], "baby sql")
-        self.assertEqual(rows[0]["可处理性"], "不可交付：缺源码/附件")
-        self.assertEqual(rows[0]["WP URL"], "https://example.com/wp")
+        self.assertEqual(schema["title"], "赛事题目信息收集表")
+        self.assertEqual([item["name"] for item in schema["fields"]], handoff.COLLECTION_FIELDS)
+        self.assertEqual(rows[0]["case_id"], "case-1")
+        self.assertEqual(rows[0]["xlsx_fields"]["材料状态"], "公开 WP 线索")
+        self.assertEqual(rows[0]["asset_collection"]["writeup_candidates"][0]["url"], "https://example.com/wp")
 
     def test_network_requests_are_centralized_in_http_helper(self):
         scripts = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"

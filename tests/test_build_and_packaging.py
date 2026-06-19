@@ -98,7 +98,7 @@ class AttachmentPackagingTests(unittest.TestCase):
         self.assertEqual(manifest["summary"]["total_packages"], 1)
         self.assertEqual(manifest["summary"]["ok_packages"], 1)
         self.assertEqual(manifest["xlsx_fields"]["题目类型"], "附件型")
-        self.assertEqual(manifest["xlsx_fields"]["材料状态"], "已收集")
+        self.assertEqual(manifest["xlsx_fields"]["材料状态"], "只存在附件/源码线索")
 
 
 if __name__ == "__main__":

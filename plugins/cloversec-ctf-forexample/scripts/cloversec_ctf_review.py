@@ -499,7 +499,7 @@ def _path_exists(raw_path: Any, *, archive_dir: str | Path | None) -> bool:
 
 def _manual_paths(writeup: dict[str, Any]) -> list[str]:
     paths = []
-    for key in ["manual_path", "manual_filled_draft", "manual_template"]:
+    for key in ["formal_manual_path", "manual_path"]:
         if _text(writeup.get(key)):
             paths.append(str(writeup[key]))
     return paths

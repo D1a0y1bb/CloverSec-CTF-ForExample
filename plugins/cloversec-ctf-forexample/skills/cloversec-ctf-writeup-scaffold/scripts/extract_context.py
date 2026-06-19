@@ -20,8 +20,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 DATA_DIR = SKILL_DIR / "data"
 GENERATED_OUTPUTS = {
-    "manual_template.md",
-    "manual_filled_draft.md",
+    "题目解题手册.md",
     "writeup_context.json",
     "writeup_proposal.md",
     "hub_fields.json",

@@ -16,7 +16,7 @@ import cloversec_ctf_archive as archive
 import cloversec_ctf_data as data
 
 
-VERSION = "0.8.1"
+VERSION = "0.9.9-beta"
 CONFIRMATION_SCHEMA = "cloversec.ctf.confirmation_request.v1"
 LOCK_SCHEMA = "cloversec.ctf.manifest_lock.v1"
 PREVIEW_SCHEMA = "cloversec.ctf.archive_preview.v1"
@@ -25,13 +25,12 @@ FAILURE_SCHEMA = "cloversec.ctf.failure_case.v1"
 NOTIFICATION_SCHEMA = "cloversec.ctf.stage_notification.v1"
 WARNING_SCHEMA = "cloversec.ctf.codex_warning_report.v1"
 
-CONFIRMATION_ACTIONS = {"download", "extract", "dockerizer", "docker", "hub", "retag", "archive", "final"}
+CONFIRMATION_ACTIONS = {"hub", "retag"}
 ARCHIVE_ROLES = {
-    "source": "源码",
-    "attachment": "附件",
-    "image_tar": "镜像",
-    "writeup": "手册",
-    "screenshot": "截图",
+    "source": "题目源码",
+    "attachment": "题目源码",
+    "image_tar": "题目镜像",
+    "writeup": "题目手册",
 }
 BATCH_REPORT_FIELDS = [
     "赛事来源",
@@ -110,6 +109,15 @@ def create_confirmation_request(
             "note": "",
         },
     }
+    if action == "dockerizer":
+        project_dir = ""
+        docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
+        if docker_artifacts:
+            project_dir = str(docker_artifacts.get("project_dir") or docker_artifacts.get("build_context") or "")
+        payload["preflight"] = ["run_auto_render_then_static_validate"]
+        payload["recommended_command"] = (
+            f"python3 scripts/workflow.py auto-render --project-dir {project_dir or '<题目目录>'}"
+        )
     write_json(output / "confirmation_request.json", payload)
     write_text(output / "confirmation_request.md", render_confirmation_request(payload))
     return payload
@@ -192,7 +200,7 @@ def create_archive_preview(
         if item.get("invalid_name")
     ]
     missing = [item for item in files if not item.get("exists")]
-    would_create = [{"path": (archive_dir / subdir).as_posix(), "type": "dir"} for subdir in archive.ARCHIVE_SUBDIRS]
+    would_create = [{"path": (archive_dir / subdir).as_posix(), "type": "dir"} for subdir in archive.expected_archive_subdirs(case)]
     would_create.extend({"path": item["target_path"], "type": "file", "role": item["role"]} for item in files)
     payload = {
         "schema_version": PREVIEW_SCHEMA,
@@ -283,6 +291,7 @@ def create_stage_notification(
     pending_user: list[str] | None = None,
     next_inputs: list[str] | None = None,
     artifacts: list[str] | None = None,
+    recommended_next: str = "",
 ) -> dict[str, Any]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -296,6 +305,7 @@ def create_stage_notification(
         "pending_user": pending_user or [],
         "next_inputs": next_inputs or [],
         "artifacts": artifacts or [],
+        "recommended_next": recommended_next,
         "summary": {
             "completed": len(completed or []),
             "failed": len(failed or []),
@@ -304,7 +314,7 @@ def create_stage_notification(
         },
     }
     write_json(output / "stage_notification.json", payload)
-    write_text(output / "stage_notification.md", render_stage_notification(payload))
+    write_text(output / "stage_notification.md", render_step_report(payload))
     return payload
 
 
@@ -391,7 +401,7 @@ def expected_archive_records(case: dict[str, Any], archive_dir: Path) -> list[di
     for item in iter_case_paths(case):
         source = Path(item["path"])
         role = item["role"]
-        subdir = ARCHIVE_ROLES.get(role, "manifests")
+        subdir = archive.role_dir(role, archive.is_attachment_archive(case)) if role in {"source", "attachment", "image_tar", "writeup"} else ARCHIVE_ROLES.get(role, "题目源码")
         target_name = safe_name(str(item.get("name") or source.name))
         target = archive_dir / subdir / target_name
         invalid_name = bool(re.search(r"[\\/]|^\.+$", target_name)) or not target_name
@@ -424,21 +434,10 @@ def iter_case_paths(case: dict[str, Any]) -> list[dict[str, str]]:
         path = str(docker_artifacts["tar_path"])
         items.append({"role": "image_tar", "path": path, "name": Path(path).name})
     writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
-    for key in ["manual_path", "manual_filled_draft", "manual_template"]:
+    for key in ["formal_manual_path", "manual_path"]:
         if writeup.get(key):
             path = str(writeup[key])
             items.append({"role": "writeup", "path": path, "name": Path(path).name})
-    archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
-    screenshots = archive_info.get("screenshots") if isinstance(archive_info.get("screenshots"), list) else []
-    for item in screenshots:
-        if isinstance(item, dict):
-            path = str(item.get("path") or item.get("local_path") or "")
-            name = str(item.get("name") or Path(path).name)
-        else:
-            path = str(item)
-            name = Path(path).name
-        if path:
-            items.append({"role": "screenshot", "path": path, "name": name})
     return items
 
 
@@ -502,7 +501,7 @@ def pending_confirmations(case: dict[str, Any], *, workflow_state: dict[str, Any
     pending = []
     gate = dockerizer_conversion_gate(case)
     if gate["required"] and not gate["satisfied"]:
-        pending.append("Dockerizer 改造待确认")
+        pending.append("Dockerizer 自动改造未完成")
     if str(case.get("confidence") or "").lower() == "low":
         pending.append("低置信度题目信息")
     for evidence in case.get("evidence", []) if isinstance(case.get("evidence"), list) else []:
@@ -593,7 +592,7 @@ def extract_failures_from_case(case: dict[str, Any]) -> list[dict[str, Any]]:
                     "category": "platform_conversion_required",
                     "message": gate["message"],
                     "retryable": True,
-                    "suggested_action": "先用 cloversec-ctf-build-dockerizer 生成平台改造方案，把风险和确认项交给用户确认；确认后再生成 Docker 交付件并重新验证。",
+                    "suggested_action": "运行 cloversec-ctf-build-dockerizer 的 workflow.py auto-render 生成平台交付件并做静态校验；高风险输入交给用户判断。",
                 }
             )
         )
@@ -607,12 +606,12 @@ def dockerizer_conversion_gate(case: dict[str, Any]) -> dict[str, Any]:
     return {
         "required": required,
         "satisfied": satisfied if required else True,
-        "status": "passed" if (not required or satisfied) else "needs_user_confirmation",
+        "status": "passed" if (not required or satisfied) else "needs_auto_dockerizer",
         "action": "dockerizer",
         "skill": "cloversec-ctf-build-dockerizer",
         "reasons": reasons,
         "evidence": evidence,
-        "message": "容器题或源码题必须先经 cloversec-ctf-build-dockerizer 改造成 CloverSec 平台契约，并由用户确认方案" if required and not satisfied else "",
+        "message": "容器题或源码题必须先经 cloversec-ctf-build-dockerizer 自动生成平台交付件并完成静态校验" if required and not satisfied else "",
     }
 
 
@@ -651,7 +650,7 @@ def dockerizer_conversion_satisfied(case: dict[str, Any]) -> tuple[bool, list[st
     evidence: list[str] = []
     dockerizer = case.get("dockerizer") if isinstance(case.get("dockerizer"), dict) else {}
     status = str(dockerizer.get("status") or "").lower()
-    if status in {"accepted", "rendered", "validated", "passed", "complete", "completed"}:
+    if status in {"accepted", "auto_rendered", "auto_render_validated", "rendered", "validated", "passed", "complete", "completed"}:
         evidence.append(f"dockerizer.status={status}")
         return True, evidence
     if dockerizer.get("user_confirmed") is True or dockerizer.get("conversion_confirmed") is True:
@@ -666,6 +665,9 @@ def dockerizer_conversion_satisfied(case: dict[str, Any]) -> tuple[bool, list[st
     docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
     if docker_artifacts.get("platform_contract_verified") is True:
         evidence.append("docker_artifacts.platform_contract_verified=true")
+        return True, evidence
+    if docker_artifacts.get("validate_summary_ok") is True:
+        evidence.append("docker_artifacts.validate_summary_ok=true")
         return True, evidence
     if str(docker_artifacts.get("contract") or "").lower() in {"cloversec", "cloversec_verified", "platform_verified"}:
         evidence.append(f"docker_artifacts.contract={docker_artifacts.get('contract')}")
@@ -757,6 +759,11 @@ def render_confirmation_request(payload: dict[str, Any]) -> str:
     lines.extend(f"- {item}" for item in payload.get("inputs", []))
     lines.extend(["", "## 计划输出", ""])
     lines.extend(f"- {item}" for item in payload.get("planned_outputs", []))
+    if payload.get("recommended_command"):
+        lines.extend(["", "## 推荐命令", "", f"```bash\n{payload.get('recommended_command')}\n```"])
+    if payload.get("preflight"):
+        lines.extend(["", "## 预检", ""])
+        lines.extend(f"- {item}" for item in payload.get("preflight", []))
     lines.extend(["", "## 风险", ""])
     lines.extend(f"- {item}" for item in payload.get("risks", []))
     lines.extend(["", "## 确认项", ""])
@@ -846,7 +853,7 @@ def render_batch_status_report(payload: dict[str, Any]) -> str:
 def _manual_paths(case: dict[str, Any]) -> list[str]:
     writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
     paths = []
-    for key in ["manual_path", "manual_filled_draft", "manual_template"]:
+    for key in ["formal_manual_path", "manual_path"]:
         value = str(writeup.get(key) or "").strip()
         if value:
             paths.append(value)
@@ -879,22 +886,31 @@ def dedupe_strings(values: list[str]) -> list[str]:
 
 
 def render_stage_notification(payload: dict[str, Any]) -> str:
+    return render_step_report(payload)
+
+
+def render_step_report(payload: dict[str, Any]) -> str:
     lines = [
-        "# 阶段通知",
+        "# 本步处理结果",
         "",
         f"- 阶段：{payload.get('stage', '')}",
         f"- 时间：{payload.get('created_at', '')}",
         "",
-        "## 已完成",
+        "## 本步完成",
         "",
     ]
     append_list_or_none(lines, payload.get("completed", []))
-    lines.extend(["", "## 失败", ""])
-    append_list_or_none(lines, payload.get("failed", []))
-    lines.extend(["", "## 待人工处理", ""])
-    append_list_or_none(lines, payload.get("pending_user", []))
-    lines.extend(["", "## 下一阶段输入", ""])
-    append_list_or_none(lines, payload.get("next_inputs", []))
+    recommended = str(payload.get("recommended_next") or "").strip()
+    if not recommended:
+        next_inputs = payload.get("next_inputs", [])
+        recommended = f"继续处理：{', '.join(str(item) for item in next_inputs)}" if next_inputs else "查看本步产物，确认后进入下一步。"
+    lines.extend(["", "## 推荐下一步", "", f"- {recommended}"])
+    if payload.get("pending_user"):
+        lines.extend(["", "## 需要你定的", ""])
+        append_list_or_none(lines, payload.get("pending_user", []))
+    if payload.get("failed"):
+        lines.extend(["", "## 失败", ""])
+        append_list_or_none(lines, payload.get("failed", []))
     lines.extend(["", "## 产物", ""])
     append_list_or_none(lines, payload.get("artifacts", []))
     return "\n".join(lines) + "\n"
@@ -949,9 +965,9 @@ def infer_action_outputs(action: str, case: dict[str, Any]) -> list[str]:
     mapping = {
         "download": ["downloads_sandbox/", "download_preview.json", "download_safety_report.md"],
         "extract": ["extraction preview", "resource_classification.json"],
-        "dockerizer": ["CONFIG PROPOSAL", "Dockerfile", "start.sh", "changeflag.sh", "flag", "environment.json", "docker_artifacts.json", "xlsx_fields.json"],
+        "dockerizer": ["auto-render 输出目录", "validate-summary.json", "Dockerfile", "start.sh", "changeflag.sh", "flag", "environment.json", "docker_artifacts.json", "xlsx_fields.json"],
         "docker": ["docker_evidence.json", "docker_logs.txt"],
-        "hub": ["hub_draft.json", "hub_upload_manifest.json", "hub_diff_report.md"],
+        "hub": ["hub_draft.json", "hub_upload_manifest.json", "hub_fill_plan.json", "Hub提交前确认.md"],
         "retag": ["retag_plan.json", "image tar"],
         "archive": ["archive_manifest.json", "manifest.lock.json"],
         "final": ["最终归档表.xlsx", "语雀粘贴表.md", "最终报告.md"],
@@ -963,7 +979,7 @@ def default_risks(action: str) -> list[str]:
     return {
         "download": ["外部 URL 可能失效、过大、重定向到登录页或不是题目附件"],
         "extract": ["压缩包可能包含路径穿越、过多文件或非题目资源"],
-        "dockerizer": ["上游 Dockerfile/compose 只能作为迁移输入；未确认 CONFIG PROPOSAL 前不得生成最终平台交付件", "需要 privileged、eBPF/tc、KVM、jail 或多服务时必须把平台差异列给用户确认"],
+        "dockerizer": ["上游 Dockerfile/compose 只能作为迁移输入，不能直接作为平台最终交付物", "需要 privileged、eBPF/tc、KVM、jail 或多服务时必须把平台差异列给用户确认"],
         "docker": ["镜像或容器可能执行未知服务；只在明确授权后执行"],
         "hub": ["未登录时填写会丢失表单内容；最终提交必须人工判断"],
         "retag": ["HUB 编号错误会导致镜像 tag 和归档字段错误"],
@@ -976,7 +992,7 @@ def default_checks(action: str) -> list[str]:
     return {
         "download": ["URL 属于预期来源", "文件大小和协议符合限制", "失败原因已记录"],
         "extract": ["预览无路径穿越", "文件数量和体积可接受", "资源类型已识别"],
-        "dockerizer": ["已列出源码、上游 Dockerfile/compose、端口、启动命令和高风险依赖", "已明确生成 CloverSec 平台契约文件，不直接沿用上游 Dockerfile", "用户已确认 CONFIG PROPOSAL 后再写入 Dockerfile/start.sh/changeflag.sh/flag"],
+        "dockerizer": ["已列出源码、上游 Dockerfile/compose、端口、启动命令和高风险依赖", "已明确生成 CloverSec 平台契约文件，不直接沿用上游 Dockerfile", "已执行 workflow.py auto-render 并完成静态校验"],
         "docker": ["只执行受信样例或用户授权题目", "目标平台为 linux/amd64", "日志和端口探测会保存"],
         "hub": ["用户已在浏览器登录 Hub", "分类 ID 已确认", "停止在最终提交前"],
         "retag": ["HUB 编号来自审核结果", "源镜像存在", "输出 tar 路径正确"],
@@ -988,7 +1004,7 @@ def default_checks(action: str) -> list[str]:
 def allowed_actions(action: str) -> list[str]:
     base = ["read_local_files", "write_json_reports", "write_markdown_reports"]
     if action == "dockerizer":
-        base.extend(["write_platform_delivery_after_user_confirmation", "run_static_validate"])
+        base.extend(["run_auto_render_then_static_validate", "write_platform_delivery_files"])
     if action in {"archive", "final", "hub"}:
         base.append("copy_declared_files")
     if action == "docker":
@@ -1001,7 +1017,7 @@ def forbidden_actions(action: str) -> list[str]:
     if action == "hub":
         items.extend(["read_browser_secrets", "click_final_submit", "fill_form_before_login"])
     if action == "dockerizer":
-        items.extend(["treat_upstream_dockerfile_as_final_delivery", "write_delivery_files_before_config_proposal_acceptance"])
+        items.extend(["treat_upstream_dockerfile_as_final_delivery", "archive_before_dockerizer_static_validate"])
     if action == "docker":
         items.append("run_unknown_image_without_user_approval")
     return items
@@ -1133,6 +1149,7 @@ def main(argv: list[str] | None = None) -> int:
     notify.add_argument("--pending-user", action="append", default=[])
     notify.add_argument("--next-input", action="append", default=[])
     notify.add_argument("--artifact", action="append", default=[])
+    notify.add_argument("--recommended-next", default="")
 
     warnings = subparsers.add_parser("warning-report", help="classify codex exec warnings")
     warnings.add_argument("--log", required=True)
@@ -1183,6 +1200,7 @@ def main(argv: list[str] | None = None) -> int:
             pending_user=args.pending_user,
             next_inputs=args.next_input,
             artifacts=args.artifact,
+            recommended_next=args.recommended_next,
         )
         print(f"wrote {Path(args.output_dir) / 'stage_notification.json'}")
         return 0

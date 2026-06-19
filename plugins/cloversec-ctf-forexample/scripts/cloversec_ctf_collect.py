@@ -42,6 +42,35 @@ SOURCE_TYPES = {
 }
 EVIDENCE_STATUS = {"found", "missing", "inaccessible", "unverified", "previewed", "downloaded", "needs_review"}
 COLLECTION_REQUIRED_METADATA = ["名称", "分类"]
+COLLECTION_HUMAN_FIELDS = [
+    "时间年份",
+    "赛事名称",
+    "赛事类型",
+    "题目分类",
+    "题目名称",
+    "已知材料情况",
+    "Wp 地址",
+    "附件/源码地址",
+    "收集人",
+    "收集情况",
+]
+COLLECTION_HUMAN_STYLE = {
+    "font_name": "等线",
+    "font_size": 12,
+    "row_height": 18.05,
+    "column_widths": {
+        "时间年份": 26.9326923076923,
+        "赛事名称": 27.5961538461538,
+        "赛事类型": 26.9326923076923,
+        "题目分类": 24.7692307692308,
+        "题目名称": 25.6057692307692,
+        "已知材料情况": 29.7596153846154,
+        "Wp 地址": 65.6923076923077,
+        "附件/源码地址": 42.75,
+        "收集人": 19.9519230769231,
+        "收集情况": 13.0,
+    },
+}
 
 ASSET_EXTENSIONS = {
     ".zip": "attachment",
@@ -78,7 +107,7 @@ def legacy_row_to_case(row: dict[str, Any], row_number: int) -> dict[str, Any]:
     metadata["题目类型"] = _string(row.get("题目类型") or "未知")
     metadata["Flag类型"] = _string(row.get("Flag类型") or ("未知" if not flag_value else "unknown"))
     metadata["Flag"] = flag_value
-    metadata["材料状态"] = _string(row.get("材料状态") or "未开始")
+    metadata["材料状态"] = data.normalize_material_status(row.get("材料状态"))
     metadata["构建状态"] = _string(row.get("构建状态") or "未开始")
     metadata["手册状态"] = _string(row.get("手册状态") or "未开始")
     metadata["验证状态"] = _string(row.get("验证状态") or "未验证")
@@ -100,6 +129,96 @@ def legacy_row_to_case(row: dict[str, Any], row_number: int) -> dict[str, Any]:
         "evidence": _legacy_evidence(row),
         "confidence": "low",
     }
+
+
+def collection_human_row(case: dict[str, Any]) -> dict[str, str]:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    research = case.get("research") if isinstance(case.get("research"), dict) else {}
+    assets = case.get("asset_collection") if isinstance(case.get("asset_collection"), dict) else {}
+    return {
+        "时间年份": _string(metadata.get("时间年份") or metadata.get("年份") or research.get("year")),
+        "赛事名称": _string(metadata.get("赛事名称") or metadata.get("赛事来源") or metadata.get("题目来源")),
+        "赛事类型": _string(metadata.get("赛事类型")),
+        "题目分类": _string(metadata.get("分类")),
+        "题目名称": _string(metadata.get("名称") or metadata.get("题目名称") or research.get("source_title")),
+        "已知材料情况": data.normalize_material_status(
+            metadata.get("材料状态") or research.get("material_status") or assets.get("material_status")
+        ),
+        "Wp 地址": first_url_from_candidates(assets.get("writeup_candidates")) or first_evidence_url(case, want_writeup=True),
+        "附件/源码地址": first_url_from_candidates(assets.get("attachment_candidates")) or first_evidence_url(case, want_asset=True),
+        "收集人": _string(metadata.get("收集人")),
+        "收集情况": _string(metadata.get("收集情况")),
+    }
+
+
+def collection_human_rows(cases: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [collection_human_row(case) for case in cases]
+
+
+def write_collection_human_xlsx(cases: list[dict[str, Any]], path: str | Path) -> None:
+    data.write_styled_xlsx(
+        collection_human_rows(cases),
+        path,
+        fields=COLLECTION_HUMAN_FIELDS,
+        sheet_name="Sheet1",
+        style=COLLECTION_HUMAN_STYLE,
+    )
+
+
+def write_collection_machine_jsonl(cases: list[dict[str, Any]], path: str | Path) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for case in cases:
+        metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+        row = {field: _string(metadata.get(field, "")) for field in data.XLSX_FIELDS}
+        lines.append(
+            json.dumps(
+                {
+                    "case_id": _string(case.get("case_id")),
+                    "xlsx_fields": row,
+                    "research": case.get("research") if isinstance(case.get("research"), dict) else {},
+                    "asset_collection": case.get("asset_collection") if isinstance(case.get("asset_collection"), dict) else {},
+                    "evidence": case.get("evidence") if isinstance(case.get("evidence"), list) else [],
+                    "confidence": _string(case.get("confidence")),
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+    output.write_text("".join(lines), encoding="utf-8")
+
+
+def first_url_from_candidates(value: Any) -> str:
+    if isinstance(value, list):
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            for key in ["source_url", "url", "href"]:
+                text = _string(item.get(key)).strip()
+                if text:
+                    return text
+    return ""
+
+
+def first_evidence_url(case: dict[str, Any], *, want_writeup: bool = False, want_asset: bool = False) -> str:
+    evidence = case.get("evidence") if isinstance(case.get("evidence"), list) else []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        source_url = _string(item.get("source_url") or item.get("url")).strip()
+        if not source_url:
+            continue
+        source_type = _string(item.get("source_type")).lower()
+        text = " ".join(_string(item.get(key)) for key in ["title", "summary", "snippet", "source_url", "url"]).lower()
+        if want_writeup and ("writeup" in source_type or "wp" in source_type or any(token in text for token in ["writeup", "wp", "题解"])):
+            return source_url
+        if want_asset and (
+            any(token in source_type for token in ["github", "direct_url", "release", "asset", "attachment", "source"])
+            or any(token in text for token in ["attachment", "source", "源码", "附件", "release", "download"])
+        ):
+            return source_url
+    return ""
 
 
 def validate_collection_case(case: dict[str, Any]) -> list[str]:

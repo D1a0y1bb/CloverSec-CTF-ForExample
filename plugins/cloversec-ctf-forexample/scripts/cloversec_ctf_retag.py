@@ -18,6 +18,40 @@ from typing import Any
 
 TARGET_PLATFORM = "linux/amd64"
 AGENT_DECISION_BOOL_FIELDS = ["can_execute", "requires_user_confirmation", "execute_docker"]
+FORMAL_HUB_ID_RE = re.compile(r"^CTF-\d{6,}$", re.I)
+
+
+def hub_id_gate(hub_id: str, *, user_confirmed: bool = False) -> dict[str, Any]:
+    candidate = str(hub_id or "").strip()
+    if not candidate or not FORMAL_HUB_ID_RE.match(candidate):
+        return {
+            "status": "needs_hub_id",
+            "hub_id": "",
+            "candidate_hub_id": candidate,
+            "user_confirmed": bool(user_confirmed),
+            "can_backfill_tag": False,
+            "can_backfill_xlsx": False,
+            "reason": "缺少正式 Hub 编号，不能生成镜像 tag 或 xlsx 回填字段。",
+        }
+    if not user_confirmed:
+        return {
+            "status": "needs_user_confirm",
+            "hub_id": "",
+            "candidate_hub_id": candidate,
+            "user_confirmed": False,
+            "can_backfill_tag": False,
+            "can_backfill_xlsx": False,
+            "reason": "已提供疑似正式 Hub 编号，但需要用户确认后才能 retag。",
+        }
+    return {
+        "status": "ready_to_backfill",
+        "hub_id": candidate,
+        "candidate_hub_id": candidate,
+        "user_confirmed": True,
+        "can_backfill_tag": True,
+        "can_backfill_xlsx": True,
+        "reason": "Hub 编号已确认，可以用于 retag 和 xlsx。",
+    }
 
 
 def create_image_naming_plan(
@@ -27,6 +61,7 @@ def create_image_naming_plan(
     *,
     registry_prefix: str = "",
     tag_template: str = "{hub_id}",
+    hub_id_confirmed: bool = False,
 ) -> dict[str, Any]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -36,7 +71,8 @@ def create_image_naming_plan(
     case_part = _safe_tag_part(str(case.get("case_id") or ""))
     name_part = _safe_tag_part(str(metadata.get("名称") or ""))
     category_part = _safe_tag_part(str(metadata.get("分类") or "ctf"))
-    if safe_hub_id:
+    gate = hub_id_gate(hub_id, user_confirmed=hub_id_confirmed)
+    if gate["can_backfill_tag"]:
         tag_body = tag_template.format(hub_id=safe_hub_id, case_id=case_part, name=name_part, category=category_part).strip(":/")
         image_tag = f"{registry_prefix.rstrip('/')}/{tag_body}" if registry_prefix else tag_body
         tar_name = f"{safe_hub_id}.tar"
@@ -45,15 +81,16 @@ def create_image_naming_plan(
     else:
         image_tag = ""
         tar_name = ""
-        status = "needs_hub_id"
-        issues = ["缺少 Hub 编号，只能生成待确认计划"]
+        status = gate["status"]
+        issues = [gate["reason"]]
     tar_path = (output / tar_name).as_posix() if tar_name else ""
     plan = {
         "schema_version": "cloversec.ctf.image_naming_plan.v1",
-        "version": "0.8.1",
+        "version": "0.9.9-beta",
         "case_id": str(case.get("case_id") or ""),
         "case_title": str(metadata.get("名称") or ""),
         "hub_id": hub_id,
+        "hub_id_gate": gate,
         "status": status,
         "source_image": str(docker_artifacts.get("image_name") or ""),
         "image_tag": image_tag,
@@ -62,7 +99,7 @@ def create_image_naming_plan(
         "target_platform": TARGET_PLATFORM,
         "issues": issues,
         "xlsx_fields": {
-            "HUB编号": hub_id,
+            "HUB编号": hub_id if gate["can_backfill_xlsx"] else "",
             "环境包/附件包路径": tar_path,
         },
         "retag_inputs": {
@@ -87,11 +124,13 @@ def create_retag_plan(
     *,
     registry_prefix: str = "",
     tag_template: str = "{hub_id}",
+    hub_id_confirmed: bool = False,
 ) -> dict[str, Any]:
     metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
     docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
     source_image = str(docker_artifacts.get("image_name") or "")
     safe_hub_id = _safe_tag_part(hub_id)
+    gate = hub_id_gate(hub_id, user_confirmed=hub_id_confirmed)
     tag_body = tag_template.format(
         hub_id=safe_hub_id,
         case_id=_safe_tag_part(str(case.get("case_id") or "")),
@@ -99,16 +138,21 @@ def create_retag_plan(
     ).strip(":/")
     new_image = f"{registry_prefix.rstrip('/')}/{tag_body}" if registry_prefix else tag_body
     tar_path = Path(output_dir) / f"{safe_hub_id or 'hub-image'}.tar"
+    if not gate["can_backfill_tag"]:
+        new_image = ""
+        tar_path = Path(output_dir) / "hub-image.pending.tar"
 
-    commands = {
-        "tag": f"docker tag {shlex.quote(source_image)} {shlex.quote(new_image)}",
-        "export": f"docker save {shlex.quote(new_image)} -o {shlex.quote(tar_path.as_posix())}",
-        "import": f"docker load -i {shlex.quote(tar_path.as_posix())}",
-        "inspect": f"docker image inspect {shlex.quote(new_image)}",
-    }
+    commands = {}
+    if gate["can_backfill_tag"]:
+        commands = {
+            "tag": f"docker tag {shlex.quote(source_image)} {shlex.quote(new_image)}",
+            "export": f"docker save {shlex.quote(new_image)} -o {shlex.quote(tar_path.as_posix())}",
+            "import": f"docker load -i {shlex.quote(tar_path.as_posix())}",
+            "inspect": f"docker image inspect {shlex.quote(new_image)}",
+        }
     issues = []
-    if not hub_id.strip():
-        issues.append("HUB 编号为空")
+    if not gate["can_backfill_tag"]:
+        issues.append(gate["reason"])
     if not source_image:
         issues.append("docker_artifacts.image_name 为空")
     if docker_artifacts.get("platform") and docker_artifacts.get("platform") != TARGET_PLATFORM:
@@ -118,7 +162,8 @@ def create_retag_plan(
 
     plan = {
         "case_id": str(case.get("case_id") or ""),
-        "hub_id": hub_id,
+        "hub_id": hub_id if gate["can_backfill_tag"] else "",
+        "hub_id_gate": gate,
         "source_image": source_image,
         "new_image": new_image,
         "target_platform": TARGET_PLATFORM,
@@ -126,7 +171,7 @@ def create_retag_plan(
         "commands": commands,
         "issues": issues,
         "xlsx_fields": {
-            "HUB编号": hub_id,
+            "HUB编号": hub_id if gate["can_backfill_xlsx"] else "",
             "环境包/附件包路径": tar_path.as_posix(),
         },
     }
@@ -375,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
     naming_parser.add_argument("--output-dir", required=True)
     naming_parser.add_argument("--registry-prefix", default="")
     naming_parser.add_argument("--tag-template", default="{hub_id}")
+    naming_parser.add_argument("--hub-id-confirmed", action="store_true")
 
     plan_parser = subparsers.add_parser("plan", help="create retag plan after Hub review")
     plan_parser.add_argument("--case-json", required=True)
@@ -382,6 +428,7 @@ def main(argv: list[str] | None = None) -> int:
     plan_parser.add_argument("--output-dir", required=True)
     plan_parser.add_argument("--registry-prefix", default="")
     plan_parser.add_argument("--tag-template", default="{hub_id}")
+    plan_parser.add_argument("--hub-id-confirmed", action="store_true")
     plan_parser.add_argument("--output", required=True)
     plan_parser.add_argument("--report")
     plan_parser.add_argument("--output-case")
@@ -401,6 +448,7 @@ def main(argv: list[str] | None = None) -> int:
             args.output_dir,
             registry_prefix=args.registry_prefix,
             tag_template=args.tag_template,
+            hub_id_confirmed=args.hub_id_confirmed,
         )
         print(f"wrote {Path(args.output_dir) / 'image_naming_plan.json'}")
         return 0
@@ -412,6 +460,7 @@ def main(argv: list[str] | None = None) -> int:
             args.output_dir,
             registry_prefix=args.registry_prefix,
             tag_template=args.tag_template,
+            hub_id_confirmed=args.hub_id_confirmed,
         )
         if args.execute:
             plan["execution"] = execute_retag_plan(plan, command_timeout=args.command_timeout)

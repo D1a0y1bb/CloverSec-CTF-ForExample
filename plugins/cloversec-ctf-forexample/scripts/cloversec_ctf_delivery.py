@@ -12,21 +12,12 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "0.8.1"
+VERSION = "0.9.9-beta"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
-DELIVERY_DIRS = {
-    "tables": "最终表格",
-    "yuque": "语雀归档表",
-    "archive": "题目归档包",
-    "images": "镜像包清单",
-    "quality": "质量检查报告",
-    "hub": "Hub提交材料",
-    "evidence": "过程证据",
-    "machine": "过程证据/机器数据",
-    "issues": "待处理问题",
-    "manual": "手册",
-}
+ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
+CHALLENGE_SUBDIRS = ["题目源码", "题目镜像", "题目手册", "题目附件"]
+IMAGE_SUFFIXES = {".tar", ".gz", ".tgz"}
 
 
 def utc_now() -> str:
@@ -54,71 +45,20 @@ def create_delivery_package(
     files: list[dict[str, Any]] = []
     missing: list[dict[str, str]] = []
 
-    required_keys = {
-        "final_xlsx",
-        "yuque_table",
-        "final_report_md",
-        "archive_package",
-        "formal_manual",
-        "missing_report",
-    }
-    copy_spec = [
-        ("final_xlsx", DELIVERY_DIRS["tables"], "最终归档表.xlsx"),
-        ("reviewed_xlsx", DELIVERY_DIRS["tables"], "阶段归档表-质检后.xlsx"),
-        ("after_docker_xlsx", DELIVERY_DIRS["tables"], "阶段归档表-Docker验证后.xlsx"),
-        ("yuque_table", DELIVERY_DIRS["yuque"], "语雀粘贴表.md"),
-        ("final_report_md", DELIVERY_DIRS["quality"], "最终报告.md"),
-        ("final_report_json", DELIVERY_DIRS["machine"], "最终报告.json"),
-        ("quality_summary_md", DELIVERY_DIRS["quality"], "质量检查汇总.md"),
-        ("quality_summary_json", DELIVERY_DIRS["machine"], "质量检查汇总.json"),
-        ("docker_summary_md", DELIVERY_DIRS["quality"], "Docker执行汇总.md"),
-        ("docker_summary_json", DELIVERY_DIRS["machine"], "Docker执行汇总.json"),
-        ("completion_report_md", DELIVERY_DIRS["quality"], "完成报告.md"),
-        ("completion_report_json", DELIVERY_DIRS["machine"], "完成报告.json"),
-        ("solver_summary_md", DELIVERY_DIRS["quality"], "solver验证汇总.md"),
-        ("solver_summary_json", DELIVERY_DIRS["machine"], "solver验证汇总.json"),
-        ("archive_package", DELIVERY_DIRS["archive"], "题目归档包.zip"),
-        ("manuals_zip", DELIVERY_DIRS["archive"], "手册与字段包.zip"),
-        ("formal_manual", DELIVERY_DIRS["manual"], "题目解题手册.md"),
-        ("missing_report", DELIVERY_DIRS["issues"], "缺失项报告.md"),
-        ("image_manifest_md", DELIVERY_DIRS["images"], "镜像包清单.md"),
-        ("image_manifest_json", DELIVERY_DIRS["machine"], "镜像包清单.json"),
-        ("cases_jsonl", DELIVERY_DIRS["machine"], "最终题目数据.jsonl"),
-        ("research_report", DELIVERY_DIRS["evidence"], "题目收集报告.md"),
-    ]
-    for key, folder, target_name in copy_spec:
-        if key not in selected and key not in required_keys:
-            continue
-        record = copy_or_reference(
-            selected.get(key),
-            delivery / folder / target_name,
-            key=key,
-            copy_limit=copy_limit,
-            force_reference=False,
-        )
-        add_record(record, files, missing)
+    add_record(copy_or_reference(selected.get("final_xlsx"), delivery / "最终归档表.xlsx", key="final_xlsx", copy_limit=copy_limit, force_reference=False), files, missing)
+    add_record(copy_or_reference(selected.get("yuque_table"), delivery / "语雀粘贴表.md", key="yuque_table", copy_limit=copy_limit, force_reference=False), files, missing)
 
-    image_tar_records = collect_image_tar_records(selected.get("image_manifest_json"), selected.get("image_manifest_md"))
-    for record in image_tar_records:
-        source = Path(str(record.get("tar") or ""))
-        target = delivery / DELIVERY_DIRS["images"] / source.name
-        copied = copy_image_tars and source.is_file()
-        add_record(
-            copy_or_reference(
-                source if source.as_posix() else None,
-                target,
-                key="image_tar",
-                copy_limit=copy_limit,
-                force_reference=not copied,
-                extra={"challenge": str(record.get("challenge") or ""), "image": str(record.get("image") or "")},
-            ),
-            files,
-            missing,
-        )
+    challenge_records = copy_challenge_archives(
+        archive_roots=selected.get("archive_roots", []),
+        delivery=delivery,
+        copy_limit=copy_limit,
+        copy_image_tars=copy_image_tars,
+    )
+    files.extend(challenge_records["files"])
+    missing.extend(challenge_records["missing"])
 
-    package_issues = scan_delivery_package(delivery)
+    cleanup_ds_store(delivery)
     summary = build_summary(work, outputs, delivery, files, missing, selected)
-    summary["package_issues"] = len(package_issues)
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "version": VERSION,
@@ -131,15 +71,23 @@ def create_delivery_package(
         },
         "files": files,
         "missing": missing,
-        "package_issues": package_issues,
-        "selected_sources": {key: path.as_posix() for key, path in selected.items() if isinstance(path, Path)},
-        "image_tars": image_tar_records,
+        "package_issues": [],
+        "selected_sources": {
+            key: path.as_posix()
+            for key, path in selected.items()
+            if isinstance(path, Path)
+        },
+        "archive_roots": [path.as_posix() for path in selected.get("archive_roots", [])],
+        "challenges": challenge_records["challenges"],
+        "image_tars": challenge_records["image_tars"],
     }
-    manifest_path = delivery / "交付清单.json"
     readme_path = delivery / "交付说明.md"
-    manifest["paths"]["manifest"] = manifest_path.as_posix()
     manifest["paths"]["readme"] = readme_path.as_posix()
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    readme_path.write_text(render_delivery_readme(manifest), encoding="utf-8")
+    cleanup_ds_store(delivery)
+    package_issues = scan_delivery_package(delivery)
+    manifest["package_issues"] = package_issues
+    manifest["summary"]["package_issues"] = len(package_issues)
     readme_path.write_text(render_delivery_readme(manifest), encoding="utf-8")
     return manifest
 
@@ -156,8 +104,8 @@ def guess_outputs_dir(workdir: Path) -> Path:
     return candidates[0]
 
 
-def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Path]:
-    selected: dict[str, Path] = {}
+def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Any]:
+    selected: dict[str, Any] = {}
     selected["final_xlsx"] = first_existing(
         outputs_dir,
         [
@@ -168,33 +116,97 @@ def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Path]
             "*archive.xlsx",
         ],
     )
-    selected["reviewed_xlsx"] = first_existing(outputs_dir, ["*reviewed_archive.xlsx"])
-    selected["after_docker_xlsx"] = first_existing(outputs_dir, ["*after_docker.xlsx"])
     selected["yuque_table"] = first_existing(outputs_dir, ["*语雀粘贴表.md", "*completed_yuque_table.md", "*after_docker_yuque_table.md", "*yuque_table.md"])
-    selected["final_report_md"] = first_existing(outputs_dir, ["*最终报告.md", "*completed_final_report.md", "*after_docker_final_report.md", "*final_report.md"])
-    selected["final_report_json"] = first_existing(outputs_dir, ["*最终报告.json", "*completed_final_report.json", "*after_docker_final_report.json", "*final_report.json"])
-    selected["quality_summary_md"] = first_existing(outputs_dir, ["*quality_summary.md"])
-    selected["quality_summary_json"] = first_existing(outputs_dir, ["*quality_summary.json"])
-    selected["docker_summary_md"] = first_existing(outputs_dir, ["*docker_execution_summary.md"])
-    selected["docker_summary_json"] = first_existing(outputs_dir, ["*docker_execution_summary.json"])
-    selected["completion_report_md"] = first_existing(outputs_dir, ["*completion_report.md"])
-    selected["completion_report_json"] = first_existing(outputs_dir, ["*completion_report.json"])
-    selected["solver_summary_md"] = first_existing(outputs_dir, ["*solver_verification_summary.md"])
-    selected["solver_summary_json"] = first_existing(outputs_dir, ["*solver_verification_summary.json"])
-    selected["archive_package"] = first_existing(outputs_dir, ["*completed_archive_package_no_tars.zip", "*after_docker_archive_package.zip", "*archive_package.zip"])
-    selected["manuals_zip"] = first_existing(outputs_dir, ["*manuals.zip"])
-    selected["formal_manual"] = first_available(
-        first_existing(outputs_dir, ["*题目解题手册.md", "题目解题手册.md"]),
-        first_existing(workdir / "writeup", ["*题目解题手册.md", "题目解题手册.md"]),
-        first_existing(workdir / "hub" / "manual", ["*题目解题手册.md", "题目解题手册.md"]),
-        first_existing_recursive(workdir / "archive", ["题目解题手册.md"]),
-    )
-    selected["missing_report"] = first_existing(outputs_dir, ["*completed_missing_report.md", "*after_docker_missing_report.md", "*missing_report.md"])
-    selected["cases_jsonl"] = first_existing(outputs_dir, ["*completed_archived_cases.jsonl", "*after_docker_archived_cases.jsonl", "*archived_cases.jsonl", "*cases.jsonl"])
-    selected["research_report"] = first_existing(outputs_dir, ["*research_report.md"])
-    selected["image_manifest_md"] = first_existing(workdir, ["image_tars_manifest.md"])
-    selected["image_manifest_json"] = first_existing(workdir, ["image_tars_manifest.json"])
-    return {key: value for key, value in selected.items() if is_real_path(value)}
+    selected["archive_roots"] = find_archive_roots(workdir, outputs_dir)
+    return {
+        key: value
+        for key, value in selected.items()
+        if (is_real_path(value) if isinstance(value, Path) else bool(value))
+    }
+
+
+def find_archive_roots(workdir: Path, outputs_dir: Path) -> list[Path]:
+    candidates = [
+        outputs_dir / "archive",
+        outputs_dir / "归档",
+        workdir / "archive",
+        workdir / "归档",
+        workdir.parent / "archive",
+        workdir.parent / "归档",
+    ]
+    roots = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate.exists() or not candidate.is_dir():
+            continue
+        key = candidate.resolve().as_posix()
+        if key not in seen and find_challenge_dirs(candidate):
+            roots.append(candidate)
+            seen.add(key)
+    return roots
+
+
+def find_challenge_dirs(root: Path) -> list[Path]:
+    if not root.exists():
+        return []
+    dirs = []
+    for child in sorted(path for path in root.iterdir() if path.is_dir() and not path.name.startswith("_")):
+        if any((child / subdir).exists() for subdir in CHALLENGE_SUBDIRS):
+            dirs.append(child)
+    return dirs
+
+
+def copy_challenge_archives(
+    *,
+    archive_roots: list[Path],
+    delivery: Path,
+    copy_limit: int,
+    copy_image_tars: bool,
+) -> dict[str, Any]:
+    files: list[dict[str, Any]] = []
+    missing: list[dict[str, str]] = []
+    challenges: list[dict[str, Any]] = []
+    image_tars: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for root in archive_roots:
+        for case_dir in find_challenge_dirs(root):
+            if case_dir.name in seen:
+                continue
+            seen.add(case_dir.name)
+            target_case_dir = delivery / case_dir.name
+            subdirs = []
+            for subdir in CHALLENGE_SUBDIRS:
+                source_subdir = case_dir / subdir
+                if not source_subdir.exists() or not source_subdir.is_dir():
+                    continue
+                subdirs.append(subdir)
+                target_subdir = target_case_dir / subdir
+                for source in sorted(path for path in source_subdir.rglob("*") if path.is_file()):
+                    relative = source.relative_to(source_subdir)
+                    is_image_tar = subdir == "题目镜像" and source.suffix.lower() in IMAGE_SUFFIXES
+                    target = target_subdir / relative
+                    record = copy_or_reference(
+                        source,
+                        target,
+                        key=f"challenge:{subdir}",
+                        copy_limit=copy_limit,
+                        force_reference=is_image_tar and not copy_image_tars,
+                        extra={"challenge": case_dir.name, "subdir": subdir},
+                    )
+                    add_record(record, files, missing)
+                    if is_image_tar:
+                        image_tars.append(
+                            {
+                                "challenge": case_dir.name,
+                                "image": source.name,
+                                "status": record.get("status", ""),
+                                "platform": "",
+                                "sha256": "",
+                                "tar": source.as_posix(),
+                            }
+                        )
+            challenges.append({"name": case_dir.name, "source": case_dir.as_posix(), "subdirs": subdirs})
+    return {"files": files, "missing": missing, "challenges": challenges, "image_tars": image_tars}
 
 
 def first_existing(root: Path, patterns: list[str]) -> Path:
@@ -335,7 +347,7 @@ def build_summary(
     delivery: Path,
     files: list[dict[str, Any]],
     missing: list[dict[str, str]],
-    selected: dict[str, Path],
+    selected: dict[str, Any],
 ) -> dict[str, Any]:
     copied = sum(1 for item in files if item.get("status") == "copied")
     referenced = sum(1 for item in files if item.get("status") == "referenced")
@@ -348,34 +360,30 @@ def build_summary(
         "missing_files": len(missing),
         "has_final_xlsx": bool(selected.get("final_xlsx")),
         "has_yuque_table": bool(selected.get("yuque_table")),
-        "has_archive_package": bool(selected.get("archive_package")),
-        "has_image_manifest": bool(selected.get("image_manifest_md") or selected.get("image_manifest_json")),
+        "challenge_count": sum(1 for root in selected.get("archive_roots", []) for _ in find_challenge_dirs(root)),
     }
 
 
 def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
-    human_dirs = {value for key, value in DELIVERY_DIRS.items() if key != "machine"}
-    blocked_names = {
-        ".DS_Store",
-        "archive.xlsx",
-        "yuque_table.md",
-        "final_report.md",
-        "final_report.json",
-        "quality_summary.json",
-        "docker_execution_summary.json",
-        "completion_report.json",
-        "solver_verification_summary.json",
-    }
+    allowed_root_files = set(ROOT_FILES)
+    blocked_keywords = ("draft", "草稿", "report", "summary", "quality", "质量检查", "最终表格", "过程证据", "机器数据")
     for path in delivery.rglob("*"):
-        if not path.is_file():
-            continue
         relative = path.relative_to(delivery).as_posix()
-        if path.name in blocked_names:
-            issues.append({"path": relative, "issue": "人看的交付目录里出现无效或英文重复文件"})
-        top = relative.split("/", 1)[0]
-        if top in human_dirs and path.suffix.lower() == ".json" and not relative.startswith(DELIVERY_DIRS["machine"] + "/"):
-            issues.append({"path": relative, "issue": "JSON 应放到 过程证据/机器数据"})
+        parts = relative.split("/")
+        if path.name == ".DS_Store":
+            issues.append({"path": relative, "issue": "禁止 .DS_Store"})
+            continue
+        if path.is_file() and len(parts) == 1 and path.name not in allowed_root_files:
+            issues.append({"path": relative, "issue": "交付根目录只能有最终归档表、语雀粘贴表和交付说明"})
+        if path.is_file() and path.suffix.lower() in {".json", ".jsonl"}:
+            issues.append({"path": relative, "issue": "禁止机器 JSON 进入交付目录"})
+        if len(parts) == 2 and path.is_file():
+            issues.append({"path": relative, "issue": "题目目录下只能放 题目源码/题目镜像/题目手册/题目附件 子目录"})
+        if len(parts) >= 2 and parts[1] not in CHALLENGE_SUBDIRS:
+            issues.append({"path": relative, "issue": "题目目录下只能有 题目源码/题目镜像/题目手册/题目附件"})
+        if any(keyword in path.name for keyword in blocked_keywords):
+            issues.append({"path": relative, "issue": "禁止过程报告、草稿或机器目录进入交付目录"})
     return issues
 
 
@@ -384,45 +392,31 @@ def render_delivery_readme(manifest: dict[str, Any]) -> str:
     lines = [
         "# CloverSec CTF 交付说明",
         "",
-        "这个目录是给人接手查看的交付包。内部 `work/` 目录保留完整过程数据、缓存、工具和大文件，不建议直接作为最终交付目录使用。",
+        "这个目录是给人接手查看的最终交付包。根目录只保留总表、语雀表和这份说明；每道题都放在自己的 `分类-题目名/` 目录里。",
         "",
-        "## 先看这些",
+        "## 根目录文件",
         "",
-        "- `最终表格/最终归档表.xlsx`：最终归档表，内部要求保留完整 Flag。",
-        "- `语雀归档表/语雀粘贴表.md`：粘贴到语雀的表格。",
-        "- `题目归档包/题目归档包.zip`：题目归档包。",
-        "- `镜像包清单/镜像包清单.md`：镜像 tar 的位置、大小、平台和 hash。",
-        "- `质量检查报告/最终报告.md`：本批次状态和待处理事项。",
-        "- `待处理问题/缺失项报告.md`：缺失文件、未验证或待人工处理内容。",
+        "- `最终归档表.xlsx`：最终归档表，内部要求保留完整 Flag。",
+        "- `语雀粘贴表.md`：可以粘贴到语雀的表格。",
+        "- `交付说明.md`：当前文件，说明目录结构、缺失项和镜像 tar 引用。",
         "",
         "## 交付状态",
         "",
         f"- 已复制文件：{summary.get('copied_files', 0)}",
         f"- 仅引用文件：{summary.get('referenced_files', 0)}",
         f"- 缺失文件：{summary.get('missing_files', 0)}",
+        f"- 题目目录数量：{len(manifest.get('challenges', []))}",
         f"- 交付包问题：{summary.get('package_issues', 0)}",
         f"- 工作目录：`{summary.get('workdir', '')}`",
         f"- 原始 outputs：`{summary.get('outputs_dir', '')}`",
         "",
-        "## 文件清单",
+        "## 题目目录",
         "",
-        "| 状态 | 类型 | 文件 | 来源 |",
-        "|---|---|---|---|",
+        "| 题目目录 | 子目录 | 来源 |",
+        "|---|---|---|",
     ]
-    for item in manifest.get("files", []):
-        lines.append(
-            "| "
-            + " | ".join(
-                escape_table(value)
-                for value in [
-                    item.get("status", ""),
-                    item.get("key", ""),
-                    item.get("target") or item.get("source", ""),
-                    item.get("source", ""),
-                ]
-            )
-            + " |"
-        )
+    for item in manifest.get("challenges", []):
+        lines.append("| " + " | ".join(escape_table(value) for value in [item.get("name", ""), "、".join(item.get("subdirs", [])), item.get("source", "")]) + " |")
     if manifest.get("missing"):
         lines.extend(["", "## 缺失文件", "", "| 类型 | 目标位置 |", "|---|---|"])
         for item in manifest["missing"]:
@@ -431,8 +425,13 @@ def render_delivery_readme(manifest: dict[str, Any]) -> str:
         lines.extend(["", "## 交付包问题", "", "| 文件 | 问题 |", "|---|---|"])
         for item in manifest["package_issues"]:
             lines.append("| " + " | ".join(escape_table(value) for value in [item.get("path", ""), item.get("issue", "")]) + " |")
-    if manifest.get("image_tars"):
-        lines.extend(["", "## 镜像 tar 位置", "", "| 题目 | 镜像 | 状态 | 平台 | tar |", "|---|---|---|---|---|"])
+    referenced_tars = [item for item in manifest.get("image_tars", []) if item.get("status") == "referenced"]
+    if referenced_tars:
+        lines.extend(["", "## 镜像 tar 引用", "", "| 题目 | 镜像 | 原始路径 |", "|---|---|---|"])
+        for item in referenced_tars:
+            lines.append("| " + " | ".join(escape_table(value) for value in [item.get("challenge", ""), item.get("image", ""), item.get("tar", "")]) + " |")
+    elif manifest.get("image_tars"):
+        lines.extend(["", "## 镜像 tar", "", "| 题目 | 镜像 | 状态 | 路径 |", "|---|---|---|---|"])
         for item in manifest["image_tars"]:
             lines.append(
                 "| "
@@ -442,13 +441,20 @@ def render_delivery_readme(manifest: dict[str, Any]) -> str:
                         item.get("challenge", ""),
                         item.get("image", ""),
                         item.get("status", ""),
-                        item.get("platform", ""),
                         item.get("tar", ""),
                     ]
                 )
                 + " |"
             )
     return "\n".join(lines) + "\n"
+
+
+def cleanup_ds_store(root: Path) -> None:
+    for path in root.rglob(".DS_Store"):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def safe_display_name(value: str) -> str:

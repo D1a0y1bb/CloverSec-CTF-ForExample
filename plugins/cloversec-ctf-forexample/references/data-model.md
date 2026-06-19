@@ -263,10 +263,9 @@ Hub 草稿输出：
 
 - `hub_draft.json`
 - `hub_upload_manifest.json`
-- `hub_browser_plan.json`
-- `hub_chrome_plan.json`
+- `hub_fill_plan.json`
 - `hub_screenshot_checklist.md`
-- `hub_diff_report.md`
+- `Hub提交前确认.md`
 
 Hub 审核状态输出：
 
@@ -429,8 +428,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py batch
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_resource.py classify challenge-dir --output classification/resource_classification.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_container.py infer challenge-dir --resource-classification classification/resource_classification.json --output classification/container_inference.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py --output-dir proof --case-json ctf_case.json --container-inference classification/container_inference.json --quality-review quality_review.json
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_manual_quality.py --case-json ctf_case.json --manual manual_filled_draft.md --hub-fields hub_fields.json --output-dir manual_quality
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft --case-json ctf_case.json --hub-fields hub_fields.json --manual manual_filled_draft.md --output-dir hub_draft
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_manual_quality.py --case-json ctf_case.json --manual 题目解题手册.md --hub-fields hub_fields.json --output-dir manual_quality
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft --case-json ctf_case.json --hub-fields hub_fields.json --manual 题目解题手册.md --output-dir hub_draft
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py archive-preview --case-json ctf_case.json --output-dir archive_preview
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py lock --case-json ctf_case.json --output-dir manifest_lock
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_audit.py batch-report --cases ctf_cases.jsonl --output-dir batch_report
@@ -513,7 +512,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_package.py inspec
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_writeup.py render ctf_case.json --output-dir writeup_out
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package --case-json ctf_case.json --hub-fields writeup_out/hub_fields.json --manual writeup_out/manual_filled_draft.md --output-dir hub_submission_package
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package --case-json ctf_case.json --hub-fields writeup_out/hub_fields.json --manual writeup_out/题目解题手册.md --output-dir hub_submission_package
 ```
 
 `hub_fields.json` 字段：
@@ -540,10 +539,9 @@ Hub 提交材料目录：
 ```text
 hub_submission_package/
 ├── fields/
-│   ├── hub_fields.json
-│   └── hub_fields_preview.json
+│   └── hub_fields.json
 ├── manual/
-│   └── manual_filled_draft.md
+│   └── 题目解题手册.md
 ├── attachments/
 ├── images/
 ├── screenshots/

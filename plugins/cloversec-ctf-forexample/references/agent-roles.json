@@ -1,6 +1,6 @@
 {
   "schema_version": "cloversec.ctf.agent_roles.v1",
-  "version": "0.8.1",
+  "version": "0.9.9-beta",
   "roles": [
     {
       "role": "Research",
@@ -28,7 +28,7 @@
       "skills": ["cloversec-ctf-writeup-scaffold", "cloversec-ctf-manual-quality"],
       "mcp_tools": ["cloversec_ctf_manual_quality"],
       "inputs": ["ctf_case.json", "题目目录", "writeup 线索"],
-      "outputs": ["manual_filled_draft.md", "hub_fields.json", "manual_quality.json", "xlsx_fields_patch.json"]
+      "outputs": ["题目解题手册.md", "hub_fields.json", "manual_quality.json", "xlsx_fields_patch.json"]
     },
     {
       "role": "Review",
@@ -40,9 +40,9 @@
     {
       "role": "Hub",
       "skills": ["cloversec-ctf-hub-submission", "cloversec-ctf-hub-retag"],
-      "mcp_tools": ["cloversec_ctf_hub_draft", "cloversec_ctf_hub_chrome_plan", "cloversec_ctf_hub_review_state", "cloversec_ctf_image_naming_plan", "cloversec_ctf_confirmation_request"],
+      "mcp_tools": ["cloversec_ctf_hub_draft", "cloversec_ctf_hub_review_state", "cloversec_ctf_hub_session_state", "cloversec_ctf_image_naming_plan"],
       "inputs": ["hub_fields.json", "manual", "上传资源", "Hub 可见页面信息"],
-      "outputs": ["hub_draft.json", "hub_upload_manifest.json", "hub_review_state.json", "image_naming_plan.json", "confirmation_request.json"]
+      "outputs": ["hub_draft.json", "hub_upload_manifest.json", "hub_fill_plan.json", "Hub提交前确认.md", "hub_review_state.json", "image_naming_plan.json"]
     },
     {
       "role": "Archive",

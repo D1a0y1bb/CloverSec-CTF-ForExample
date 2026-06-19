@@ -29,7 +29,7 @@
 输入：
 
 - `ctf_case.json`
-- `manual_filled_draft.md`
+- `题目解题手册.md`
 - `hub_fields.json`
 - 附件包、镜像 tar、截图
 - 可选：Hub 分类接口返回 JSON
@@ -39,10 +39,9 @@
 ```text
 hub_submission_package/
 ├── fields/
-│   ├── hub_fields.json
-│   └── hub_fields_preview.json
+│   └── hub_fields.json
 ├── manual/
-│   └── manual_filled_draft.md
+│   └── 题目解题手册.md
 ├── attachments/
 ├── images/
 ├── screenshots/
@@ -75,29 +74,31 @@ hub_submission_package/
 - `上传附件` -> `attached` / `attached_name`
 - `其他附件` -> `other_attached` / `other_attached_name`
 
+AI 可先填写的字段：题目标题、题目内容、Flag类型、题目Flag、题目来源、题目分类、题目分值、题目等级、题目类型、资源等级、题目备注、关键字。
+
+必须人工确认的字段：题目分类 ID、题目解答富文本效果、附件上传结果、其他附件上传结果、截图。校验状态可以是：
+
+- `needs_input`：AI 可填写字段缺失。
+- `ai_ready_pending_human`：AI 字段已足够，仍需用户确认分类 ID、上传结果、截图或最终提交。
+- `ready`：字段、分类 ID、上传结果和截图都已确认，但仍不自动点击最终提交。
+
 ## 脚本
 
 生成材料包：
 
 ```bash
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package --case-json ctf_case.json --hub-fields writeup_out/hub_fields.json --manual writeup_out/manual_filled_draft.md --output-dir hub_submission_package
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package --case-json ctf_case.json --hub-fields writeup_out/hub_fields.json --manual writeup_out/题目解题手册.md --output-dir hub_submission_package
 ```
 
-生成普通浏览器辅助计划：
+生成 Hub 草稿和填写计划：
 
 ```bash
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py browser-plan \
-  --manifest hub_submission_package/manifests/upload_manifest.json \
-  --output hub_submission_package/browser_assist_plan.json
-```
-
-生成 Chrome 辅助计划：
-
-```bash
-python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py chrome-plan \
-  --manifest hub_submission_package/manifests/upload_manifest.json \
-  --output hub_submission_package/chrome_assist_plan.json \
-  --report hub_submission_package/chrome_assist_plan.md
+python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft \
+  --case-json ctf_case.json \
+  --hub-fields writeup_out/hub_fields.json \
+  --manual writeup_out/题目解题手册.md \
+  --output-dir hub_draft \
+  --classify-options hub_classify_options.json
 ```
 
 提交前检查：
@@ -122,8 +123,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-uplo
 
 `cloversec-ctf-hub-assistant` 暴露：
 
-- `cloversec_ctf_hub_browser_plan`
-- `cloversec_ctf_hub_chrome_plan`
+- `cloversec_ctf_hub_draft`
 - `cloversec_ctf_hub_validate_manifest`
 - `cloversec_ctf_hub_apply_upload_results`
 
@@ -141,8 +141,9 @@ Chrome 执行约束：
 - 文件名、大小、hash 必须记录。
 - `classify` 需要有页面分类 ID。
 - 已上传附件需要记录 URL、文件 ID、状态或错误。
-- 必填字段、关键字、题目解答和截图槽位缺失时，validation 必须写入 `needs_input`。
+- 必填字段、关键字、题目解答和截图槽位缺失时，validation 必须写入 `needs_input` 或 `ai_ready_pending_human`，不能写成可提交。
 - Hub 字段和手册内容一致。
+- 页面数字 ID 只能写 `hub_record_id`。只有用户确认过的 `CTF-...` 正式编号才能写 `HUB编号`，也只有它能进入 retag 和 xlsx。
 
 ## 停止条件
 

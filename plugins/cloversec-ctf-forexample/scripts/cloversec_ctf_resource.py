@@ -16,7 +16,7 @@ import cloversec_ctf_handoff as handoff
 
 
 SCHEMA_VERSION = "cloversec.ctf.resource_classification.v1"
-VERSION = "0.8.1"
+VERSION = "0.9.9-beta"
 
 TEXT_EXTENSIONS = {
     ".c",
@@ -381,9 +381,10 @@ def build_platform_delivery_policy(project_type: str) -> dict[str, Any]:
         "must_use_dockerizer": must_use_dockerizer,
         "existing_docker_is_reference_only": project_type in {"compose_project", "container_project", "docker_image_delivery"},
         "final_delivery_skill": "cloversec-ctf-build-dockerizer" if must_use_dockerizer else "",
-        "requires_user_confirmation": must_use_dockerizer,
-        "confirmation_action": "dockerizer" if must_use_dockerizer else "",
-        "blocking_until_confirmed": must_use_dockerizer,
+        "requires_user_confirmation": False,
+        "confirmation_action": "",
+        "blocking_until_confirmed": False,
+        "auto_dockerizer": "must_use_dockerizer" if must_use_dockerizer else "",
         "attachment_only": project_type == "attachment_challenge",
         "writeup_only": project_type == "writeup_only",
         "status": platform_delivery_status(project_type),

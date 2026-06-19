@@ -5,12 +5,12 @@ description: Check CloverSec CTF manual quality before review or Hub preparation
 
 # CloverSec CTF Manual Quality
 
-Use this skill when a challenge already has a manual draft, `ctf_case.json`, or `hub_fields.json`, and the next step is review or Hub preparation.
+Use this skill when a challenge already has a formal manual, `ctf_case.json`, or `hub_fields.json`, and the next step is review or Hub preparation.
 
 ## Inputs
 
 - `ctf_case.json` or a case object.
-- Manual Markdown, usually `manual_filled_draft.md`.
+- Manual Markdown, usually `题目解题手册.md` or `分类-题目名.md`.
 - Optional `hub_fields.json`.
 - Optional archive/resource manifest.
 
@@ -29,7 +29,7 @@ Prefer the script or MCP tool:
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_manual_quality.py \
   --case-json ctf_case.json \
-  --manual manual_filled_draft.md \
+  --manual 题目解题手册.md \
   --hub-fields hub_fields.json \
   --output-dir manual_quality
 ```

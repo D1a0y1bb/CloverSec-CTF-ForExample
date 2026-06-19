@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.8.1 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/0.9.9-beta (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -227,6 +227,7 @@ RESULT_LAYERS = [
     "writeup_candidate",
     "attachment_candidate",
     "platform_lead",
+    "ctftime_task_lead",
     "noise",
 ]
 
@@ -235,7 +236,38 @@ LAYER_PRIORITY = {
     "attachment_candidate": 1,
     "writeup_candidate": 2,
     "platform_lead": 3,
+    "ctftime_task_lead": 4,
     "noise": 9,
+}
+
+MATERIAL_STATUS_PUBLIC_WP = "公开 WP 线索"
+MATERIAL_STATUS_WP_PLUS_ASSET = "公开 WP + 存在附件/源码线索"
+MATERIAL_STATUS_ASSET_ONLY = "只存在附件/源码线索"
+MATERIAL_STATUS_ASSET_PLUS_OFFICIAL = "存在源码/附件线索+官方题解线索"
+MATERIAL_STATUS_MISSING = "缺失材料,待人工确认"
+COLLECTION_MATERIAL_STATUSES = [
+    MATERIAL_STATUS_PUBLIC_WP,
+    MATERIAL_STATUS_WP_PLUS_ASSET,
+    MATERIAL_STATUS_ASSET_ONLY,
+    MATERIAL_STATUS_ASSET_PLUS_OFFICIAL,
+    MATERIAL_STATUS_MISSING,
+]
+LEGACY_MATERIAL_STATUS_MAP = {
+    "未开始": MATERIAL_STATUS_MISSING,
+    "收集中": MATERIAL_STATUS_MISSING,
+    "缺材料": MATERIAL_STATUS_MISSING,
+    "无法确认": MATERIAL_STATUS_MISSING,
+    "未找到可复现材料": MATERIAL_STATUS_MISSING,
+    "仅为入口线索": MATERIAL_STATUS_MISSING,
+    "待材料检查": MATERIAL_STATUS_MISSING,
+    "缺附件或源码": MATERIAL_STATUS_PUBLIC_WP,
+    "缺官方原始题包": MATERIAL_STATUS_PUBLIC_WP,
+    "公开 WP + 附件/源码线索": MATERIAL_STATUS_WP_PLUS_ASSET,
+    "缺失材料，待人工确认": MATERIAL_STATUS_MISSING,
+    "已发现附件候选，待下载检查": MATERIAL_STATUS_ASSET_ONLY,
+    "已发现官方题目配置，待下载材料": MATERIAL_STATUS_ASSET_ONLY,
+    "已发现官方题目配置和附件候选，待下载检查": MATERIAL_STATUS_ASSET_PLUS_OFFICIAL,
+    "已收集": MATERIAL_STATUS_ASSET_ONLY,
 }
 
 SEARCH_ENGINE_DOMAINS = {
@@ -1478,13 +1510,167 @@ def download_from_manifest(
     }
 
 
+def normalize_material_status(value: Any = "", *, has_writeup: bool = False, has_asset: bool = False, has_official: bool = False) -> str:
+    text = str(value or "").strip()
+    if text in COLLECTION_MATERIAL_STATUSES:
+        return text
+    if text in LEGACY_MATERIAL_STATUS_MAP:
+        return LEGACY_MATERIAL_STATUS_MAP[text]
+    if has_asset and has_official:
+        return MATERIAL_STATUS_ASSET_PLUS_OFFICIAL
+    if has_asset and has_writeup:
+        return MATERIAL_STATUS_WP_PLUS_ASSET
+    if has_asset:
+        return MATERIAL_STATUS_ASSET_ONLY
+    if has_writeup:
+        return MATERIAL_STATUS_PUBLIC_WP
+    return MATERIAL_STATUS_MISSING
+
+
+def result_has_writeup_signal(result: dict[str, Any], layer: str = "") -> bool:
+    title = str(result.get("title") or "")
+    url = str(result.get("url") or "")
+    summary = str(result.get("summary") or result.get("snippet") or "")
+    kind = str(result.get("kind") or "")
+    text = f"{title} {url} {summary} {kind}".lower()
+    if layer == "writeup_candidate" or kind in {"writeup", "site_search"}:
+        return True
+    return any(term in text for term in WRITEUP_TERMS | {"solution", "solver", "exp"})
+
+
+def looks_source_or_challenge_path(url: str, result: dict[str, Any] | None = None) -> bool:
+    metadata = result.get("metadata") if isinstance(result, dict) and isinstance(result.get("metadata"), dict) else {}
+    path = str(metadata.get("path") or urlparse(str(url or "")).path).lower()
+    name = Path(path).name.lower()
+    if name in CHALLENGE_METADATA_NAMES or name in {"dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}:
+        return True
+    if "/tree/" in path:
+        return True
+    return any(term in path for term in ["/src/", "/source/", "/challenge/", "/challenges/", "/dist/", "/attachments/"])
+
+
+def result_has_asset_signal(result: dict[str, Any], layer: str = "") -> bool:
+    url = str(result.get("url") or "")
+    kind = str(result.get("kind") or "")
+    metadata = challenge_metadata_for_result(result)
+    files = metadata.get("files") if isinstance(metadata.get("files"), list) else []
+    if files or metadata_attachment_candidates(result):
+        return True
+    if layer == "attachment_candidate" or looks_attachment_candidate_url(url):
+        return True
+    if kind in {"release_asset", "raw_file", "github_tree"} and looks_source_or_challenge_path(url, result):
+        return True
+    return False
+
+
+def result_has_official_signal(result: dict[str, Any]) -> bool:
+    provider = str(result.get("provider") or "")
+    kind = str(result.get("kind") or "")
+    if challenge_metadata_for_result(result):
+        return True
+    return provider in {"github", "github-tree", "github-release", "direct-url"} and kind in {"challenge_metadata", "release_asset", "raw_file"}
+
+
+def is_ctftime_task_only(result: dict[str, Any]) -> bool:
+    provider = str(result.get("provider") or "")
+    kind = str(result.get("kind") or "")
+    url = str(result.get("url") or "")
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if provider != "ctftime" and not host.endswith("ctftime.org"):
+        return False
+    if result_has_asset_signal(result):
+        return False
+    if kind == "event":
+        return True
+    return bool(re.search(r"/(?:event|task|writeup|writeups)(?:/|$)", path))
+
+
+def github_directory_needs_download(result: dict[str, Any]) -> bool:
+    url = str(result.get("url") or "")
+    parsed = urlparse(url)
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        return False
+    return "/tree/" in parsed.path.lower() and not metadata_attachment_candidates(result)
+
+
+def resource_classification_has_local_material(resource_classification: dict[str, Any] | None) -> bool:
+    if not isinstance(resource_classification, dict):
+        return False
+    summary = resource_classification.get("summary") if isinstance(resource_classification.get("summary"), dict) else {}
+    if int(summary.get("total_resources") or 0) <= 0:
+        return False
+    root = resource_classification.get("root_classification") if isinstance(resource_classification.get("root_classification"), dict) else {}
+    return str(root.get("project_type") or "") in {
+        "container_project",
+        "source_project",
+        "attachment_challenge",
+        "image_archive",
+        "mixed_project",
+    }
+
+
+def continuation_gate(
+    result: dict[str, Any],
+    *,
+    layer: str,
+    material_profile: dict[str, Any] | None = None,
+    resource_classification: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    if resource_classification_has_local_material(resource_classification):
+        return {
+            "gate": "can_continue",
+            "gate_reason": "本地资源已识别，可以进入资源分流。",
+            "blocking_rule": "",
+            "next_action": "进入资源识别、Dockerizer 交接或附件题检查。",
+        }
+    if is_ctftime_task_only(result) or layer in {"platform_lead", "ctftime_task_lead", "search_gap_lead"}:
+        return {
+            "gate": "cannot_continue",
+            "gate_reason": "只有平台页或任务页线索，没有源码、附件或可下载题包。",
+            "blocking_rule": "missing_original_material",
+            "next_action": "继续搜索公开源码、附件、Release，或让用户提供题包入口。",
+        }
+    has_asset = result_has_asset_signal(result, layer)
+    has_writeup = result_has_writeup_signal(result, layer)
+    if has_asset:
+        if github_directory_needs_download(result):
+            return {
+                "gate": "needs_human_download",
+                "gate_reason": "发现 GitHub 题目目录，需要下载或预览后才能制作。",
+                "blocking_rule": "needs_source_download",
+                "next_action": "预览 GitHub tree/raw/release，确认后进入下载沙箱。",
+            }
+        return {
+            "gate": "can_continue",
+            "gate_reason": "发现附件、源码、metadata 或 Release 候选。",
+            "blocking_rule": "",
+            "next_action": "进入下载沙箱、资源识别或 Dockerizer 交接。",
+        }
+    if has_writeup:
+        return {
+            "gate": "cannot_continue",
+            "gate_reason": "只有公开 WP 或 solver 线索，没有原始题包。",
+            "blocking_rule": "writeup_only",
+            "next_action": "继续搜索附件、源码、Release 或平台题包。",
+        }
+    profile = material_profile or {}
+    return {
+        "gate": "cannot_continue",
+        "gate_reason": str(profile.get("missing_reason") or "缺少可继续制作的材料。"),
+        "blocking_rule": "missing_original_material",
+        "next_action": str(profile.get("next_action") or "继续搜索或人工补充入口。"),
+    }
+
+
 def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     cases = []
     for index, result in enumerate(manifest.get("results", []), start=1):
         if not isinstance(result, dict):
             continue
         layer = str(result.get("layer") or "")
-        if layer in {"noise"}:
+        if layer in {"noise", "ctftime_task_lead"}:
             continue
         if layer == "platform_lead" and not result.get("search_gap"):
             continue
@@ -1505,11 +1691,13 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         issue_text = ";".join(str(item) for item in result.get("quality_issues", []) if item)
         missing_reason = missing_reason_for_result(result, category=category, event=event, years=years)
         material_profile = material_profile_for_result(result, layer=layer, missing_reason=missing_reason)
+        gate = continuation_gate(result, layer=layer, material_profile=material_profile)
         requires_confirmation = (
             confidence == "low"
             or bool(result.get("lead_only"))
             or bool(missing_reason)
             or bool(material_profile.get("requires_user_confirmation"))
+            or gate["gate"] != "can_continue"
         )
         attachment_candidates = []
         writeup_candidates = []
@@ -1548,7 +1736,10 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                     "material_level": material_profile["material_level"],
                     "material_status": material_profile["material_status"],
                     "reproducibility_status": material_profile["reproducibility_status"],
-                    "next_action": material_profile["next_action"],
+                    "next_action": gate["next_action"] or material_profile["next_action"],
+                    "gate": gate["gate"],
+                    "gate_reason": gate["gate_reason"],
+                    "blocking_rule": gate["blocking_rule"],
                     "requires_user_confirmation": requires_confirmation,
                     "lead_only": bool(result.get("lead_only")),
                 },
@@ -1558,6 +1749,9 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                     "missing_reason": missing_reason or material_profile["missing_reason"],
                     "material_level": material_profile["material_level"],
                     "material_status": material_profile["material_status"],
+                    "gate": gate["gate"],
+                    "gate_reason": gate["gate_reason"],
+                    "blocking_rule": gate["blocking_rule"],
                 },
                 "metadata": {
                     "赛事来源": event,
@@ -1603,6 +1797,9 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                         "missing_reason": missing_reason,
                         "material_level": material_profile["material_level"],
                         "reproducibility_status": material_profile["reproducibility_status"],
+                        "gate": gate["gate"],
+                        "gate_reason": gate["gate_reason"],
+                        "blocking_rule": gate["blocking_rule"],
                         "status": "found",
                     }
                 ],
@@ -1633,7 +1830,7 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
     if result.get("search_gap") or layer == "search_gap_lead":
         return {
             "material_level": "search_gap",
-            "material_status": "未找到可复现材料",
+            "material_status": MATERIAL_STATUS_MISSING,
             "reproducibility_status": "search_gap",
             "missing_reason": missing_reason or "当前免费源没有找到匹配年份、赛事和分类的可复现题目材料",
             "next_action": "需要 Agent 联网搜索、浏览器辅助搜索，或由用户提供平台页、附件、源码入口。",
@@ -1641,9 +1838,10 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
         }
     if challenge_metadata:
         files = challenge_metadata.get("files") if isinstance(challenge_metadata.get("files"), list) else []
+        status = normalize_material_status(has_asset=bool(files or metadata_attachment_candidates(result)), has_writeup=True, has_official=True)
         return {
             "material_level": "official_challenge_metadata",
-            "material_status": "已发现官方题目配置和附件候选，待下载检查" if files else "已发现官方题目配置，待下载材料",
+            "material_status": status,
             "reproducibility_status": "official_metadata_candidate",
             "missing_reason": missing_reason,
             "next_action": "按 metadata 下载附件或进入 Dockerizer 交接，不把 metadata 文件本身当成最终交付。",
@@ -1652,7 +1850,7 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
     if is_direct_asset or layer == "attachment_candidate":
         return {
             "material_level": "attachment_candidate",
-            "material_status": "已发现附件候选，待下载检查",
+            "material_status": MATERIAL_STATUS_ASSET_ONLY,
             "reproducibility_status": "attachment_candidate",
             "missing_reason": missing_reason,
             "next_action": "进入下载沙箱做 hash、解压和风险路径检查。",
@@ -1661,7 +1859,7 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
     if is_solver_repo:
         return {
             "material_level": "solver_or_writeup_only",
-            "material_status": "缺官方原始题包",
+            "material_status": MATERIAL_STATUS_PUBLIC_WP,
             "reproducibility_status": "solver_or_writeup_only",
             "missing_reason": missing_reason or "只有 solver/writeup 仓库，缺源码、附件或官方题包",
             "next_action": "继续搜索官方附件、源码或让用户提供题包入口。",
@@ -1670,7 +1868,7 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
     if layer == "writeup_candidate":
         return {
             "material_level": "writeup_candidate",
-            "material_status": "缺附件或源码",
+            "material_status": MATERIAL_STATUS_PUBLIC_WP,
             "reproducibility_status": "writeup_only",
             "missing_reason": missing_reason or "只有题解线索，缺官方附件或源码",
             "next_action": "继续搜索附件、源码、Release 或平台题包。",
@@ -1679,7 +1877,7 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
     if is_platform:
         return {
             "material_level": "platform_lead",
-            "material_status": "仅为入口线索",
+            "material_status": MATERIAL_STATUS_MISSING,
             "reproducibility_status": "lead_only",
             "missing_reason": missing_reason or "只有平台入口，缺题目材料",
             "next_action": "需要进入平台页面或让用户提供可下载材料。",
@@ -1687,7 +1885,7 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
         }
     return {
         "material_level": "confirmed_lead",
-        "material_status": "待材料检查",
+        "material_status": normalize_material_status(has_writeup=result_has_writeup_signal(result, layer), has_asset=result_has_asset_signal(result, layer), has_official=result_has_official_signal(result)),
         "reproducibility_status": "needs_material_check",
         "missing_reason": missing_reason,
         "next_action": "进入材料下载与资源识别。",
@@ -2086,6 +2284,9 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
 
     if is_search_or_login_noise(url):
         return "noise", -100, [], ["search engine, login, or blocked page"]
+
+    if is_ctftime_task_only(result):
+        return "ctftime_task_lead", 8, ["ctftime task/writeup lead"], ["ctftime page has no downloadable challenge material"]
 
     if any(term in haystack for term in TUTORIAL_NOISE_TERMS):
         score -= 55

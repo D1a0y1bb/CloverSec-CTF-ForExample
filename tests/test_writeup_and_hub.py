@@ -74,19 +74,23 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertEqual(result["xlsx_fields"]["Flag"], "flag{stage-five-full-flag}")
         self.assertEqual(result["xlsx_fields"]["星级"], "★★")
 
-    def test_render_manual_draft_contains_required_sections(self):
+    def test_render_manual_contains_formal_sample_sections(self):
         with tempfile.TemporaryDirectory() as tmp:
             case = sample_case(Path(tmp))
             fields = writeup.build_hub_fields(case)["hub_fields"]
 
-            manual = writeup.render_manual(case, fields, filled=True)
+            manual = writeup.render_manual(case, fields)
 
-        self.assertIn("## 题目说明", manual)
-        self.assertIn("- 题目名称：", manual)
-        self.assertIn("## 解题工具", manual)
-        self.assertIn("## 解题步骤", manual)
-        self.assertIn("## 命令输出", manual)
-        self.assertIn("## 截图说明", manual)
+        self.assertIn("## 1 题目设计部署信息", manual)
+        self.assertNotIn("# [2026示例赛]Web1 题目解题手册", manual)
+        self.assertIn("### 1.5 旗帜信息", manual)
+        self.assertIn("#### 1.7.1 Dockerfile 构建启动", manual)
+        self.assertIn("#### 1.7.2 Tar 镜像包导入启动", manual)
+        self.assertIn("## 2 HUB上传部分&题解信息", manual)
+        self.assertIn("```plain\n[2026示例赛]Web1\n```", manual)
+        self.assertIn("### 2.12 题目解答", manual)
+        self.assertIn("#### 解题步骤", manual)
+        self.assertIn("#### Flag", manual)
         self.assertIn("flag{stage-five-full-flag}", manual)
 
     def test_screenshot_plan_uses_stable_names(self):
@@ -103,7 +107,7 @@ class WriteupAndHubTests(unittest.TestCase):
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
             fields = writeup.build_hub_fields(case)
-            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manual = writeup.render_manual(case, fields["hub_fields"])
             output_dir = tmp_path / "hub_submission_package"
 
             manifest = hub.create_submission_package(
@@ -114,8 +118,8 @@ class WriteupAndHubTests(unittest.TestCase):
             )
 
             self.assertTrue((output_dir / "fields" / "hub_fields.json").exists())
-            self.assertTrue((output_dir / "fields" / "hub_fields_preview.json").exists())
-            self.assertTrue((output_dir / "manual" / "manual_filled_draft.md").exists())
+            self.assertFalse((output_dir / "fields" / "hub_fields_preview.json").exists())
+            self.assertFalse((output_dir / "manual" / "manual_filled_draft.md").exists())
             self.assertTrue((output_dir / "manual" / "题目解题手册.md").exists())
             self.assertTrue((output_dir / "attachments" / "challenge.zip").exists())
             self.assertFalse((output_dir / "images" / "web.tar").exists())
@@ -130,7 +134,7 @@ class WriteupAndHubTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
-            manual = writeup.render_manual(case, writeup.build_hub_fields(case)["hub_fields"], filled=True)
+            manual = writeup.render_manual(case, writeup.build_hub_fields(case)["hub_fields"])
             empty_fields = {
                 "题目标题": "",
                 "题目内容": "",
@@ -160,7 +164,7 @@ class WriteupAndHubTests(unittest.TestCase):
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
             fields = writeup.build_hub_fields(case)
-            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manual = writeup.render_manual(case, fields["hub_fields"])
             manifest = hub.create_submission_package(
                 case=case,
                 hub_fields=fields["hub_fields"],
@@ -198,7 +202,7 @@ class WriteupAndHubTests(unittest.TestCase):
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
             fields = writeup.build_hub_fields(case)
-            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manual = writeup.render_manual(case, fields["hub_fields"])
             manifest = hub.create_submission_package(
                 case=case,
                 hub_fields=fields["hub_fields"],
@@ -226,7 +230,7 @@ class WriteupAndHubTests(unittest.TestCase):
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
             fields = writeup.build_hub_fields(case)
-            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manual = writeup.render_manual(case, fields["hub_fields"])
             draft = hub.create_hub_draft(case, fields["hub_fields"], manual, tmp_path / "hub_submission_package")
             manifest = json.loads((tmp_path / "hub_submission_package" / "hub_upload_manifest.json").read_text(encoding="utf-8"))
             upload_results = [
@@ -260,7 +264,7 @@ class WriteupAndHubTests(unittest.TestCase):
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
             fields = writeup.build_hub_fields(case)
-            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manual = writeup.render_manual(case, fields["hub_fields"])
             manifest = hub.create_submission_package(
                 case=case,
                 hub_fields=fields["hub_fields"],
@@ -290,7 +294,7 @@ class WriteupAndHubTests(unittest.TestCase):
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
             fields = writeup.build_hub_fields(case)
-            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manual = writeup.render_manual(case, fields["hub_fields"])
             manifest = hub.create_submission_package(
                 case=case,
                 hub_fields=fields["hub_fields"],
@@ -323,7 +327,7 @@ class WriteupAndHubTests(unittest.TestCase):
             tmp_path = Path(tmp)
             case = sample_case(tmp_path)
             fields = writeup.build_hub_fields(case)
-            manual = writeup.render_manual(case, fields["hub_fields"], filled=True)
+            manual = writeup.render_manual(case, fields["hub_fields"])
             manifest = hub.create_submission_package(
                 case=case,
                 hub_fields=fields["hub_fields"],
@@ -429,7 +433,8 @@ class WriteupAndHubTests(unittest.TestCase):
 
             self.assertEqual(code, 0)
             self.assertTrue((output_dir / "hub_fields.json").exists())
-            self.assertTrue((output_dir / "manual_filled_draft.md").exists())
+            self.assertFalse((output_dir / "manual_filled_draft.md").exists())
+            self.assertTrue((output_dir / "WEB-[2026示例赛]Web1.md").exists())
             self.assertTrue((output_dir / "题目解题手册.md").exists())
 
     def test_hub_visible_page_id_is_not_formal_hub_number(self):
@@ -447,6 +452,33 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertFalse(state["retag_required"])
         self.assertEqual(state["hub_record_id"], "12345")
         self.assertEqual(state["HUB编号"], "")
+        self.assertEqual(state["hub_id_gate"]["status"], "needs_hub_id")
+
+    def test_hub_review_state_requires_user_confirmation_for_formal_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+
+            pending = hub.create_hub_review_state(
+                case,
+                tmp_path / "hub-review-pending",
+                review_status="approved",
+                hub_id="CTF-2026060001",
+            )
+            confirmed = hub.create_hub_review_state(
+                case,
+                tmp_path / "hub-review-confirmed",
+                review_status="approved",
+                hub_id="CTF-2026060001",
+                hub_id_confirmed=True,
+            )
+
+        self.assertFalse(pending["retag_required"])
+        self.assertEqual(pending["HUB编号"], "")
+        self.assertEqual(pending["hub_id_gate"]["status"], "needs_user_confirm")
+        self.assertTrue(confirmed["retag_required"])
+        self.assertEqual(confirmed["HUB编号"], "CTF-2026060001")
+        self.assertEqual(confirmed["hub_id_gate"]["status"], "ready_to_backfill")
 
 
 if __name__ == "__main__":

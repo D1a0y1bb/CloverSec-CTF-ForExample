@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
+import cloversec_ctf_search as search
+
 
 XLSX_FIELDS = [
     "HUB编号",
@@ -68,9 +70,9 @@ FLAG_TYPE_DISPLAY_MAP = {
 CONFIDENCE_VALUES = {"high", "medium", "low"}
 
 STATUS_ENUMS = {
-    "材料状态": {"未开始", "收集中", "已收集", "缺材料", "无法确认"},
+    "材料状态": set(search.COLLECTION_MATERIAL_STATUSES),
     "构建状态": {"不适用", "未开始", "已构建", "验证失败"},
-    "手册状态": {"未开始", "草稿", "待人工完善", "已校验"},
+    "手册状态": {"未开始", "草稿", "正式", "待人工完善", "已校验"},
     "验证状态": {"未验证", "部分通过", "通过", "失败"},
     "是否归档": {"是", "否"},
     "是否通过": {"是", "否"},
@@ -167,6 +169,10 @@ def normalize_flag_type_for_display(value: Any) -> str:
     return FLAG_TYPE_DISPLAY_MAP.get(text, FLAG_TYPE_DISPLAY_MAP.get(text.lower(), text))
 
 
+def normalize_material_status(value: Any = "", *, has_writeup: bool = False, has_asset: bool = False, has_official: bool = False) -> str:
+    return search.normalize_material_status(value, has_writeup=has_writeup, has_asset=has_asset, has_official=has_official)
+
+
 def load_cases(path: str | Path) -> list[dict[str, Any]]:
     source = Path(path)
     text = source.read_text(encoding="utf-8")
@@ -220,6 +226,45 @@ def write_table_xlsx(rows: list[dict[str, Any]], path: str | Path, *, fields: li
         "xl/workbook.xml": _workbook_xml(sheet_name=sheet_name),
         "xl/_rels/workbook.xml.rels": _workbook_rels_xml(),
         "xl/worksheets/sheet1.xml": sheet_xml,
+        "docProps/core.xml": _core_xml(),
+        "docProps/app.xml": _app_xml(),
+    }
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+
+
+def write_styled_xlsx(
+    rows: list[dict[str, Any]],
+    path: str | Path,
+    *,
+    fields: list[str],
+    sheet_name: str,
+    style: dict[str, Any],
+) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    matrix = [fields]
+    for row in rows:
+        matrix.append([_string(row.get(field, "")) for field in fields])
+    column_widths = [float(style.get("column_widths", {}).get(field, suggested_column_width(field))) for field in fields]
+    sheet_xml = _worksheet_xml(
+        matrix,
+        column_widths=column_widths,
+        row_height=float(style.get("row_height", 18.05)),
+        header_style=1,
+        body_style=2,
+    )
+    files = {
+        "[Content_Types].xml": _content_types_xml(include_styles=True),
+        "_rels/.rels": _root_rels_xml(),
+        "xl/workbook.xml": _workbook_xml(sheet_name=sheet_name),
+        "xl/_rels/workbook.xml.rels": _workbook_rels_xml(include_styles=True),
+        "xl/worksheets/sheet1.xml": sheet_xml,
+        "xl/styles.xml": _styles_xml(
+            font_name=str(style.get("font_name") or "等线"),
+            font_size=float(style.get("font_size") or 12),
+        ),
         "docProps/core.xml": _core_xml(),
         "docProps/app.xml": _app_xml(),
     }
@@ -427,35 +472,60 @@ def _cell_value(cell: ET.Element, shared_strings: list[str]) -> str:
     return value
 
 
-def _worksheet_xml(matrix: list[list[str]]) -> str:
+def _worksheet_xml(
+    matrix: list[list[str]],
+    *,
+    column_widths: list[float] | None = None,
+    row_height: float | None = None,
+    header_style: int | None = None,
+    body_style: int | None = None,
+) -> str:
     row_xml = []
     for row_index, row in enumerate(matrix, start=1):
         cell_xml = []
         for col_index, value in enumerate(row, start=1):
             ref = f"{_column_name(col_index)}{row_index}"
+            style_id = header_style if row_index == 1 else body_style
+            style_attr = f' s="{style_id}"' if style_id is not None else ""
+            if _string(value) == "":
+                cell_xml.append(f'<c r="{ref}"{style_attr}/>')
+                continue
             cell_xml.append(
-                f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">'
+                f'<c r="{ref}"{style_attr} t="inlineStr"><is><t xml:space="preserve">'
                 f"{_xml_escape(value)}</t></is></c>"
             )
-        row_xml.append(f'<row r="{row_index}">{"".join(cell_xml)}</row>')
+        height_attr = f' ht="{row_height:g}" customHeight="1"' if row_height is not None else ""
+        row_xml.append(f'<row r="{row_index}"{height_attr}>{"".join(cell_xml)}</row>')
     last_ref = f"{_column_name(len(matrix[0]))}{len(matrix)}" if matrix else "A1"
+    cols_xml = ""
+    if column_widths:
+        cols = []
+        for index, width in enumerate(column_widths, start=1):
+            cols.append(f'<col min="{index}" max="{index}" width="{width:g}" customWidth="1"/>')
+        cols_xml = f"<cols>{''.join(cols)}</cols>"
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         f'<worksheet xmlns="{NS_MAIN}" xmlns:r="{NS_REL}">'
         f'<dimension ref="A1:{last_ref}"/>'
+        f"{cols_xml}"
         f'<sheetData>{"".join(row_xml)}</sheetData>'
         "</worksheet>"
     )
 
 
-def _content_types_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+def _content_types_xml(*, include_styles: bool = False) -> str:
+    styles = (
+        '  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>\n'
+        if include_styles
+        else ""
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+{styles}  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>"""
 
@@ -478,11 +548,53 @@ def _workbook_xml(*, sheet_name: str = "归档表") -> str:
     )
 
 
-def _workbook_rels_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+def _workbook_rels_xml(*, include_styles: bool = False) -> str:
+    styles_rel = (
+        '  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n'
+        if include_styles
+        else ""
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-</Relationships>"""
+{styles_rel}</Relationships>"""
+
+
+def _styles_xml(*, font_name: str, font_size: float) -> str:
+    size = f"{font_size:g}"
+    escaped_font = _xml_escape(font_name)
+    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="{NS_MAIN}">
+  <fonts count="3">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="{size}"/><name val="{escaped_font}"/></font>
+    <font><sz val="{size}"/><name val="{escaped_font}"/></font>
+  </fonts>
+  <fills count="3">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFD9D9D9"/></left>
+      <right style="thin"><color rgb="FFD9D9D9"/></right>
+      <top style="thin"><color rgb="FFD9D9D9"/></top>
+      <bottom style="thin"><color rgb="FFD9D9D9"/></bottom>
+      <diagonal/>
+    </border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="3">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+  <dxfs count="0"/>
+  <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
+</styleSheet>"""
 
 
 def _core_xml() -> str:

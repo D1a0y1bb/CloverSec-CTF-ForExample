@@ -13,7 +13,7 @@ import cloversec_ctf_mcp_runtime as mcp_runtime
 import cloversec_ctf_retag as retag
 
 
-SERVER_VERSION = "0.8.1"
+SERVER_VERSION = "0.9.9-beta"
 SERVER_NAME = "cloversec-ctf-hub-assistant"
 
 
@@ -97,6 +97,7 @@ TOOLS = [
                 "reviewer": {"type": "string"},
                 "review_comment": {"type": "string"},
                 "visible_page": {"type": "object"},
+                "hub_id_confirmed": {"type": "boolean"},
             },
             "required": ["case", "output_dir"],
         },
@@ -134,6 +135,7 @@ TOOLS = [
                 "output_dir": {"type": "string"},
                 "registry_prefix": {"type": "string"},
                 "tag_template": {"type": "string"},
+                "hub_id_confirmed": {"type": "boolean"},
             },
             "required": ["case", "output_dir"],
         },
@@ -208,6 +210,7 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             reviewer=str(arguments.get("reviewer") or ""),
             review_comment=str(arguments.get("review_comment") or ""),
             visible_page=arguments.get("visible_page") if isinstance(arguments.get("visible_page"), dict) else None,
+            hub_id_confirmed=bool(arguments.get("hub_id_confirmed", False)),
         )
     if name == "cloversec_ctf_hub_session_state":
         return hub.create_hub_session_state(
@@ -231,6 +234,7 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             str(arguments.get("output_dir") or ""),
             registry_prefix=str(arguments.get("registry_prefix") or ""),
             tag_template=str(arguments.get("tag_template") or "{hub_id}"),
+            hub_id_confirmed=bool(arguments.get("hub_id_confirmed", False)),
         )
     raise ValueError(f"unknown tool: {name}")
 

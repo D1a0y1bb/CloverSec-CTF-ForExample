@@ -33,7 +33,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.8.1"
+WORKFLOW_VERSION = "0.9.9-beta"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -82,6 +82,18 @@ ENGINE_AUTO_STAGES = [
     "quality",
     "final_report",
 ]
+
+STAGE_DISPLAY = {
+    "research": "收集题目线索",
+    "collect": "整理题目材料",
+    "dedupe": "去重合并",
+    "download_preview": "下载安全预览",
+    "download_accept": "确认下载材料",
+    "archive": "生成题目归档",
+    "quality": "质量检查",
+    "hub_prepare": "准备 Hub 材料",
+    "final_report": "生成最终交付",
+}
 
 DEFAULT_MAX_FILE_SIZE = 300 * 1024 * 1024
 DEFAULT_MAX_ARCHIVE_UNPACKED = 1500 * 1024 * 1024
@@ -365,7 +377,7 @@ def execute_search_tasks(
     aggregate_years = [int(item) for item in request.get("years", []) if str(item).isdigit()]
     ranked = search.rank_results(search.enrich_results(search.dedupe_results(all_results), query=aggregate_query, years=aggregate_years))
     case_limit = int(request.get("limit") or 0)
-    case_results = [item for item in ranked if usable_case_result(item)]
+    case_results = [item for item in ranked if case_candidate_result(item)]
     if not case_results:
         case_results = ranked
     cases = search.results_to_cases({"query": aggregate_query, "years": aggregate_years, "results": case_results})
@@ -392,6 +404,7 @@ def execute_search_tasks(
             "errors": len(all_errors),
             "provider_counts": search.provider_counts(ranked),
             "layer_counts": search.layer_counts(ranked),
+            "gate_counts": gate_counts(cases),
         },
         "next_files": {
             "cases": (base / "ctf_cases.jsonl").as_posix(),
@@ -434,6 +447,7 @@ def execute_search_tasks(
                 "missing_material": status_counts["missing_material"],
                 "pending_user": status_counts["pending_user"],
                 "failed": status_counts["failed"],
+                "gate_counts": status_counts["gate_counts"],
                 "output": base.as_posix(),
             }
         ),
@@ -475,6 +489,7 @@ def execute_search_tasks(
                 "missing_material": status_counts["missing_material"],
                 "pending_user": status_counts["pending_user"],
                 "failed": status_counts["failed"],
+                "gate_counts": status_counts["gate_counts"],
                 "output": base.as_posix(),
             }
         ),
@@ -678,6 +693,25 @@ def direct_asset_urls_from_results(results: list[dict[str, Any]]) -> list[str]:
 
 def usable_case_result(result: dict[str, Any]) -> bool:
     layer = str(result.get("layer") or "")
+    profile = search.material_profile_for_result(
+        result,
+        layer=layer,
+        missing_reason=str(result.get("missing_reason") or ""),
+    )
+    gate = search.continuation_gate(result, layer=layer, material_profile=profile)
+    return gate.get("gate") == "can_continue"
+
+
+def case_candidate_result(result: dict[str, Any]) -> bool:
+    layer = str(result.get("layer") or "")
+    profile = search.material_profile_for_result(
+        result,
+        layer=layer,
+        missing_reason=str(result.get("missing_reason") or ""),
+    )
+    gate = search.continuation_gate(result, layer=layer, material_profile=profile)
+    if gate.get("gate") not in {"can_continue", "needs_human_download"}:
+        return False
     if layer in {"confirmed_challenge", "attachment_candidate"}:
         return True
     if layer != "writeup_candidate" or result.get("lead_only"):
@@ -971,14 +1005,15 @@ def build_resource_route(
             "resource_classification_path": classification_path.as_posix(),
             "container_inference_path": container_path.as_posix() if container_path else "",
             "existing_docker_is_reference_only": True,
-            "confirmation_action": "dockerizer",
+            "auto_action": "auto-render",
+            "recommended_command": f"python3 scripts/workflow.py auto-render --project-dir {root.as_posix()}",
             "failure_category": "platform_conversion_required",
             "can_archive": False,
             "input_prompt": (
                 f"使用 cloversec-ctf-build-dockerizer 处理 {root.as_posix()}。"
                 f"先读取 {classification_path.as_posix()}"
                 + (f" 和 {container_path.as_posix()}" if container_path else "")
-                + "，把已有 Dockerfile/compose/启动说明作为迁移输入，先给方案，等用户确认后再写平台交付文件。"
+                + "，把已有 Dockerfile/compose/启动说明作为迁移输入，运行 workflow.py auto-render 生成平台交付件并做静态校验。"
             ),
             **handoff_details,
         }
@@ -1089,6 +1124,8 @@ def render_resource_route_report(route: dict[str, Any]) -> str:
                 f"- 已有 compose：{', '.join(handoff.get('existing_compose_files', [])) or '无'}",
                 f"- 端口线索：{', '.join(str(item) for item in handoff.get('port_hints', [])) or '待确认'}",
                 f"- Flag 路径：{', '.join(handoff.get('flag_paths', [])) or '待确认'}",
+                f"- 自动生成：{'可以执行' if handoff.get('can_auto_render') else '需要先人工补启动证据'}",
+                f"- 推荐命令：`{handoff.get('recommended_command', '')}`",
                 "",
                 handoff.get("input_prompt", ""),
                 "",
@@ -1151,23 +1188,34 @@ def render_next_steps(task_plan: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def user_status_counts(cases: list[dict[str, Any]]) -> dict[str, int]:
+def gate_counts(cases: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"can_continue": 0, "needs_human_download": 0, "cannot_continue": 0}
+    for case in cases:
+        research = case.get("research") if isinstance(case.get("research"), dict) else {}
+        gate = str(research.get("gate") or "")
+        if gate in counts:
+            counts[gate] += 1
+    return counts
+
+
+def user_status_counts(cases: list[dict[str, Any]]) -> dict[str, Any]:
     missing_material = 0
     pending_user = 0
     failed = 0
     for case in cases:
         research = case.get("research") if isinstance(case.get("research"), dict) else {}
         status = str(research.get("reproducibility_status") or case.get("status") or "")
-        if status in {"lead_only", "writeup_only", "solver_or_writeup_only", "missing_original_material"}:
+        gate = str(research.get("gate") or "")
+        if status in {"lead_only", "writeup_only", "solver_or_writeup_only", "missing_original_material", "search_gap"} or gate == "cannot_continue":
             missing_material += 1
-        if research.get("requires_user_confirmation") or str(case.get("status") or "").startswith("pending"):
+        if research.get("requires_user_confirmation") or str(case.get("status") or "").startswith("pending") or gate == "needs_human_download":
             pending_user += 1
         if str(case.get("status") or "").lower() in {"failed", "error", "broken"}:
             failed += 1
         stages = case.get("stages") if isinstance(case.get("stages"), dict) else {}
         if any(isinstance(item, dict) and item.get("status") == "failed" for item in stages.values()):
             failed += 1
-    return {"missing_material": missing_material, "pending_user": pending_user, "failed": failed}
+    return {"missing_material": missing_material, "pending_user": pending_user, "failed": failed, "gate_counts": gate_counts(cases)}
 
 
 def render_current_status(payload: dict[str, Any]) -> str:
@@ -1177,7 +1225,16 @@ def render_current_status(payload: dict[str, Any]) -> str:
     missing_material = int(payload.get("missing_material", 0) or 0)
     pending_user = int(payload.get("pending_user", 0) or 0)
     failed = int(payload.get("failed", 0) or 0)
+    gates = payload.get("gate_counts") if isinstance(payload.get("gate_counts"), dict) else {}
+    can_continue = int(gates.get("can_continue", 0) or 0)
+    needs_human_download = int(gates.get("needs_human_download", 0) or 0)
+    cannot_continue = int(gates.get("cannot_continue", 0) or 0)
+    recommended_stage = str(payload.get("recommended_next_stage") or "").strip()
+    recommended_stage_text = STAGE_DISPLAY.get(recommended_stage, recommended_stage)
+    recent_timing = payload.get("recent_timing") if isinstance(payload.get("recent_timing"), dict) else {}
     next_steps = []
+    if recommended_stage_text:
+        next_steps.append(f"推荐处理阶段：{recommended_stage_text}。")
     if failed:
         next_steps.append("先查看失败题目的日志和质量检查报告。")
     if missing_material:
@@ -1201,9 +1258,14 @@ def render_current_status(payload: dict[str, Any]) -> str:
             "",
             f"- 当前状态：{payload.get('status') or '处理中'}",
             f"- 已形成题目清单：{cases} 题",
+            f"- 可继续制作：{can_continue} 题",
+            f"- 需人工下载/确认材料：{needs_human_download} 题",
+            f"- 不能继续制作：{cannot_continue} 题",
             f"- 缺材料：{missing_material} 题",
             f"- 待人工确认：{pending_user} 题",
             f"- 失败：{failed} 题",
+            f"- 最近阶段：{STAGE_DISPLAY.get(str(recent_timing.get('stage') or ''), recent_timing.get('stage', '')) or '暂无'}",
+            f"- 最近耗时：{format_duration_ms(recent_timing.get('duration_ms'))}",
             "",
             "## 下一步",
             "",
@@ -1258,7 +1320,8 @@ def dockerizer_handoff_details(
         missing_items.append("开放端口")
     if not flag_paths:
         missing_items.append("Flag 路径")
-    if not existing_dockerfiles and not existing_compose_files and not start_commands:
+    missing_start_evidence = not existing_dockerfiles and not existing_compose_files and not start_commands
+    if missing_start_evidence:
         missing_items.append("启动方式")
     questions = [f"请确认{item}" for item in missing_items]
     return {
@@ -1270,6 +1333,9 @@ def dockerizer_handoff_details(
         "flag_paths": flag_paths,
         "missing_items": missing_items,
         "user_questions": questions,
+        "can_auto_render": not missing_start_evidence,
+        "auto_action": "auto-render",
+        "recommended_command": f"python3 scripts/workflow.py auto-render --project-dir {root.as_posix()}",
     }
 
 
@@ -1436,6 +1502,7 @@ def run_workflow_engine(
             )
             events.append(event)
             append_engine_event(base, event)
+            append_stage_timing(base, event)
             if stop_on_blocked and event.get("status") in {"blocked", "pending_user", "incomplete", "failed"}:
                 break
         payload = {
@@ -1640,6 +1707,20 @@ def engine_event(stage: str, status: str, started: float, *, evidence_path: str 
     }
 
 
+def format_duration_ms(value: Any) -> str:
+    try:
+        millis = int(value or 0)
+    except (TypeError, ValueError):
+        millis = 0
+    if millis <= 0:
+        return "暂无"
+    seconds = millis / 1000
+    if seconds < 60:
+        return f"{seconds:.1f} 秒"
+    minutes = seconds / 60
+    return f"{minutes:.1f} 分钟"
+
+
 def engine_status(events: list[dict[str, Any]]) -> str:
     statuses = {str(item.get("status") or "") for item in events}
     if statuses & {"failed"}:
@@ -1680,7 +1761,7 @@ def stage_already_completed(base: Path, stage: str) -> bool:
 def latest_cases_path(base: Path) -> Path:
     candidates = [
         base / "质量检查" / "ctf_cases.reviewed.jsonl",
-        base / "归档" / "_batch" / "ctf_cases.archived.jsonl",
+        base / "归档" / "_cache" / "ctf_cases.archived.jsonl",
         base / "ctf_cases.jsonl",
     ]
     return next((path for path in candidates if path.exists()), base / "ctf_cases.jsonl")
@@ -1701,6 +1782,20 @@ def append_engine_event(base: Path, event: dict[str, Any]) -> None:
         handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
+def append_stage_timing(base: Path, event: dict[str, Any]) -> None:
+    timing = {
+        "stage": event.get("stage", ""),
+        "status": event.get("status", ""),
+        "finished_at": event.get("finished_at", ""),
+        "duration_ms": event.get("duration_ms", 0),
+        "duration_text": format_duration_ms(event.get("duration_ms")),
+    }
+    timing_path = base / "cache" / "workflow_timing.jsonl"
+    timing_path.parent.mkdir(parents=True, exist_ok=True)
+    with timing_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(timing, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
 def write_current_status_from_state(base: Path) -> None:
     state_path = base / "workflow_state.json"
     if not state_path.exists():
@@ -1710,6 +1805,8 @@ def write_current_status_from_state(base: Path) -> None:
     cases = data.load_cases(cases_path) if cases_path.exists() else []
     request = state.get("request") if isinstance(state.get("request"), dict) else {}
     counts = user_status_counts(cases)
+    recommended_stage = first_pending_stage(state)
+    recent_timing = latest_stage_timing(base)
     (base / "当前状态.md").write_text(
         render_current_status(
             {
@@ -1723,10 +1820,38 @@ def write_current_status_from_state(base: Path) -> None:
                 "pending_user": counts["pending_user"],
                 "failed": counts["failed"],
                 "output": base.as_posix(),
+                "recommended_next_stage": recommended_stage,
+                "recent_timing": recent_timing,
             }
         ),
         encoding="utf-8",
     )
+
+
+def first_pending_stage(state: dict[str, Any]) -> str:
+    stages = state.get("stages", {}) if isinstance(state.get("stages"), dict) else {}
+    for stage in STAGES:
+        stage_state = stages.get(stage, {}) if isinstance(stages.get(stage), dict) else {}
+        if stage_state.get("status") not in {"completed", "skipped"}:
+            return stage
+    return ""
+
+
+def latest_stage_timing(base: Path) -> dict[str, Any]:
+    timing_path = base / "cache" / "workflow_timing.jsonl"
+    if not timing_path.exists():
+        return {}
+    latest: dict[str, Any] = {}
+    for line in timing_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            latest = parsed
+    return latest
 
 
 @contextmanager

@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Final Report"
   short_description: "生成最终归档 xlsx、语雀表、报告、中文交付目录和待处理事项清单"
-  default_prompt: "使用 $cloversec-ctf-final-report 汇总 ctf_cases.jsonl，生成最终归档表.xlsx、语雀粘贴表.md、最终报告.md 和中文交付目录；xlsx 必须保留完整 Flag。机器 JSON 布尔字段只能写 true/false。archive.xlsx、yuque_table.md、final_report.md 只是兼容副本，不作为给人看的最终交付名称。ctf_cases.jsonl 含 work/... 相对路径时，cloversec_ctf_final.py 必须传 --base-dir 指向线程或项目根目录。中文交付目录使用 cloversec_ctf_delivery.py，按 最终表格、语雀归档表、题目归档包、镜像包清单、质量检查报告、待处理问题 分区。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-final-report。"
+  default_prompt: "使用 $cloversec-ctf-final-report 汇总 ctf_cases.jsonl，生成最终归档表.xlsx、语雀粘贴表.md、最终报告.md 和中文交付目录；xlsx 必须保留完整 Flag。机器 JSON 布尔字段只能写 true/false。archive.xlsx、yuque_table.md、final_report.md 只是兼容副本，不作为给人看的最终交付名称。ctf_cases.jsonl 含 work/... 相对路径时，cloversec_ctf_final.py 必须传 --base-dir 指向线程或项目根目录。中文交付目录使用 cloversec_ctf_delivery.py：根目录只放 最终归档表.xlsx、语雀粘贴表.md、交付说明.md；每题目录使用 题目源码/题目镜像/题目手册，附件题使用 题目附件/题目手册。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-final-report。"

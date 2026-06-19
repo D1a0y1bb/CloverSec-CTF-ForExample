@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render manual_template.md and manual_filled_draft.md from extracted context."""
+"""Render a formal CloverSec CTF manual from extracted context."""
 
 from __future__ import annotations
 
@@ -82,6 +82,19 @@ def string_or_placeholder(value: str, placeholder_key: str) -> str:
 def normalize_list_item(item: str) -> str:
     text = str(item).strip()
     return text if not text else __import__("re").sub(r"^(?:[-*•●○]|\d+[、.．)])\s*", "", text).strip()
+
+
+def clean_filename(value: str) -> str:
+    text = str(value or "").strip()
+    text = __import__("re").sub(r"[\\/:*?\"<>|]+", "-", text)
+    text = __import__("re").sub(r"\s+", " ", text)
+    return text.strip(" .") or "题目"
+
+
+def manual_filename(context: dict[str, Any]) -> str:
+    title = clean_filename(str(value_of(context, "title", "题目")))
+    category = clean_filename(str(value_of(context, "category", "CTF"))).upper()
+    return f"{category}-{title}.md"
 
 
 def markdown_list(items: list[str], fallback: str, ordered: bool = False) -> list[str]:
@@ -215,7 +228,7 @@ def build_field_exports(context: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "资源等级": resource_level,
         "开放端口": ",".join(str(item) for item in (value_of(context, "ports", []) or [])),
         "解题工具": "、".join(str(item) for item in tools),
-        "手册状态": "草稿",
+        "手册状态": "正式",
         "备注": note,
     }
     return {"hub_fields": hub_fields, "xlsx_fields": xlsx_fields}
@@ -247,19 +260,31 @@ def render_writeup_section(context: dict[str, Any], template_mode: bool) -> list
     step_placeholder = "（请结合实际解题路径补写详细步骤，附关键代码、关键命令和截图说明）"
 
     lines = [
-        "#### 2.12.1 前置知识",
+        "#### 题目描述",
+        "##### 题目名称",
+        string_or_placeholder(value_of(context, "title", ""), "title"),
+        "",
+        "##### 题目难度",
+        str(value_of(context, "difficulty", "") or "[题目难度待补充]"),
+        "",
+        "##### 题目分值",
+        str(value_of(context, "score", "") or "[题目分值待补充]"),
+        "",
+        string_or_placeholder(value_of(context, "description", ""), "description"),
+        "",
+        "#### 前置知识",
         *markdown_list(prerequisites, "- [请补充前置知识]"),
         "",
-        "#### 2.12.2 考察知识点",
+        "#### 考察知识点",
         *markdown_list(knowledge_points or ([category] if category else []), "- [请补充考察知识点]"),
         "",
-        "#### 2.12.3 解题工具",
+        "#### 解题工具",
         *markdown_list(tools, "- [请补充解题工具]"),
         "",
-        "#### 2.12.4 题目目标",
+        "#### 题目目标",
         string_or_placeholder(goal, "goal"),
         "",
-        "#### 2.12.5 解题步骤",
+        "#### 解题步骤",
     ]
 
     if template_mode:
@@ -278,7 +303,7 @@ def render_writeup_section(context: dict[str, Any], template_mode: bool) -> list
 
     lines.extend([
         "",
-        "#### 2.12.6 Flag",
+        "#### Flag",
         flag_value if flag_value else PLACEHOLDERS.get("flag_value", "[题目Flag待补充]"),
     ])
     if flag_type:
@@ -384,7 +409,7 @@ def render_document(context: dict[str, Any], template_mode: bool) -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render manual template and draft.")
+    parser = argparse.ArgumentParser(description="Render formal CloverSec CTF manual.")
     parser.add_argument("paths", nargs="*", help="Optional files or directories to include during inference.")
     parser.add_argument("--project-dir", default=".", help="Project directory to inspect.")
     parser.add_argument("--context", help="Optional JSON context file from extract_context.py.")
@@ -408,8 +433,9 @@ def main() -> int:
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    (output_dir / "manual_template.md").write_text(render_document(context, template_mode=True), encoding="utf-8")
-    (output_dir / "manual_filled_draft.md").write_text(render_document(context, template_mode=False), encoding="utf-8")
+    formal_manual = render_document(context, template_mode=False)
+    (output_dir / manual_filename(context)).write_text(formal_manual, encoding="utf-8")
+    (output_dir / "题目解题手册.md").write_text(formal_manual, encoding="utf-8")
     field_exports = build_field_exports(context)
     (output_dir / "hub_fields.json").write_text(
         json.dumps(field_exports["hub_fields"], ensure_ascii=False, indent=2) + "\n",

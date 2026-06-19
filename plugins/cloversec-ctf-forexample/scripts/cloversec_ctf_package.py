@@ -11,6 +11,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import cloversec_ctf_search as search
+
 
 def inspect_attachment_package(path: str | Path) -> dict[str, Any]:
     package = Path(path)
@@ -68,7 +70,7 @@ def build_attachment_manifest(paths: list[str | Path]) -> dict[str, Any]:
         },
         "xlsx_fields": {
             "题目类型": "附件型",
-            "材料状态": "已收集" if packages and ok_count == len(packages) else "缺材料",
+            "材料状态": search.MATERIAL_STATUS_ASSET_ONLY if packages and ok_count == len(packages) else search.MATERIAL_STATUS_MISSING,
             "环境包/附件包路径": ";".join(item["path"] for item in packages),
         },
     }

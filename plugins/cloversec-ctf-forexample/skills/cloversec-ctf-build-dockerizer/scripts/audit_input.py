@@ -544,6 +544,29 @@ def proposal_gate_required(audit: Dict[str, Any]) -> bool:
     return bool(audit.get("manual_required")) or audit.get("risk_level") in {"mixed", "dirty", "high_risk"}
 
 
+def can_auto_proceed(audit: Dict[str, Any]) -> tuple[bool, List[str]]:
+    blockers: List[str] = []
+    risk_level = str(audit.get("risk_level") or "clean")
+    support_level = str(audit.get("support_level") or "supported")
+    recommended_path = str(audit.get("recommended_path") or "direct_render")
+    finding_codes = {str(item.get("code") or "") for item in audit.get("findings", []) if isinstance(item, dict)}
+
+    if risk_level == "high_risk":
+        blockers.append("输入风险等级为 high_risk")
+    if support_level == "unsupported":
+        blockers.append("当前输入不在自动渲染支持范围")
+    if recommended_path in {"scenario_draft", "bundle_recipe", "manual_review"}:
+        blockers.append(f"推荐路径为 {recommended_path}，需要人工整理后再生成平台交付件")
+    if any(code in finding_codes for code in {"INTAKE_COMPOSE_DETECTED", "INTAKE_VULHUB_LIKE_DETECTED"}):
+        blockers.append("检测到 compose/Vulhub-like 多服务结构")
+    if "INTAKE_CPANEL_WHM_DETECTED" in finding_codes:
+        blockers.append("检测到 cPanel/WHM 控制面板类输入")
+    if any(code.startswith("LINUX_QEMU_") for code in finding_codes):
+        blockers.append("Linux-QEMU 资产需要人工核对")
+
+    return not blockers, blockers
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit CTF challenge input before rendering.")
     parser.add_argument("--project-dir", default=".", help="Challenge project directory.")

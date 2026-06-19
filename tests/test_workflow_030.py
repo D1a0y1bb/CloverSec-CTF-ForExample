@@ -509,7 +509,7 @@ class Workflow030Tests(unittest.TestCase):
                 }
             )
         )
-        self.assertTrue(
+        self.assertFalse(
             workflow.usable_case_result(
                 {
                     "title": "repo/ctf/2025/irisctf/crypto/windy-day/README.md",
@@ -521,7 +521,7 @@ class Workflow030Tests(unittest.TestCase):
                 }
             )
         )
-        self.assertTrue(
+        self.assertFalse(
             workflow.usable_case_result(
                 {
                     "title": "CTFtime.org / IrisCTF 2025 / Crispy Kelp / Writeup",
@@ -543,7 +543,8 @@ class Workflow030Tests(unittest.TestCase):
 
             self.assertEqual(payload["recommended_next"]["skill"], "cloversec-ctf-build-dockerizer")
             self.assertEqual(payload["dockerizer_handoff"]["required_skill"], "cloversec-ctf-build-dockerizer")
-            self.assertEqual(payload["dockerizer_handoff"]["confirmation_action"], "dockerizer")
+            self.assertEqual(payload["dockerizer_handoff"]["auto_action"], "auto-render")
+            self.assertIn("auto-render", payload["dockerizer_handoff"]["recommended_command"])
             self.assertIn("Dockerfile", payload["dockerizer_handoff"]["existing_dockerfiles"])
             self.assertIn("80", ",".join(payload["dockerizer_handoff"]["port_hints"]))
             self.assertTrue((root / "classification" / "resource_route.json").exists())

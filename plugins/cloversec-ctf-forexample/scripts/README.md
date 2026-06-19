@@ -73,7 +73,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_handoff.py resour
 - `资源整理与处理建议表.xlsx` / `.jsonl` / `.schema.json`
 - `Dockerizer交接表.xlsx` / `.jsonl` / `.schema.json`
 
-源码题、Dockerfile、compose、镜像 tar 和 Web/Pwn 服务题会进入 `Dockerizer交接表`，其中 `确认动作` 固定写 `confirmation_action=dockerizer`。
+源码题、Dockerfile、compose、镜像 tar 和 Web/Pwn 服务题会进入 `Dockerizer交接表`，其中 `自动动作` 固定写 `auto_action=auto-render`，并给出 `workflow.py auto-render --project-dir ...` 推荐命令。
 
 ## `cloversec_ctf_collect.py`
 
@@ -236,8 +236,6 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_browser_search.py
 - `cloversec_ctf_batch_status_report`
 - `cloversec_ctf_failure_cases`
 - `cloversec_ctf_proof_pack`
-- `cloversec_ctf_hub_browser_plan`
-- `cloversec_ctf_hub_chrome_plan`
 - `cloversec_ctf_hub_draft`
 - `cloversec_ctf_hub_review_state`
 - `cloversec_ctf_image_naming_plan`
@@ -337,14 +335,14 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py \
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive_runner.py \
   --cases ctf_cases.jsonl \
   --output-root archive_out \
-  --compact-output archive_out/_batch/archive_compact.json
+  --compact-output archive_out/_cache/archive_compact.json
 ```
 
 关键输出：
 
-- `archive_out/_batch/resource_index.json`
-- `archive_out/_batch/missing_report.md`
-- `archive_out/_batch/ctf_cases.archived.jsonl`
+- `archive_out/_cache/resource_index.json`
+- `archive_out/_cache/missing_report.md`
+- `archive_out/_cache/ctf_cases.archived.jsonl`
 - `archive_out/_final/最终归档表.xlsx`
 - `archive_out/_final/语雀粘贴表.md`
 - 兼容副本：`archive_out/_final/archive.xlsx`、`archive_out/_final/yuque_table.md`
@@ -409,8 +407,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_writeup.py render
 
 - `writeup_out/hub_fields.json`
 - `writeup_out/xlsx_fields.json`
-- `writeup_out/manual_template.md`
-- `writeup_out/manual_filled_draft.md`
+- `writeup_out/分类-题目名.md`
+- `writeup_out/题目解题手册.md`
 
 `hub_fields.json` 中的 `题目Flag` 和 `xlsx_fields.json` 中的 `Flag` 都保留完整 Flag。10 级难度会转换为 Hub 可填写的 `题目等级`、`题目难度`、`题目难度等级`。
 
@@ -422,7 +420,7 @@ Hub 提交材料整理工具。生成材料包、Hub 草稿、浏览器计划、
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py package \
   --case-json ctf_case.json \
   --hub-fields writeup_out/hub_fields.json \
-  --manual writeup_out/manual_filled_draft.md \
+  --manual writeup_out/题目解题手册.md \
   --output-dir hub_submission_package
 
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py browser-plan \
@@ -447,7 +445,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py apply-uplo
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft \
   --case-json ctf_case.json \
   --hub-fields writeup_out/hub_fields.json \
-  --manual writeup_out/manual_filled_draft.md \
+  --manual writeup_out/题目解题手册.md \
   --output-dir hub_draft
 
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py review-state \
@@ -468,10 +466,9 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py review-sta
 - `hub_submission_package/hub_submission_checklist.md`
 - `hub_draft/hub_draft.json`
 - `hub_draft/hub_upload_manifest.json`
-- `hub_draft/hub_browser_plan.json`
-- `hub_draft/hub_chrome_plan.json`
+- `hub_draft/hub_fill_plan.json`
 - `hub_draft/hub_screenshot_checklist.md`
-- `hub_draft/hub_diff_report.md`
+- `hub_draft/Hub提交前确认.md`
 - `hub_review/hub_review_state.json`
 - `hub_review/hub_review_state.md`
 
@@ -511,7 +508,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_archive.py batch 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_manual_quality.py \
   --case-json ctf_case.json \
-  --manual writeup_out/manual_filled_draft.md \
+  --manual writeup_out/题目解题手册.md \
   --hub-fields writeup_out/hub_fields.json \
   --output-dir manual_quality
 ```

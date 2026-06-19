@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Manual Quality"
   short_description: "检查题目手册、截图、附件、Flag 和 Hub 字段一致性"
-  default_prompt: "使用 $cloversec-ctf-manual-quality 检查 ctf_case.json、manual_filled_draft.md、hub_fields.json、截图、附件和完整 Flag，输出 manual_quality.json、manual_quality_report.md 和 xlsx_fields_patch.json。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-manual-quality、cloversec_ctf_manual_quality。"
+  default_prompt: "使用 $cloversec-ctf-manual-quality 检查 ctf_case.json、题目解题手册.md 或 分类-题目名.md、hub_fields.json、截图、附件和完整 Flag，输出 manual_quality.json、manual_quality_report.md 和 xlsx_fields_patch.json。输出 skill/MCP ID 时只能写精确 ID：cloversec-ctf-manual-quality、cloversec_ctf_manual_quality。"

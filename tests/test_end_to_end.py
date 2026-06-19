@@ -136,7 +136,7 @@ class EndToEndTests(unittest.TestCase):
             self.assertIn(payload["status"], {"completed", "partial"})
             self.assertTrue((root / "workflow_engine_run.json").exists())
             self.assertTrue((root / "logs" / "workflow_engine.jsonl").exists())
-            self.assertTrue((root / "归档" / "_batch" / "archive_workflow.json").exists())
+            self.assertTrue((root / "归档" / "_cache" / "archive_workflow.json").exists())
             self.assertTrue((root / "质量检查" / "quality_summary.json").exists())
             self.assertTrue((root / "最终交付" / "最终报告.md").exists())
             state = json.loads((root / "workflow_state.json").read_text(encoding="utf-8"))
@@ -206,6 +206,79 @@ class EndToEndTests(unittest.TestCase):
             self.assertTrue(summary.exists())
             data = json.loads(summary.read_text(encoding="utf-8"))
             self.assertNotEqual(data.get("status"), "error")
+
+    def test_dockerizer_auto_render_validates_python_flask_example(self):
+        try:
+            import yaml  # noqa: F401
+        except ModuleNotFoundError:
+            self.skipTest("PyYAML not installed; Dockerizer YAML path is unavailable")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = DOCKERIZER / "examples" / "python-flask-basic"
+            project = root / "python-flask-basic"
+            shutil.copytree(source, project)
+            rendered = root / "auto-rendered"
+            summary = root / "auto-validate.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(DOCKERIZER / "scripts" / "workflow.py"),
+                    "auto-render",
+                    "--project-dir",
+                    str(project),
+                    "--output",
+                    str(rendered),
+                    "--json-summary",
+                    str(summary),
+                    "--format",
+                    "json",
+                ],
+                cwd=DOCKERIZER,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            session = json.loads((project / ".ctfbuild" / "session.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(session["stage"], "auto_render_validated")
+            self.assertTrue((rendered / "Dockerfile").exists())
+            self.assertTrue((rendered / "start.sh").exists())
+            self.assertTrue(summary.exists())
+
+    def test_dockerizer_auto_render_blocks_compose_project(self):
+        try:
+            import yaml  # noqa: F401
+        except ModuleNotFoundError:
+            self.skipTest("PyYAML not installed; Dockerizer YAML path is unavailable")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "compose-case"
+            project.mkdir()
+            (project / "docker-compose.yml").write_text("services:\n  web:\n    image: nginx\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(DOCKERIZER / "scripts" / "workflow.py"),
+                    "auto-render",
+                    "--project-dir",
+                    str(project),
+                    "--format",
+                    "json",
+                ],
+                cwd=DOCKERIZER,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            session = json.loads((project / ".ctfbuild" / "session.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(session["stage"], "auto_render_blocked")
+            self.assertIn("compose", result.stdout)
 
 
 if __name__ == "__main__":

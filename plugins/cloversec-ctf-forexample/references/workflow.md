@@ -134,7 +134,6 @@ MCP 入口：
 - `cloversec_ctf_browser_search_plan`
 - `cloversec_ctf_browser_search_import_visible`
 - `cloversec_ctf_browser_search_dom_to_visible`
-- `cloversec_ctf_hub_chrome_plan`
 - `cloversec_ctf_hub_validate_manifest`
 - `cloversec_ctf_manual_quality`
 - `cloversec_ctf_archive_preview`
@@ -293,7 +292,7 @@ proof/hashes.json
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_manual_quality.py \
   --case-json ctf_case.json \
-  --manual writeup_out/manual_filled_draft.md \
+  --manual writeup_out/题目解题手册.md \
   --hub-fields writeup_out/hub_fields.json \
   --output-dir manual_quality
 ```
@@ -314,7 +313,7 @@ manual_quality/xlsx_fields_patch.json
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft \
   --case-json ctf_case.json \
   --hub-fields writeup_out/hub_fields.json \
-  --manual writeup_out/manual_filled_draft.md \
+  --manual writeup_out/题目解题手册.md \
   --output-dir hub_draft
 ```
 
@@ -323,10 +322,9 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_hub.py draft \
 ```text
 hub_draft/hub_draft.json
 hub_draft/hub_upload_manifest.json
-hub_draft/hub_browser_plan.json
-hub_draft/hub_chrome_plan.json
+hub_draft/hub_fill_plan.json
 hub_draft/hub_screenshot_checklist.md
-hub_draft/hub_diff_report.md
+hub_draft/Hub提交前确认.md
 ```
 
 Hub 草稿只到提交前。分类不确定、上传结果未知、最终提交都由人确认。
@@ -411,3 +409,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py visib
 ### 多 Agent 分工模板
 
 `references/agent-roles.json` 记录 Research、Asset、Docker、Writeup、Review、Hub、Archive 七类角色的输入、输出、skill ID 和 MCP tool ID。批量任务中 Agent 必须使用精确 ID，例如 `cloversec-ctf-manual-quality`、`cloversec_ctf_manual_quality`，不能输出泛称。
+
+### 单题 30 分钟预算
+
+单题从资源识别到可交付判断，默认预算 30 分钟。超过预算仍缺源码、附件、镜像、手册关键步骤、Hub 字段或 Dockerizer 证据时，不继续硬做，也不写成通过；把题目标为待处理，写清缺什么、已经查过哪里、下一步建议。

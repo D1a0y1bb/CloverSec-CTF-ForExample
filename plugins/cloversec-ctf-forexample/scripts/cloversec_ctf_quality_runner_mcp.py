@@ -17,7 +17,7 @@ import cloversec_ctf_quality_runner as quality_runner
 import cloversec_ctf_proof as proof
 
 
-SERVER_VERSION = "0.8.1"
+SERVER_VERSION = "0.9.9-beta"
 SERVER_NAME = "cloversec-ctf-quality-runner"
 
 TOOLS = [

@@ -117,7 +117,7 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(cases[0]["metadata"]["名称"], "uclaacm/lactf-archive")
         self.assertEqual(cases[0]["evidence"][0]["source_url"], "https://github.com/uclaacm/lactf-archive")
-        self.assertEqual(cases[0]["metadata"]["材料状态"], "待材料检查")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "缺失材料,待人工确认")
 
     def test_results_to_cases_extracts_challenge_name_from_github_tree_path(self):
         result = search.normalize_result(
@@ -162,7 +162,7 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(len(cases), 1)
         self.assertEqual(cases[0]["research"]["material_level"], "search_gap")
-        self.assertEqual(cases[0]["metadata"]["材料状态"], "未找到可复现材料")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "缺失材料,待人工确认")
         self.assertEqual(cases[0]["metadata"]["是否通过"], "否")
         self.assertEqual(cases[0]["metadata"]["是否归档"], "否")
         self.assertTrue(cases[0]["requires_user_confirmation"])
@@ -191,8 +191,64 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(len(cases), 1)
         self.assertEqual(cases[0]["research"]["material_level"], "search_gap")
-        self.assertEqual(cases[0]["metadata"]["材料状态"], "未找到可复现材料")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "缺失材料,待人工确认")
         self.assertTrue(cases[0]["requires_user_confirmation"])
+
+    def test_ctftime_task_page_is_not_a_continuable_case(self):
+        result = search.normalize_result(
+            provider="ctftime",
+            kind="writeup",
+            title="Demo CTF 2026 baby web writeup",
+            url="https://ctftime.org/writeup/40461",
+            summary="Demo CTF 2026 baby web writeup",
+            source_type="ctftime",
+            confidence="medium",
+        )
+        enriched = search.enrich_results([result], query="Demo CTF 2026 baby web", years=[2026])[0]
+
+        self.assertEqual(enriched["layer"], "ctftime_task_lead")
+        cases = search.results_to_cases({"query": "Demo CTF 2026 baby web", "years": [2026], "results": [enriched]})
+        self.assertEqual(cases[0]["research"]["gate"], "cannot_continue")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "缺失材料,待人工确认")
+
+    def test_writeup_only_case_is_visible_but_not_continuable(self):
+        result = {
+            "provider": "agent-web-search",
+            "kind": "web",
+            "title": "Demo CTF 2026 baby web writeup",
+            "url": "https://example.com/demo-ctf-2026-baby-web-writeup",
+            "summary": "Demo CTF 2026 baby web writeup",
+            "source_type": "agent_web_search",
+            "confidence": "medium",
+            "layer": "writeup_candidate",
+            "score": 70,
+            "quality_issues": [],
+        }
+
+        cases = search.results_to_cases({"query": "Demo CTF 2026 baby web", "years": [2026], "results": [result]})
+
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "公开 WP 线索")
+        self.assertEqual(cases[0]["research"]["gate"], "cannot_continue")
+        self.assertEqual(cases[0]["research"]["blocking_rule"], "writeup_only")
+
+    def test_github_tree_case_requires_download_before_building(self):
+        result = {
+            "provider": "github-tree",
+            "kind": "raw_file",
+            "title": "demo/demo/challenges/web/baby-sql",
+            "url": "https://github.com/demo/demo/tree/main/challenges/web/baby-sql",
+            "summary": "Demo CTF 2026 baby sql challenge directory",
+            "source_type": "github",
+            "confidence": "high",
+            "layer": "confirmed_challenge",
+            "score": 90,
+            "quality_issues": [],
+        }
+
+        cases = search.results_to_cases({"query": "Demo CTF 2026 baby sql", "years": [2026], "results": [result]})
+
+        self.assertEqual(cases[0]["research"]["gate"], "needs_human_download")
+        self.assertEqual(cases[0]["asset_collection"]["blocking_rule"], "needs_source_download")
 
     def test_fetch_and_download_url_against_local_server(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -897,7 +953,7 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(cases[0]["metadata"]["分类"], "Misc")
         self.assertEqual(cases[0]["metadata"]["题目类型"], "容器题")
         self.assertEqual(cases[0]["metadata"]["Flag"], "UofTCTF{demo_flag}")
-        self.assertEqual(cases[0]["metadata"]["材料状态"], "已发现官方题目配置和附件候选，待下载检查")
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "存在源码/附件线索+官方题解线索")
         self.assertTrue(
             any(
                 item["source_url"].endswith("/challenges/fileupload/dist/fileupload.zip")

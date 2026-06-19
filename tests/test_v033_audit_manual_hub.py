@@ -54,7 +54,7 @@ def sample_case(tmp_path: Path) -> dict:
             "是否通过": "否",
             "问题": "",
             "是否归档": "否",
-            "材料状态": "已收集",
+            "材料状态": "只存在附件/源码线索",
             "构建状态": "已构建",
             "手册状态": "草稿",
             "验证状态": "未验证",
@@ -83,52 +83,146 @@ def sample_case(tmp_path: Path) -> dict:
 
 
 def sample_manual() -> str:
-    return """# Web1
+    return """## 1 题目设计部署信息
+### 1.1 题目名称
+Web1
 
-## 题目说明
-- 题目名称：Web1
-- 题目分类：Web
-- 题目难度：★
-- 题目分值：100
-
+### 1.2 题目描述
 访问 Web 服务并读取 flag。题目提供一个 HTTP 服务，选手需要通过路径遍历读取服务端环境变量，最终得到动态 Flag。
 
-## 考点
-路径遍历和环境变量读取。
+### 1.3 题目难度
+★★
 
-## 环境说明
-Docker 服务开放 80 端口，启动后访问题目页面即可开始测试。服务启动后应能在浏览器中看到首页。
+### 1.4 考察信息
++ 路径遍历
++ 环境变量读取
 
-## 附件说明
-challenge.zip 是题目源码和启动脚本压缩包，解压后可以看到 app.py、Dockerfile 和启动脚本。归档时需要记录 hash。
+### 1.5 旗帜信息
+● Flag 类型：动态Flag
+● 原始静态 flag：`flag{v033-full-flag}`
+● flag 文件位于 Docker 环境根目录：/flag
 
-## 前置知识
-1. HTTP 请求基础。
-2. Linux 文件路径。
+### 1.6 附件情况
+● challenge.zip 是题目源码和启动脚本压缩包，解压后可以看到 app.py、Dockerfile 和启动脚本。
 
-## 解题步骤
-1. 打开题目页面。
-2. 运行 `python3 solve.py`。
-3. 脚本会请求 `/read?file=../../proc/self/environ`，从返回内容里提取 FLAG 环境变量。
-4. 核对输出的 flag 与内部 xlsx 字段一致。
+### 1.7 部署方式
+#### 1.7.1 Dockerfile 构建启动
+```bash
+docker build --platform linux/amd64 -t cloversec/web1:local .
+docker run --rm -p 80 --name web1 cloversec/web1:local
+```
 
-## 命令输出
+#### 1.7.2 Tar 镜像包导入启动
+```bash
+docker load -i web.tar
+docker run --rm -p 80 --name web1 cloversec/web1:local
+```
+
+### 1.8 非预期测试
++ 直接访问普通页面不能得到 Flag。
+
+## 2 HUB上传部分&题解信息
+### 2.1 题目标题
+```plain
+Web1
+```
+
+### 2.2 题目内容
+```plain
+访问 Web 服务并读取 flag。
+```
+
+### 2.3 Flag类型
+```plain
+动态Flag
+```
+
+### 2.4 题目Flag
+```plain
+flag{v033-full-flag}
+```
+
+### 2.5 题目来源
+```plain
+2026 示例赛
+```
+
+### 2.6 题目分类
+```plain
+Web
+```
+
+### 2.7 题目分值
+```plain
+100
+```
+
+### 2.8 题目等级
+```plain
+2
+```
+
+### 2.9 题目类型
+```plain
+环境型
+```
+
+### 2.10 资源等级
+```plain
+4
+```
+
+### 2.11 题目备注
+```plain
+Docker 服务开放 80 端口。
+```
+
+---
+
+### 2.12 题目解答
+#### 题目描述
+##### 题目名称
+Web1
+
+##### 题目难度
+★★
+
+##### 题目分值
+100
+
+访问 Web 服务并读取 flag。
+
+#### 前置知识
+1、HTTP 请求基础。
+2、Linux 文件路径。
+
+#### 考察知识点
+1、路径遍历。
+2、环境变量读取。
+
+#### 解题工具
+1、python3
+
+#### 题目目标
+读取服务端环境变量，拿到完整 Flag。
+
+#### 解题步骤
+1、打开题目页面。
+2、运行 `python3 solve.py http://127.0.0.1:18080`。
+3、脚本会请求 `/read?file=../../proc/self/environ`，从返回内容里提取 FLAG 环境变量。
+4、核对输出的 flag 与内部 xlsx 字段一致。
+
+#### Flag
+flag{v033-full-flag}
+
+#### 命令输出
 ```bash
 $ python3 solve.py http://127.0.0.1:18080
 flag{v033-full-flag}
 ```
 
-## 附件
-challenge.zip
-
-## 截图说明
+#### 截图说明
 solve.png 展示脚本运行成功并输出 flag 的结果。
-
-## Flag
-flag{v033-full-flag}
-
-## 复现说明
-按环境说明启动服务，执行解题步骤中的命令，输出结果应包含完整 Flag。
 """
 
 
@@ -269,6 +363,10 @@ class V033AuditManualHubTests(unittest.TestCase):
             self.assertTrue(batch["rows"][0]["问题"])
             self.assertGreaterEqual(failure["summary"]["total"], 1)
             self.assertEqual(notification["summary"]["pending_user"], 1)
+            report = audit.render_step_report(notification)
+            self.assertIn("## 本步完成", report)
+            self.assertIn("## 推荐下一步", report)
+            self.assertIn("## 需要你定的", report)
             self.assertEqual(warnings["summary"]["cloversec_blockers"], 1)
             self.assertEqual(warnings["summary"]["external_warnings"], 1)
 
@@ -290,13 +388,13 @@ class V033AuditManualHubTests(unittest.TestCase):
             batch = audit.create_batch_status_report([case], tmp_path / "batch")
             row = batch["rows"][0]
             failures = audit.create_failure_library([case], tmp_path / "failure_cases.jsonl")
-            confirmation = audit.create_confirmation_request(action="dockerizer", output_dir=tmp_path / "dockerizer-confirm", case=case)
+            with self.assertRaises(ValueError):
+                audit.create_confirmation_request(action="dockerizer", output_dir=tmp_path / "dockerizer-confirm", case=case)
 
             self.assertEqual(row["可归档"], "否")
-            self.assertIn("Dockerizer 改造待确认", row["待人工确认"])
+            self.assertIn("Dockerizer 自动改造未完成", row["待人工确认"])
             self.assertIn("cloversec-ctf-build-dockerizer", row["问题"])
             self.assertIn("platform_conversion_required", {item["category"] for item in failures["failures"]})
-            self.assertIn("CONFIG PROPOSAL", confirmation["planned_outputs"])
 
     def test_dockerizer_gate_passes_when_platform_contract_verified(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -316,7 +414,7 @@ class V033AuditManualHubTests(unittest.TestCase):
             row = audit.create_batch_status_report([case], tmp_path / "batch")["rows"][0]
 
             self.assertEqual(row["可归档"], "是")
-            self.assertNotIn("Dockerizer 改造待确认", row["待人工确认"])
+            self.assertNotIn("Dockerizer 自动改造未完成", row["待人工确认"])
 
     def test_hub_draft_review_state_and_image_naming_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -331,9 +429,21 @@ class V033AuditManualHubTests(unittest.TestCase):
                 tmp_path / "hub",
                 classify_options=[{"label": "Web", "id": "1"}],
             )
-            review_state = hub.create_hub_review_state(case, tmp_path / "hub-review", review_status="approved", hub_id="CTF-2026060001")
+            review_state = hub.create_hub_review_state(
+                case,
+                tmp_path / "hub-review",
+                review_status="approved",
+                hub_id="CTF-2026060001",
+                hub_id_confirmed=True,
+            )
             needs_id = retag.create_image_naming_plan(case, "", tmp_path / "image-needs-id")
-            ready = retag.create_image_naming_plan(case, "CTF-2026060001", tmp_path / "image-ready", registry_prefix="registry.local/cloversec")
+            ready = retag.create_image_naming_plan(
+                case,
+                "CTF-2026060001",
+                tmp_path / "image-ready",
+                registry_prefix="registry.local/cloversec",
+                hub_id_confirmed=True,
+            )
 
             self.assertFalse(draft["auto_submit"])
             self.assertFalse(draft["summary"]["can_submit"])
@@ -341,7 +451,8 @@ class V033AuditManualHubTests(unittest.TestCase):
             self.assertTrue(draft["manual_path"].endswith("题目解题手册.md"))
             self.assertTrue((tmp_path / "hub" / "hub_upload_manifest.json").exists())
             self.assertTrue((tmp_path / "hub" / "hub_screenshot_checklist.md").exists())
-            self.assertTrue((tmp_path / "hub" / "hub_diff_report.md").exists())
+            self.assertTrue((tmp_path / "hub" / "hub_fill_plan.json").exists())
+            self.assertFalse((tmp_path / "hub" / "hub_diff_report.md").exists())
             self.assertTrue((tmp_path / "hub" / "Hub提交前确认.md").exists())
             self.assertTrue(review_state["retag_required"])
             self.assertEqual(review_state["HUB编号"], "CTF-2026060001")
@@ -374,7 +485,7 @@ class V033AuditManualHubTests(unittest.TestCase):
         self.assertEqual(cases[0]["metadata"]["分类"], "Web")
         self.assertEqual(cases[0]["metadata"]["年份"], "2025")
         self.assertEqual(cases[0]["research"]["reproducibility_status"], "writeup_only")
-        self.assertIn("缺附件", cases[0]["metadata"]["材料状态"])
+        self.assertEqual(cases[0]["metadata"]["材料状态"], "公开 WP 线索")
         self.assertIn("writeup_candidates", cases[0]["asset_collection"])
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -416,7 +527,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.8.1")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "0.9.9-beta")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)
