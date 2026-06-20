@@ -614,6 +614,21 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertIn("Pwn-JSFS/题目手册/题目解题手册.md", names)
             self.assertFalse(any(name.startswith("__MACOSX/") or name.endswith(".DS_Store") or "/_cache/" in name for name in names))
 
+    def test_delivery_package_default_output_dir_is_chinese_final_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs)
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertEqual(delivery_dir.name, "最终交付包")
+            self.assertTrue((delivery_dir / "交付说明.md").exists())
+            self.assertFalse((outputs / f"交付包-{workdir.name}").exists())
+
     def test_delivery_package_reorganizes_legacy_single_challenge_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -872,7 +887,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.3")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.4")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

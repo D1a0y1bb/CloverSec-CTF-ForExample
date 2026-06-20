@@ -15,7 +15,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -92,7 +92,7 @@ def create_delivery_package(
     outputs = Path(outputs_dir) if outputs_dir else guess_outputs_dir(work)
     if not outputs.exists():
         raise FileNotFoundError(outputs)
-    delivery = Path(output_dir) if output_dir else outputs / f"交付包-{safe_display_name(work.name)}"
+    delivery = Path(output_dir) if output_dir else outputs / "最终交付包"
     prepare_clean_delivery_dir(delivery)
 
     selected = select_delivery_sources(work, outputs)

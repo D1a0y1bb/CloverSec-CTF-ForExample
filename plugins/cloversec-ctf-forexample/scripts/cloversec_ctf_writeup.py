@@ -215,8 +215,9 @@ def render_manual(case: dict[str, Any], hub_fields: dict[str, Any]) -> str:
         flag_value or "待人工确认",
         "",
     ]
-    if keywords:
-        lines.extend(["### 2.13 添加关键字", "、".join(keywords), ""])
+    lines.extend(["### 2.13 添加关键字", "、".join(keywords) if keywords else "待人工确认", ""])
+    attachment_lines = _manual_attachment_lines(case, writeup, metadata)
+    lines.extend(["### 2.14 上传附件", *_dot_list(attachment_lines), ""])
     return "\n".join(lines).rstrip() + "\n"
 
 

@@ -54,6 +54,23 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertEqual(payload["dockerfile"]["base_images"], ["python:3.12-alpine"])
         self.assertIn("http://127.0.0.1:18080/", payload["runtime"]["probe_urls"])
 
+    def test_infers_tcp_runtime_from_bun_listen_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Dockerfile").write_text("FROM oven/bun:latest\nEXPOSE 41236\n", encoding="utf-8")
+            (root / "index.js").write_text(
+                "Bun.listen({ hostname: '0.0.0.0', port: 41236, socket: { data() {} } });\n",
+                encoding="utf-8",
+            )
+
+            payload = container.infer_container_project(root)
+
+        self.assertEqual(payload["runtime"]["service_protocol"], "tcp")
+        self.assertEqual(payload["runtime"]["probe_protocol"], "tcp")
+        self.assertIn({"protocol": "tcp", "host": "127.0.0.1", "port": "41236", "target": "tcp://127.0.0.1:41236"}, payload["runtime"]["tcp_probes"])
+        self.assertIn("41236:41236", payload["summary"]["ports"])
+        self.assertTrue(payload["code_hints"]["evidence"])
+
     def test_readme_error_port_is_not_treated_as_runtime_port(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -374,7 +391,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.3")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.4")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

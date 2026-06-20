@@ -14,13 +14,13 @@ from typing import Any
 import cloversec_ctf_data as data
 
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 SCHEMA_VERSION = "cloversec.ctf.manual_quality.v1"
 REQUIRED_METADATA_FIELDS = ["名称", "分类", "题目类型", "Flag类型"]
 REQUIRED_HUB_FIELDS = ["题目标题", "题目内容", "题目来源", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级", "添加关键字"]
 REQUIRED_TOP_SECTIONS = ["## 1 题目设计部署信息", "## 2 HUB上传部分&题解信息"]
 REQUIRED_DESIGN_SUBSECTIONS = [f"### 1.{index} " for index in range(1, 9)]
-REQUIRED_HUB_SUBSECTIONS = [f"### 2.{index} " for index in range(1, 13)]
+REQUIRED_HUB_SUBSECTIONS = [f"### 2.{index} " for index in range(1, 15)]
 REQUIRED_SOLVE_SUBSECTIONS = [
     "#### 题目描述",
     "#### 前置知识",
@@ -214,9 +214,19 @@ def check_manual_references(
     checks = []
     attachment_paths = declared_paths(case.get("attachments"))
     screenshot_paths = []
+    source_screenshot_paths = []
     archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
     for item in archive_info.get("screenshots", []) if isinstance(archive_info.get("screenshots"), list) else []:
-        screenshot_paths.append(str(item.get("path") if isinstance(item, dict) else item))
+        if isinstance(item, dict):
+            path = str(item.get("path") or item.get("local_path") or "")
+            role = str(item.get("role") or item.get("kind") or item.get("type") or item.get("source_type") or "").lower()
+            purpose = str(item.get("purpose") or item.get("description") or "").lower()
+            if role in {"source", "public", "public_writeup", "writeup", "wp", "external"} or any(token in purpose for token in ["公开", "来源", "writeup", "wp"]):
+                source_screenshot_paths.append(path)
+                continue
+            screenshot_paths.append(path)
+        else:
+            screenshot_paths.append(str(item))
     for label, paths, required in [("附件", attachment_paths, bool(attachment_paths)), ("截图", screenshot_paths, True)]:
         missing = [path for path in paths if path and not Path(path).is_file()]
         mentioned = any(Path(path).name in manual for path in paths if path)
@@ -234,6 +244,16 @@ def check_manual_references(
             message = f"未声明{label}"
         label_id = {"附件": "attachments", "截图": "screenshots"}.get(label, safe_id(label))
         checks.append(check(f"manual-reference-{label_id}", f"{label}引用", status, message, evidence={"declared": paths, "missing": missing}))
+    if source_screenshot_paths and not screenshot_paths:
+        checks.append(
+            check(
+                "manual-reference-source-screenshots",
+                "来源截图",
+                "warn",
+                "只有公开 WP 或来源截图，缺少本地复现截图",
+                evidence={"source_screenshots": source_screenshot_paths},
+            )
+        )
     manifest_issues = []
     if archive_manifest:
         manifest_issues.extend(str(item) for item in archive_manifest.get("issues", []))

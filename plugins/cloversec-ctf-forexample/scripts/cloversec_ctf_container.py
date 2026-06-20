@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}
@@ -38,17 +38,19 @@ def infer_container_project(
     compose_files = sorted(path for path in root.rglob("*") if path.is_file() and path.name.lower() in COMPOSE_FILES)
     helpers = collect_helpers(root)
     readme_hints = collect_readme_hints(root, max_text_bytes=max_text_bytes)
+    code_hints = collect_runtime_code_hints(root, max_text_bytes=max_text_bytes)
     challenge_manifest = collect_challenge_manifest(root, max_text_bytes=max_text_bytes)
     dockerfile_payload = parse_dockerfile(dockerfiles[0], root, max_text_bytes=max_text_bytes) if dockerfiles else {}
     compose_payload = parse_compose_files(compose_files, root, max_text_bytes=max_text_bytes)
     classification_summary = summarize_classification(classification)
-    service_protocol = infer_service_protocol(readme_hints, challenge_manifest, dockerfile_payload, compose_payload)
+    service_protocol = infer_service_protocol(readme_hints, challenge_manifest, dockerfile_payload, compose_payload, code_hints)
     flag_runtime_policy = infer_flag_runtime_policy(root, max_text_bytes=max_text_bytes)
 
     ports = merge_ports(
         dockerfile_payload.get("exposed_ports", []),
         compose_payload.get("ports", []),
         readme_hints.get("ports", []),
+        code_hints.get("ports", []),
         challenge_manifest.get("ports", []),
     )
     project_type, confidence, evidence = infer_project_type(
@@ -112,6 +114,7 @@ def infer_container_project(
         "runtime": runtime,
         "helpers": helpers,
         "readme_hints": readme_hints,
+        "code_hints": code_hints,
         "challenge_manifest": challenge_manifest,
         "resource_classification": classification_summary,
         "flag_runtime_policy": flag_runtime_policy,
@@ -314,6 +317,42 @@ def collect_readme_hints(root: Path, *, max_text_bytes: int) -> dict[str, Any]:
     }
 
 
+def collect_runtime_code_hints(root: Path, *, max_text_bytes: int) -> dict[str, Any]:
+    protocols: list[str] = []
+    ports: list[str] = []
+    evidence: list[str] = []
+    tcp_patterns = [
+        r"\bBun\.listen\s*\(",
+        r"\bDeno\.listen\s*\(",
+        r"\bnet\.createServer\s*\(",
+        r"\bsocketserver\.",
+        r"\basyncio\.start_server\s*\(",
+        r"\bTCP-LISTEN\s*:",
+        r"\bsocat\b",
+        r"\bxinetd\b",
+    ]
+    http_patterns = [
+        r"\bexpress\s*\(",
+        r"\bhttp\.createServer\s*\(",
+        r"\bFastAPI\s*\(",
+        r"\bFlask\s*\(",
+        r"\buvicorn\b",
+    ]
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        if skip_text_scan(path):
+            continue
+        text = read_text(path, max_text_bytes=max_text_bytes)
+        rel = path.relative_to(root).as_posix()
+        if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in tcp_patterns):
+            protocols.append("tcp")
+            evidence.append(f"{rel}: tcp runtime pattern")
+        elif any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in http_patterns):
+            protocols.append("http")
+            evidence.append(f"{rel}: http runtime pattern")
+        ports.extend(extract_code_ports(text))
+    return {"protocols": dedupe(protocols), "ports": dedupe(ports), "evidence": dedupe(evidence)}
+
+
 def collect_challenge_manifest(root: Path, *, max_text_bytes: int) -> dict[str, Any]:
     for path in sorted(item for item in root.rglob("*") if item.is_file() and item.name.lower() in MANIFEST_FILES):
         text = read_text(path, max_text_bytes=max_text_bytes)
@@ -338,9 +377,13 @@ def infer_service_protocol(
     challenge_manifest: dict[str, Any],
     dockerfile_payload: dict[str, Any],
     compose_payload: dict[str, Any],
+    code_hints: dict[str, Any] | None = None,
 ) -> str:
     protocols = readme_hints.get("protocols") if isinstance(readme_hints.get("protocols"), list) else []
     if "tcp" in protocols:
+        return "tcp"
+    code_protocols = code_hints.get("protocols") if isinstance(code_hints, dict) and isinstance(code_hints.get("protocols"), list) else []
+    if "tcp" in code_protocols:
         return "tcp"
     connection_info = str(challenge_manifest.get("connection_info") or "").strip().lower()
     if re.search(r"\bnc\s+\S+\s+\d{2,5}\b", connection_info):
@@ -572,6 +615,20 @@ def extract_port_mappings(text: str) -> list[str]:
         output.append(f"{host}:{container}")
     for container in re.findall(r"\bEXPOSE\s+(\d{2,5})(?:/(?:tcp|udp))?\b", text, flags=re.IGNORECASE):
         output.append(f"{container}:{container}")
+    return dedupe(output)
+
+
+def extract_code_ports(text: str) -> list[str]:
+    output: list[str] = []
+    patterns = [
+        r"\bport\s*[:=]\s*(\d{2,5})\b",
+        r"\.listen\s*\(\s*(\d{2,5})\b",
+        r"\bTCP-LISTEN\s*:\s*(\d{2,5})\b",
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            port = match.group(1)
+            output.append(f"{port}:{port}")
     return dedupe(output)
 
 

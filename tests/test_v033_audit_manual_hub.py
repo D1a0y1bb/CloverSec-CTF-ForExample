@@ -223,6 +223,12 @@ flag{v033-full-flag}
 
 #### 截图说明
 solve.png 展示脚本运行成功并输出 flag 的结果。
+
+### 2.13 添加关键字
+web、ctf
+
+### 2.14 上传附件
+● challenge.zip：题目源码附件。
 """
 
 
@@ -319,6 +325,30 @@ class V033AuditManualHubTests(unittest.TestCase):
         self.assertEqual(payload["xlsx_fields_patch"]["手册状态"], "待人工完善")
         self.assertEqual(payload["xlsx_fields_patch"]["是否通过"], "否")
         self.assertTrue(any(item["name"] == "截图引用" for item in payload["checks"] if item["status"] == "fail"))
+
+    def test_manual_quality_public_writeup_screenshot_does_not_replace_local_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            public_screenshot = tmp_path / "public-wp.png"
+            public_screenshot.write_bytes(b"png")
+            case = sample_case(tmp_path)
+            case["archive"]["screenshots"] = [
+                {"path": public_screenshot.as_posix(), "name": "public-wp.png", "role": "public_writeup"}
+            ]
+            manual = sample_manual() + "\n公开 WP 截图：public-wp.png\n"
+
+            payload = manual_quality.check_manual_quality(
+                case=case,
+                manual_markdown=manual,
+                hub_fields=sample_hub_fields(),
+                output_dir=tmp_path / "manual-quality",
+            )
+
+        screenshot_failures = [item for item in payload["checks"] if item["name"] == "截图引用" and item["status"] == "fail"]
+        source_warnings = [item for item in payload["checks"] if item["id"] == "manual-reference-source-screenshots"]
+        self.assertTrue(screenshot_failures)
+        self.assertTrue(source_warnings)
+        self.assertIn("缺少本地复现截图", source_warnings[0]["message"])
 
     def test_manual_quality_cli_accepts_missing_optional_manifests(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -545,7 +575,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.3")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.4")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

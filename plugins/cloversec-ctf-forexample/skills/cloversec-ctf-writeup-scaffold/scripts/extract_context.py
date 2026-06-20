@@ -298,7 +298,7 @@ def extract_first_paragraph(text: str) -> str:
 
 
 def search_flag_literal(text: str) -> str:
-    patterns = [r"flag\{[^\n\r\t}]{1,200}\}", r"ctf\{[^\n\r\t}]{1,200}\}"]
+    patterns = [r"\b[A-Za-z0-9_]*(?:flag|ctf)\{[^\n\r\t}]{1,200}\}"]
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:

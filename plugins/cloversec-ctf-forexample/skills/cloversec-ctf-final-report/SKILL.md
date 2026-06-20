@@ -75,7 +75,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_delivery.py \
   --workdir work/ctf-2026-collection \
   --outputs-dir outputs \
-  --output-dir outputs/交付包-ctf-2026-collection
+  --output-dir outputs
 ```
 
 默认目录：
@@ -115,7 +115,7 @@ Misc-Example/
 - 文件路径真实存在。
 - 检查未执行时写明原因。
 - `语雀粘贴表.md` 按内部字段输出，含完整 `Flag`，不要贴到公开渠道。
-- 最终交付给人看的目录只允许根目录三文件和每题目录；英文 `work/` 目录、英文 JSON 和兼容副本只作为脚本输入或 `_cache` 资料。
+- 最终交付给人看的目录只允许中文总表、语雀表、交付说明、待处理问题、质量检查报告和每题目录；英文 `work/` 目录、英文 JSON 和兼容副本只作为脚本输入或过程资料。
 
 ## 停止条件
 

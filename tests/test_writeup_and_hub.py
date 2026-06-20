@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -90,11 +91,24 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertIn("## 2 HUB上传部分&题解信息", manual)
         self.assertIn("```plain\n[2026示例赛]Web1\n```", manual)
         self.assertIn("### 2.12 题目解答", manual)
+        self.assertIn("### 2.13 添加关键字", manual)
+        self.assertIn("### 2.14 上传附件", manual)
         self.assertIn("#### 解题步骤", manual)
         self.assertIn("#### Flag", manual)
         self.assertNotIn("#### 命令输出", manual)
         self.assertNotIn("#### 截图说明", manual)
         self.assertIn("flag{stage-five-full-flag}", manual)
+
+    def test_writeup_extract_context_keeps_full_ctf_flag_prefix(self):
+        script_path = ROOT / "plugins" / "cloversec-ctf-forexample" / "skills" / "cloversec-ctf-writeup-scaffold" / "scripts" / "extract_context.py"
+        spec = importlib.util.spec_from_file_location("cloversec_extract_context", script_path)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        self.assertEqual(module.search_flag_literal("Flag: irisctf{webhook_hooked}"), "irisctf{webhook_hooked}")
+        self.assertEqual(module.search_flag_literal("DUCTF{xxe_payload_wins}"), "DUCTF{xxe_payload_wins}")
 
     def test_screenshot_plan_uses_stable_names(self):
         plan = hub.default_screenshot_plan()
