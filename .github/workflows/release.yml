@@ -30,6 +30,9 @@ jobs:
       - name: Run tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
 
+      - name: Run tests without optional deps (bare env)
+        run: python3 scripts/run_bare_env_tests.py
+
       - name: Package release artifacts
         run: python3 scripts/package_plugin_release.py
 
