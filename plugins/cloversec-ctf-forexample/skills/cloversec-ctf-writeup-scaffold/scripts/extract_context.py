@@ -121,6 +121,21 @@ MANUAL_DEFAULTS = dict_rule(rule_value("defaults", "manual", default={}))
 EXCLUDED_DIRS = set(list_rule(rule_value("sources", "collection", "excluded_dirs", default=[])))
 TEXT_EXTENSIONS = set(list_rule(rule_value("sources", "collection", "allowed_extensions", default=[])))
 PREFERRED_FILES = {str(name).lower() for name in list_rule(rule_value("sources", "collection", "preferred_files", default=[]))}
+if not TEXT_EXTENSIONS:
+    TEXT_EXTENSIONS = {".md", ".txt", ".yaml", ".yml", ".json", ".py", ".js", ".ts", ".php", ".sh", ".conf", ".ini", ".env", ".dockerfile"}
+if not PREFERRED_FILES:
+    PREFERRED_FILES = {
+        "meta.yaml",
+        "meta.yml",
+        "challenge.yaml",
+        "challenge.yml",
+        "hub_fields.json",
+        "xlsx_fields.json",
+        "docker_artifacts.json",
+        "environment.json",
+        "container_inference.json",
+        "readme.md",
+    }
 MAX_DEPTH_VALUE = rule_value("sources", "collection", "max_depth", default=4)
 MAX_DEPTH = int(MAX_DEPTH_VALUE) if str(MAX_DEPTH_VALUE).isdigit() else 4
 
