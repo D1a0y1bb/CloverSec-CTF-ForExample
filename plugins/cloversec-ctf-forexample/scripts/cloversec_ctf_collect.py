@@ -135,6 +135,7 @@ def collection_human_row(case: dict[str, Any]) -> dict[str, str]:
     metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
     research = case.get("research") if isinstance(case.get("research"), dict) else {}
     assets = case.get("asset_collection") if isinstance(case.get("asset_collection"), dict) else {}
+    collection_status = _string(metadata.get("收集情况")) or collection_status_from_gate(research or assets)
     return {
         "时间年份": _string(metadata.get("时间年份") or metadata.get("年份") or research.get("year")),
         "赛事名称": _string(metadata.get("赛事名称") or metadata.get("赛事来源") or metadata.get("题目来源")),
@@ -147,7 +148,7 @@ def collection_human_row(case: dict[str, Any]) -> dict[str, str]:
         "Wp 地址": first_url_from_candidates(assets.get("writeup_candidates")) or first_evidence_url(case, want_writeup=True),
         "附件/源码地址": first_url_from_candidates(assets.get("attachment_candidates")) or first_evidence_url(case, want_asset=True),
         "收集人": _string(metadata.get("收集人")),
-        "收集情况": _string(metadata.get("收集情况")),
+        "收集情况": collection_status,
     }
 
 
@@ -170,8 +171,7 @@ def write_collection_machine_jsonl(cases: list[dict[str, Any]], path: str | Path
     output.parent.mkdir(parents=True, exist_ok=True)
     lines = []
     for case in cases:
-        metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
-        row = {field: _string(metadata.get(field, "")) for field in data.XLSX_FIELDS}
+        row = data.case_to_xlsx_row(case)
         lines.append(
             json.dumps(
                 {
@@ -187,6 +187,17 @@ def write_collection_machine_jsonl(cases: list[dict[str, Any]], path: str | Path
             + "\n"
         )
     output.write_text("".join(lines), encoding="utf-8")
+
+
+def collection_status_from_gate(payload: dict[str, Any]) -> str:
+    gate = _string(payload.get("gate"))
+    if gate == "can_continue":
+        return "可继续制作"
+    if gate == "needs_human_download":
+        return "待人工下载"
+    if gate == "cannot_continue":
+        return "不可制作"
+    return ""
 
 
 def first_url_from_candidates(value: Any) -> str:

@@ -532,6 +532,87 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertFalse(any(path.name.startswith(("01-", "02-", "03-", "04-", "05-", "06-", "07-", "99-")) for path in delivery_dir.iterdir()))
             self.assertTrue(any(item["status"] == "copied" and item.get("subdir") == "题目镜像" for item in manifest["files"]))
 
+    def test_delivery_package_allows_source_json_but_blocks_manual_drafts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            archive_dir = workdir / "archive" / "Web-PasswordManager"
+            (archive_dir / "题目源码").mkdir(parents=True)
+            (archive_dir / "题目镜像").mkdir()
+            (archive_dir / "题目手册").mkdir()
+            (archive_dir / "题目源码" / "package.json").write_text('{"scripts":{"start":"node app.js"}}\n', encoding="utf-8")
+            (archive_dir / "题目源码" / "Dockerfile").write_text("FROM node:20\n", encoding="utf-8")
+            (archive_dir / "题目镜像" / "password-manager.tar").write_bytes(b"tar")
+            (archive_dir / "题目手册" / "题目解题手册.md").write_text("# 题目解题手册\n", encoding="utf-8")
+            (archive_dir / "题目手册" / "manual_filled_draft.md").write_text("# draft\n", encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
+
+        issues = {item["path"]: item["issue"] for item in manifest["package_issues"]}
+        self.assertNotIn("Web-PasswordManager/题目源码/package.json", issues)
+        self.assertIn("Web-PasswordManager/题目手册/manual_filled_draft.md", issues)
+
+    def test_delivery_package_reorganizes_legacy_single_challenge_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "irisctf-2025-password-manager"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            (workdir / "ctf_case.json").write_text(
+                json.dumps({"metadata": {"分类": "Web", "名称": "Password Manager"}}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            source = workdir / "dockerizer_work"
+            (source / ".ctfbuild").mkdir(parents=True)
+            (source / "verification").mkdir()
+            (source / "src").mkdir()
+            (source / "Dockerfile").write_text("FROM golang:1.22\n", encoding="utf-8")
+            (source / "start.sh").write_text("#!/bin/bash\n/app/main\n", encoding="utf-8")
+            (source / "changeflag.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+            (source / "flag").write_text("flag{demo}\n", encoding="utf-8")
+            (source / "src" / "users.json").write_text("{}\n", encoding="utf-8")
+            (source / "docker_artifacts.json").write_text("{}\n", encoding="utf-8")
+            (source / ".ctfbuild" / "proposal.json").write_text("{}\n", encoding="utf-8")
+            (source / "verification" / "image.inspect.json").write_text("{}\n", encoding="utf-8")
+            (workdir / "题目镜像").mkdir()
+            (workdir / "题目镜像" / "irisctf-2025-password-manager.tar").write_bytes(b"tar")
+            (workdir / "手册").mkdir()
+            (workdir / "手册" / "manual_filled_draft.md").write_text("# draft\n", encoding="utf-8")
+            (workdir / "手册" / "题目解题手册.md").write_text("# 题目解题手册\n", encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            challenge_dir = delivery_dir / "Web-Password Manager"
+            checks = {
+                "dockerfile": (challenge_dir / "题目源码" / "Dockerfile").exists(),
+                "source_json": (challenge_dir / "题目源码" / "src" / "users.json").exists(),
+                "docker_artifacts": (challenge_dir / "题目源码" / "docker_artifacts.json").exists(),
+                "ctfbuild": (challenge_dir / "题目源码" / ".ctfbuild").exists(),
+                "verification": (challenge_dir / "题目源码" / "verification").exists(),
+                "image_tar": (challenge_dir / "题目镜像" / "irisctf-2025-password-manager.tar").exists(),
+                "manual": (challenge_dir / "题目手册" / "题目解题手册.md").exists(),
+                "draft_manual": (challenge_dir / "题目手册" / "manual_filled_draft.md").exists(),
+            }
+
+        self.assertTrue(checks["dockerfile"])
+        self.assertTrue(checks["source_json"])
+        self.assertFalse(checks["docker_artifacts"])
+        self.assertFalse(checks["ctfbuild"])
+        self.assertFalse(checks["verification"])
+        self.assertTrue(checks["image_tar"])
+        self.assertTrue(checks["manual"])
+        self.assertFalse(checks["draft_manual"])
+        self.assertEqual(manifest["summary"]["challenge_count"], 1)
+        self.assertEqual(manifest["summary"]["package_issues"], 0)
+
     def test_delivery_package_can_reference_image_tars_when_requested(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -703,7 +784,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.9.9-beta")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.0")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

@@ -27,14 +27,14 @@ description: CloverSec CTF 容器题识别与验证分级 skill。用于从 Dock
 - 容器题最终必须进入 `cloversec-ctf-build-dockerizer`，生成或校验 `/start.sh`、`/changeflag.sh`、`/flag`、端口、amd64、镜像 tar 和 xlsx 字段。
 - `cloversec-ctf-docker` 的 build/run/probe 结果只能证明上游环境能否启动，不能替代 Dockerizer 的平台契约。
 - 需要 `--privileged`、capability、KVM、eBPF/tc、宿主目录挂载或内网访问时，必须写入 warnings，并等待单独确认。
-- 没有 Dockerizer 方案确认或 `platform_contract_verified=true` 证据时，容器题只能标 `Dockerizer 改造待确认`，不能写成可归档。
-- 输出机器字段时必须使用精确值：`confirmation_action=dockerizer`、`failure_category=platform_conversion_required`、`next_skill=cloversec-ctf-build-dockerizer`、`can_archive=false`。
+- 没有 Dockerizer 自动渲染和 `platform_contract_verified=true` 证据时，容器题只能标 `Dockerizer 改造待处理`，不能写成可归档。
+- 输出机器字段时必须使用精确值：`auto_action=auto-render`、`failure_category=platform_conversion_required`、`next_skill=cloversec-ctf-build-dockerizer`、`can_archive=false`。
 
 ## 平台契约摘要
 
 - 只要涉及题目镜像构建、源码服务、Dockerfile、compose、镜像 tar、端口服务或 Web/Pwn 在线服务，最终平台交付必须经过 `cloversec-ctf-build-dockerizer`。
 - 上游 Dockerfile、compose 和原始镜像只能用于推断端口、依赖、启动命令和风险，不能直接进入最终交付。
-- Dockerizer 方案未确认时，容器验证只能输出证据和待确认项，不能把题目写成可归档。
+- Dockerizer 自动渲染未完成时，容器验证只能输出证据和待处理项，不能把题目写成可归档。
 - 平台交付证据至少覆盖：`Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`environment`、`docker_artifacts`、`xlsx_fields`、`linux/amd64`、端口一致性。
 - `cloversec-ctf-docker` 的 build/run/probe 结果只能说明环境启动情况，不替代 Dockerizer 平台改造。
 - Docker 验证状态必须拆开写：契约通过、镜像构建/导入通过、服务启动通过、题目可解通过。端口或 health 检查通过，只能说明服务启动，不代表解题通过。
@@ -106,8 +106,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py \
     "status": "requires_cloversec_contract",
     "existing_docker_is_reference_only": true,
     "final_delivery_skill": "cloversec-ctf-build-dockerizer",
-    "confirmation_action": "dockerizer",
-    "blocking_until_confirmed": true
+    "auto_action": "auto-render",
+    "blocking_until_rendered": true
   },
   "runtime": {
     "image_name": "cloversec/example:local",
@@ -127,4 +127,4 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_proof.py \
 - 需要执行 `docker run`、上传 Hub、运行未知 solver、访问内网服务或读取浏览器凭证时，必须等用户确认。
 - 题目类型低置信度时，不把它强行当成容器题。
 - 只生成了 `container_inference.json` 或 `docker_validation_plan.json` 时，不能说平台交付已完成；还需要 Dockerizer 产物和质量检查证据。
-- 如果出现 Pasteboard 构建断连、eBPF/tc 不适配 Docker Desktop、jail/seccomp 失败、solver 断开等题目级问题，先生成 Dockerizer 改造确认请求，让用户选择改造、降级验收或剔除。
+- 如果出现 Pasteboard 构建断连、eBPF/tc 不适配 Docker Desktop、jail/seccomp 失败、solver 断开等题目级问题，写清 Dockerizer 改造待处理说明，让用户选择改造、降级验收或剔除。

@@ -647,3 +647,5 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate
 `最终归档表.xlsx` 和 `语雀粘贴表.md` 均按内部归档字段写入完整 `Flag`，不要放到公开渠道。
 
 如果 cases 里保存的是 `work/...` 这类相对路径，`--base-dir` 填线程或项目根目录。否则最终报告可能在不同执行目录下误判归档目录或附件不存在。
+
+给人接手的正式交付目录由 `cloversec_ctf_delivery.py` 生成。交付根目录只放 `交付说明.md`、`最终归档表.xlsx`、`语雀粘贴表.md` 和每题中文目录；容器题目录使用 `题目源码/题目镜像/题目手册`，附件题目录使用 `题目附件/题目手册`。镜像 tar 默认复制到 `题目镜像/`，如需只保留引用才使用 `--no-copy-image-tars`。

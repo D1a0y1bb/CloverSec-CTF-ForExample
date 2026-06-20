@@ -259,7 +259,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "0.9.9-beta")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.0")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

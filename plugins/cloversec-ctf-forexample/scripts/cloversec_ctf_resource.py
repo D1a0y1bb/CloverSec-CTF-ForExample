@@ -16,7 +16,7 @@ import cloversec_ctf_handoff as handoff
 
 
 SCHEMA_VERSION = "cloversec.ctf.resource_classification.v1"
-VERSION = "0.9.9-beta"
+VERSION = "1.0.0"
 
 TEXT_EXTENSIONS = {
     ".c",

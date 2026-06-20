@@ -72,7 +72,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-browser-search", "version": "0.9.9-beta"},
+                    "serverInfo": {"name": "cloversec-ctf-browser-search", "version": "1.0.0"},
                 },
             )
         if method == "tools/list":

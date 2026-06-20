@@ -79,33 +79,33 @@ research, collect, dedupe, download_preview, archive, quality, final_report
 |---|---|---|
 | 没有源码、没有附件，只有题名/WP 线索 | 写缺失项和人工入口，不进入构建 | `missing_source` / `needs_user_material` |
 | 只有附件 zip/tar | `cloversec-ctf-attachment-packager` | 附件题检查，不强行容器化 |
-| 有源码，没有 Dockerfile | `cloversec-ctf-build-dockerizer` 先出方案 | 可转容器候选，需后续验证 |
+| 有源码，没有 Dockerfile | 直接交给 `cloversec-ctf-build-dockerizer` | 可转容器候选，需后续验证 |
 | 有源码和上游 Dockerfile/compose | 仍进入 `cloversec-ctf-build-dockerizer` | 上游 Dockerfile/compose 只作为迁移输入 |
 | 只有镜像 tar | 授权后 inspect/hash，缺平台契约时写迁移计划 | 不能直接算平台交付 |
 | Pwn jail/kernel/eBPF/QEMU/privileged 题 | 静态推断和普通权限计划；高权限单独确认 | 记录运行条件和平台差异 |
 
 看到 Dockerfile、compose 或官方启动脚本时，不能直接把它们当作 CloverSec 平台最终交付。容器题最终必须经 `cloversec-ctf-build-dockerizer` 生成或校验 `/start.sh`、`/changeflag.sh`、`/flag`、端口、amd64、镜像 tar 和 xlsx 字段。
 
-如果容器题或源码题还没有完成 Dockerizer 方案确认，批量报告必须标记 `Dockerizer 改造待确认`，失败案例库必须记录 `platform_conversion_required`。Agent 要把问题、运行差异和建议方案交给用户确认，不能自行把题目写成可归档。
+如果容器题或源码题还没有完成 Dockerizer 自动渲染和静态校验，批量报告必须标记 `Dockerizer 改造待处理`，失败案例库必须记录 `platform_conversion_required`。Agent 要直接把材料交给 Dockerizer，不要把上游 Dockerfile 启动成功写成可归档。
 
 机器字段必须使用精确值：
 
-- `confirmation_action`: `dockerizer`
+- `auto_action`: `auto-render`
 - `failure_category`: `platform_conversion_required`
 - `next_skill`: `cloversec-ctf-build-dockerizer`
 - `can_archive`: `false`
 
 只有 `challenge.yml`、solver、writeup、截图或 Flag 文件时，不算源码题。它只能作为题目线索或手册材料，必须继续找官方附件、源码或让用户确认，不能进入可交付状态。
 
-Dockerizer handoff 必须写清题目目录、已有 Dockerfile/compose、端口线索、启动命令、Flag 路径、缺失项、用户需要确认的问题和 `confirmation_action=dockerizer`。不要让 Agent 自己根据上游 Dockerfile 直接启动后归档。
+Dockerizer handoff 必须写清题目目录、已有 Dockerfile/compose、端口线索、启动命令、Flag 路径和缺失项，并直接交给 `cloversec-ctf-build-dockerizer`。不要让 Agent 自己根据上游 Dockerfile 直接启动后归档。
 
 批量状态给用户看时优先读 `当前状态.md`，里面只放处理题数、缺材料题数、待确认题数和最终文件位置。
 
 ## 容器题平台契约摘要
 
 - 批量流程中发现源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 服务题或需要构建镜像时，必须把该题交给 `cloversec-ctf-build-dockerizer`。
-- 原始 Dockerfile/compose/镜像只作为迁移输入；没有 Dockerizer 产物和确认记录时，不能进入最终归档可交付状态。
-- Dockerizer 未确认时，批量状态写 `Dockerizer 改造待确认`，失败库写 `platform_conversion_required`，归档状态写 `can_archive=false`。
+- 原始 Dockerfile/compose/镜像只作为迁移输入；没有 Dockerizer 产物和静态校验记录时，不能进入最终归档可交付状态。
+- Dockerizer 未完成自动渲染时，批量状态写 `Dockerizer 改造待处理`，失败库写 `platform_conversion_required`，归档状态写 `can_archive=false`。
 - 交付证据必须覆盖 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`environment`、`docker_artifacts`、`xlsx_fields`、端口、`linux/amd64`。
 - 直接 Docker build/run/probe 只能证明运行现象，不代表符合 CloverSec 平台契约。
 

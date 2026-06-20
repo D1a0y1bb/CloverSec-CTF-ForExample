@@ -11,6 +11,7 @@ SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import cloversec_ctf_hub as hub
+import cloversec_ctf_final as final_report
 import cloversec_ctf_writeup as writeup
 
 
@@ -187,7 +188,7 @@ class WriteupAndHubTests(unittest.TestCase):
             self.assertNotIn("answer", plan["validation"]["missing"])
             self.assertTrue(plan["form_payload"]["answer"].strip())
             self.assertIn("classify_id", plan["validation"]["blockers"])
-            self.assertIn("upload_results", plan["validation"]["blockers"])
+            self.assertIn("upload_results", plan["validation"]["browser_pending"])
             self.assertIn("容器运行.png", plan["validation"]["missing_screenshots"])
             self.assertTrue(plan["login_state_gate"]["required_before_fill"])
             self.assertEqual(plan["login_state_gate"]["on_unauthenticated"], "stop_before_fill_and_wait_for_user_login")
@@ -322,7 +323,7 @@ class WriteupAndHubTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(payload["form_payload"]["classify"], "101")
-        self.assertIn("upload_results", payload["validation"]["blockers"])
+        self.assertIn("upload_results", payload["validation"]["browser_pending"])
 
     def test_hub_cli_chrome_plan_writes_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -481,6 +482,30 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertTrue(confirmed["retag_required"])
         self.assertEqual(confirmed["HUB编号"], "CTF-2026060001")
         self.assertEqual(confirmed["hub_id_gate"]["status"], "ready_to_backfill")
+
+    def test_final_xlsx_row_rejects_unconfirmed_hub_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = sample_case(Path(tmp))
+            case["metadata"]["HUB编号"] = "CTF-2026060001"
+            case["hub_id_gate"] = {
+                "status": "needs_user_confirm",
+                "candidate_hub_id": "CTF-2026060001",
+                "hub_id": "",
+                "can_backfill_xlsx": False,
+            }
+
+            pending = final_report.finalized_xlsx_row(case)
+            case["hub_id_gate"] = {
+                "status": "ready_to_backfill",
+                "candidate_hub_id": "CTF-2026060001",
+                "hub_id": "CTF-2026060001",
+                "can_backfill_xlsx": True,
+            }
+            confirmed = final_report.finalized_xlsx_row(case)
+
+        self.assertEqual(pending["HUB编号"], "")
+        self.assertIn("HUB编号未确认", pending["问题"])
+        self.assertEqual(confirmed["HUB编号"], "CTF-2026060001")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ YUQUE_FIELDS = [
 ]
 
 ESSENTIAL_PASS_FIELDS = ["赛事来源", "题目来源", "名称", "分类", "题目类型", "Flag类型", "Flag", "验证状态", "解题工具"]
+FORMAL_HUB_ID_RE = re.compile(r"^CTF-\d{6,}$", re.I)
 
 
 def create_final_outputs(
@@ -205,7 +207,7 @@ def _final_entry(case: dict[str, Any], row: dict[str, str], base_dir: Path | Non
 
 def finalized_xlsx_row(case: dict[str, Any], base_dir: Path | None = None) -> dict[str, str]:
     row = data.case_to_xlsx_row(case)
-    issues = row_missing_issues(row, base_dir)
+    issues = hub_id_issues(case, row) + row_missing_issues(row, base_dir)
     if issues:
         if row.get("是否通过") == "是":
             row["是否通过"] = "否"
@@ -217,6 +219,44 @@ def finalized_xlsx_row(case: dict[str, Any], base_dir: Path | None = None) -> di
         merged = ";".join(item for item in [existing, *issues] if item)
         row["问题"] = merged[:1000]
     return row
+
+
+def hub_id_issues(case: dict[str, Any], row: dict[str, str]) -> list[str]:
+    value = row.get("HUB编号", "").strip()
+    gates = hub_gate_candidates(case)
+    if gates:
+        allowed = next((gate for gate in gates if gate.get("can_backfill_xlsx") is True), {})
+        if allowed:
+            hub_id = str(allowed.get("hub_id") or value).strip()
+            if hub_id and FORMAL_HUB_ID_RE.match(hub_id):
+                row["HUB编号"] = hub_id
+                return []
+        if value:
+            row["HUB编号"] = ""
+            return ["HUB编号未确认，不能回填最终表"]
+        return []
+    if not value:
+        return []
+    if not FORMAL_HUB_ID_RE.match(value):
+        row["HUB编号"] = ""
+        return ["HUB编号不是正式 CTF 编号，不能回填最终表"]
+    if case.get("hub_id_confirmed") is True or case.get("HUB编号已确认") is True:
+        return []
+    row["HUB编号"] = ""
+    return ["HUB编号缺少用户确认，不能回填最终表"]
+
+
+def hub_gate_candidates(case: dict[str, Any]) -> list[dict[str, Any]]:
+    gates: list[dict[str, Any]] = []
+    for key in ["hub_id_gate", "hub_gate"]:
+        value = case.get(key)
+        if isinstance(value, dict):
+            gates.append(value)
+    for key in ["hub_state", "hub_review", "retag_plan", "hub_submission"]:
+        value = case.get(key)
+        if isinstance(value, dict) and isinstance(value.get("hub_id_gate"), dict):
+            gates.append(value["hub_id_gate"])
+    return gates
 
 
 def row_missing_issues(row: dict[str, str], base_dir: Path | None = None) -> list[str]:

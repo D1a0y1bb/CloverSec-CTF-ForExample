@@ -229,7 +229,27 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(cases[0]["metadata"]["材料状态"], "公开 WP 线索")
         self.assertEqual(cases[0]["research"]["gate"], "cannot_continue")
-        self.assertEqual(cases[0]["research"]["blocking_rule"], "writeup_only")
+        self.assertEqual(cases[0]["research"]["blocking_rule"], "writeup_without_attachment")
+
+    def test_official_challenge_page_is_not_downgraded_to_writeup_only(self):
+        result = {
+            "provider": "agent-web-search",
+            "kind": "web",
+            "title": "IrisCTF 2025 Password Manager challenge",
+            "url": "https://2025.irisc.tf/challenge/password-manager",
+            "summary": "Official challenge page for IrisCTF 2025 Password Manager, web category.",
+            "source_type": "agent_web_search",
+            "confidence": "medium",
+            "layer": "writeup_candidate",
+            "score": 70,
+            "quality_issues": [],
+        }
+
+        cases = search.results_to_cases({"query": "IrisCTF 2025 Password Manager", "years": [2025], "results": [result]})
+
+        self.assertEqual(cases[0]["research"]["gate"], "needs_human_download")
+        self.assertEqual(cases[0]["research"]["blocking_rule"], "official_page_needs_material")
+        self.assertNotEqual(cases[0]["metadata"]["材料状态"], "公开 WP 线索")
 
     def test_github_tree_case_requires_download_before_building(self):
         result = {
@@ -248,7 +268,7 @@ class SearchEngineTests(unittest.TestCase):
         cases = search.results_to_cases({"query": "Demo CTF 2026 baby sql", "years": [2026], "results": [result]})
 
         self.assertEqual(cases[0]["research"]["gate"], "needs_human_download")
-        self.assertEqual(cases[0]["asset_collection"]["blocking_rule"], "needs_source_download")
+        self.assertEqual(cases[0]["asset_collection"]["blocking_rule"], "github_dir_unverified")
 
     def test_fetch_and_download_url_against_local_server(self):
         with tempfile.TemporaryDirectory() as tmp:

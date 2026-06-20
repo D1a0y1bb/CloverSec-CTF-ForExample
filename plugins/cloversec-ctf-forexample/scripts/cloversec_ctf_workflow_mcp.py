@@ -18,7 +18,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "0.9.9-beta"
+SERVER_VERSION = "1.0.0"
 SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {
@@ -115,6 +115,24 @@ TOOLS = [
                 "max_repo_files": {"type": "integer"},
                 "github_ref": {"type": "string"},
                 "download_direct": {"type": "boolean"},
+                "accept_safe_downloads": {"type": "boolean"},
+            },
+            "required": ["manifest_path", "output_dir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_auto_collect",
+        "description": "Automatically download safe material links, preview GitHub repositories, classify accepted local resources, and create Dockerizer or attachment handoff outputs.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "manifest_path": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "max_direct_downloads": {"type": "integer"},
+                "max_repo_previews": {"type": "integer"},
+                "max_repo_files": {"type": "integer"},
+                "github_ref": {"type": "string"},
+                "accept_safe_downloads": {"type": "boolean"},
             },
             "required": ["manifest_path", "output_dir"],
         },
@@ -431,6 +449,17 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             max_repo_files=int(arguments.get("max_repo_files", 80)),
             github_ref=str(arguments.get("github_ref") or "main"),
             download_direct=bool(arguments.get("download_direct", True)),
+            accept_safe_downloads=bool(arguments.get("accept_safe_downloads", False)),
+        )
+    if name == "cloversec_ctf_auto_collect":
+        return workflow.auto_collect_and_route(
+            manifest_path=str(arguments.get("manifest_path") or ""),
+            output_dir=str(arguments.get("output_dir") or ""),
+            max_direct_downloads=int(arguments.get("max_direct_downloads", 10)),
+            max_repo_previews=int(arguments.get("max_repo_previews", 10)),
+            max_repo_files=int(arguments.get("max_repo_files", 80)),
+            github_ref=str(arguments.get("github_ref") or "main"),
+            accept_safe_downloads=bool(arguments.get("accept_safe_downloads", True)),
         )
     if name == "cloversec_ctf_resource_route":
         return workflow.route_resource(

@@ -41,6 +41,18 @@ class Workflow030Tests(unittest.TestCase):
             self.assertEqual(plan["request"]["categories"], ["web"])
             self.assertTrue(any("IrisCTF 2025 web writeup" == item["query"] for item in plan["search_tasks"]))
 
+    def test_auto_collect_next_action_matches_recommended_skill(self):
+        writeup_action = workflow.auto_collect_next_action(
+            [{"recommended_next": {"skill": "cloversec-ctf-writeup-scaffold"}}]
+        )
+        dockerizer_action = workflow.auto_collect_next_action(
+            [{"recommended_next": {"skill": "cloversec-ctf-build-dockerizer"}}]
+        )
+
+        self.assertIn("生成手册", writeup_action)
+        self.assertNotIn("Dockerizer 交接表", writeup_action)
+        self.assertIn("Dockerizer 交接表", dockerizer_action)
+
     def test_batch_orchestrate_apply_tracks_per_case_state_and_resume(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "run"
@@ -122,9 +134,11 @@ class Workflow030Tests(unittest.TestCase):
                     }
                 ],
             )
-            (out / "最终归档表.xlsx").write_bytes(b"xlsx")
-            (out / "语雀粘贴表.md").write_text("| 名称 |\n|---|\n", encoding="utf-8")
-            (out / "最终报告.md").write_text("# 最终报告\n", encoding="utf-8")
+            final_dir = out / "最终交付"
+            final_dir.mkdir()
+            (final_dir / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (final_dir / "语雀粘贴表.md").write_text("| 名称 |\n|---|\n", encoding="utf-8")
+            (final_dir / "交付说明.md").write_text("# 交付说明\n", encoding="utf-8")
 
             result = workflow.batch_orchestrate(workdir=out, stage="final_report", mode="apply", force=True)
 

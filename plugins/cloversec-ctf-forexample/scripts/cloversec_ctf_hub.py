@@ -75,9 +75,6 @@ HUB_AI_FILL_FIELDS = [
 HUB_HUMAN_CONFIRM_FIELDS = [
     "题目分类ID",
     "题目解答",
-    "上传附件",
-    "其他附件",
-    "截图",
 ]
 AI_PAYLOAD_KEYS = {
     "name",
@@ -92,7 +89,7 @@ AI_PAYLOAD_KEYS = {
     "level",
     "resource_level",
 }
-HUMAN_PAYLOAD_KEYS = {"answer", "classify_id", "upload_results", "screenshots"}
+HUMAN_PAYLOAD_KEYS = {"answer", "classify_id"}
 
 
 CLASSIFY_TEXT_KEYS = ["题目分类", "classify_label", "classify_name", "name", "label", "title"]
@@ -317,7 +314,7 @@ def create_hub_draft(
     fill_plan = create_chrome_assist_plan(manifest, classify_options=classify_options)
     draft = {
         "schema_version": "cloversec.ctf.hub_draft.v1",
-        "version": "0.9.9-beta",
+        "version": "1.0.0",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -375,7 +372,7 @@ def create_hub_review_state(
         status_notes.append("已发现疑似 Hub 编号，但还没有用户确认，不能用于 retag 或 xlsx。")
     state = {
         "schema_version": "cloversec.ctf.hub_review_state.v1",
-        "version": "0.9.9-beta",
+        "version": "1.0.0",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -435,7 +432,7 @@ def create_hub_session_state(
     resolved_hub_id = ids["hub_challenge_id"]
     state = {
         "schema_version": "cloversec.ctf.hub_session_state.v1",
-        "version": "0.9.9-beta",
+        "version": "1.0.0",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or draft.get("case_id") or manifest.get("case_id") or ""),
         "case_title": case_title(case) or str(draft.get("case_title") or ""),
@@ -769,10 +766,11 @@ def validate_hub_form_payload(payload: dict[str, Any], *, manifest: dict[str, An
     blockers = list(missing)
     if not classify_resolution.get("id"):
         blockers.append("classify_id")
+    browser_pending = []
     if pending_uploads:
-        blockers.append("upload_results")
+        browser_pending.append("upload_results")
     if missing_screenshots:
-        blockers.append("screenshots")
+        browser_pending.append("screenshots")
     ai_missing = [key for key in missing if key in AI_PAYLOAD_KEYS]
     human_blockers = [key for key in blockers if key in HUMAN_PAYLOAD_KEYS or key not in AI_PAYLOAD_KEYS]
     ai_ready = not ai_missing
@@ -792,10 +790,11 @@ def validate_hub_form_payload(payload: dict[str, Any], *, manifest: dict[str, An
         "classify_resolution": classify_resolution,
         "pending_uploads": pending_uploads,
         "missing_screenshots": missing_screenshots,
+        "browser_pending": browser_pending,
         "notes": [
             "classify 在页面中需要匹配为分类 ID，不能只依赖中文分类文本。",
             "answer 需要写入富文本编辑器；Markdown 到 HTML 的转换由 Agent 在浏览器步骤执行或人工确认。",
-            "attached/other_attached 需要先通过页面上传控件上传，返回 URL 后才能提交。",
+            "attached/other_attached 和截图由浏览器辅助在页面上处理，不作为提交材料包的人工确认字段。",
         ],
     }
 
@@ -1069,7 +1068,7 @@ def create_hub_diff(
         )
     return {
         "schema_version": "cloversec.ctf.hub_diff.v1",
-        "version": "0.9.9-beta",
+        "version": "1.0.0",
         "case_id": str(case.get("case_id") or ""),
         "comparisons": comparisons,
         "validation": validation,

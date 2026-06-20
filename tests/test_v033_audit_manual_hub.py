@@ -506,7 +506,7 @@ class V033AuditManualHubTests(unittest.TestCase):
             ("cloversec_ctf_archive_mcp.py", ["cloversec_ctf_archive_preview", "cloversec_ctf_manifest_lock"]),
             ("cloversec_ctf_quality_runner_mcp.py", ["cloversec_ctf_manual_quality", "cloversec_ctf_batch_status_report", "cloversec_ctf_failure_cases"]),
             ("cloversec_ctf_hub_assistant_mcp.py", ["cloversec_ctf_hub_draft", "cloversec_ctf_hub_review_state", "cloversec_ctf_image_naming_plan"]),
-            ("cloversec_ctf_workflow_mcp.py", ["cloversec_ctf_visible_content_evidence", "cloversec_ctf_confirmation_request", "cloversec_ctf_stage_notification", "cloversec_ctf_codex_warning_report", "cloversec_ctf_platform_contract"]),
+            ("cloversec_ctf_workflow_mcp.py", ["cloversec_ctf_visible_content_evidence", "cloversec_ctf_auto_collect", "cloversec_ctf_confirmation_request", "cloversec_ctf_stage_notification", "cloversec_ctf_codex_warning_report", "cloversec_ctf_platform_contract"]),
         ]
         for script, expected_tools in servers:
             process = subprocess.Popen(
@@ -527,7 +527,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "0.9.9-beta")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.0")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

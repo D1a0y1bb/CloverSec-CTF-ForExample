@@ -75,11 +75,11 @@ MCP 工具调用会记录到本机运行日志，默认路径为 `~/.codex/clove
 
 只要题目处理涉及源码、Dockerfile、compose、镜像 tar、端口服务、Web/Pwn 在线服务题或镜像构建需求，必须进入 `cloversec-ctf-build-dockerizer`。上游 Dockerfile、compose、README 启动命令和镜像 tar 只能作为迁移输入，不能直接算 CloverSec 平台交付。
 
-未完成 Dockerizer 方案确认时，各阶段必须写入以下机器字段：
+未完成 Dockerizer 自动渲染和静态校验时，各阶段必须写入以下机器字段：
 
 ```json
 {
-  "confirmation_action": "dockerizer",
+  "auto_action": "auto-render",
   "failure_category": "platform_conversion_required",
   "next_skill": "cloversec-ctf-build-dockerizer",
   "can_archive": false
@@ -90,7 +90,7 @@ MCP 工具调用会记录到本机运行日志，默认路径为 `~/.codex/clove
 
 只有 `challenge.yml`、solver、writeup、截图、Flag 或平台页面时，只能算线索或手册材料。缺官方源码、附件或题包时，必须写 `needs_user_material`、`writeup_only`、`solver_or_writeup_only` 或 `lead_only`，不能写成可交付。
 
-Dockerizer 交接必须包含题目目录、已有 Dockerfile/compose、端口线索、启动命令、Flag 路径、缺失项和用户需要确认的问题。
+Dockerizer 交接必须包含题目目录、已有 Dockerfile/compose、端口线索、启动命令、Flag 路径和缺失项，并直接交给 `cloversec-ctf-build-dockerizer`。
 
 Docker 状态必须拆成四层：契约、镜像构建/导入、服务启动、题目可解。端口通过不等于题目可解。
 
@@ -267,8 +267,8 @@ proof/hashes.json
 
 1. 先运行 `cloversec_ctf_resource_classify`，得到 `resource_classification.json`。
 2. 再运行 `cloversec_ctf_container_infer`，得到 `container_inference.json`。
-3. 如果 `must_use_dockerizer=true`，先运行 `cloversec_ctf_confirmation_request action=dockerizer`，把 Dockerizer 改造方案、风险和确认项交给用户。
-4. 用户确认后再使用 `cloversec-ctf-build-dockerizer` 生成或校验 CloverSec 平台交付件。
+3. 如果 `must_use_dockerizer=true`，直接使用 `cloversec-ctf-build-dockerizer` 生成或校验 CloverSec 平台交付件。
+4. 只有真实启动未知容器、高权限运行、外部服务访问或业务取舍无法判断时，才停下让用户决定。
 5. 根据 `summary.recommended_validation_level` 生成 Docker 验证计划。
 6. 只有用户明确授权时，才执行 `cloversec_ctf_docker_execute`。
 7. 质量检查完成后，运行 `cloversec_ctf_proof_pack` 生成 `proof/`。
@@ -283,7 +283,7 @@ proof/hashes.json
 
 `proof/` 用于审核复核，不替代最终人工判断。
 
-没有 Dockerizer 方案确认或 `platform_contract_verified=true` 证据时，批量报告必须标 `Dockerizer 改造待确认`，失败案例库必须记录 `platform_conversion_required`，不得把题目写成可归档。
+没有 Dockerizer 自动渲染或 `platform_contract_verified=true` 证据时，批量报告必须标 `Dockerizer 改造待处理`，失败案例库必须记录 `platform_conversion_required`，不得把题目写成可归档。
 
 ## 0.5.0 手册、Hub、归档和批量交接
 

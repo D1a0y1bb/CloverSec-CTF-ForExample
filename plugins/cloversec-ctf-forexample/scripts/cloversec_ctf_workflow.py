@@ -26,6 +26,7 @@ import cloversec_ctf_final as final_reporter
 import cloversec_ctf_handoff as handoff
 import cloversec_ctf_http as http
 import cloversec_ctf_i18n as i18n
+import cloversec_ctf_delivery as delivery_packager
 import cloversec_ctf_quality_runner as quality_runner
 import cloversec_ctf_resource as resource
 import cloversec_ctf_search as search
@@ -33,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "0.9.9-beta"
+WORKFLOW_VERSION = "1.0.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -518,6 +519,7 @@ def collect_materials(
     max_repo_files: int = 80,
     github_ref: str = "main",
     download_direct: bool = True,
+    accept_safe_downloads: bool = False,
 ) -> dict[str, Any]:
     """Turn search links into local previews/download candidates."""
     manifest = read_json(manifest_path)
@@ -531,7 +533,7 @@ def collect_materials(
     repos = github_repos_from_results(results)[: max(max_repo_previews, 0)]
     download_payload: dict[str, Any] = {}
     if download_direct and direct_urls:
-        download_payload = download_sandbox(urls=direct_urls, output_dir=base, accept=False)
+        download_payload = download_sandbox(urls=direct_urls, output_dir=base, accept=accept_safe_downloads)
 
     repo_previews = []
     repo_errors = []
@@ -588,6 +590,7 @@ def collect_materials(
             "direct_asset_urls": len(direct_urls),
             "github_repositories": len(repos),
             "downloaded_or_previewed": download_payload.get("summary", {}).get("total", 0) if download_payload else 0,
+            "accepted_downloads": download_payload.get("summary", {}).get("accepted", 0) if download_payload else 0,
             "repo_errors": len(repo_errors),
         },
         "next_action": "下载成功或仓库预览可用后，把材料目录交给 route-resource 自动分流。",
@@ -597,11 +600,104 @@ def collect_materials(
     return payload
 
 
+def auto_collect_and_route(
+    *,
+    manifest_path: str | Path,
+    output_dir: str | Path,
+    max_direct_downloads: int = 10,
+    max_repo_previews: int = 10,
+    max_repo_files: int = 80,
+    github_ref: str = "main",
+    accept_safe_downloads: bool = True,
+) -> dict[str, Any]:
+    base = Path(output_dir)
+    base.mkdir(parents=True, exist_ok=True)
+    material_payload = collect_materials(
+        manifest_path=manifest_path,
+        output_dir=base,
+        max_direct_downloads=max_direct_downloads,
+        max_repo_previews=max_repo_previews,
+        max_repo_files=max_repo_files,
+        github_ref=github_ref,
+        download_direct=True,
+        accept_safe_downloads=accept_safe_downloads,
+    )
+    routes: list[dict[str, Any]] = []
+    accepted_dir = base / "downloads_accepted"
+    if accepted_dir.exists() and any(path.is_file() for path in accepted_dir.rglob("*")):
+        routes.append(
+            route_resource(
+                root=accepted_dir,
+                output_dir=base / "resource_routes" / "downloads_accepted",
+                gate={
+                    "gate": "can_continue",
+                    "gate_reason": "已下载并接受安全材料，进入资源识别。",
+                    "blocking_rule": "",
+                    "next_action": "按资源类型进入 Dockerizer、附件检查或手册生成。",
+                },
+            )
+        )
+    sandbox_dir = base / "downloads_sandbox"
+    if not routes and sandbox_dir.exists() and any(path.is_file() for path in sandbox_dir.rglob("*")):
+        routes.append(
+            route_resource(
+                root=sandbox_dir,
+                output_dir=base / "resource_routes" / "downloads_sandbox_preview",
+                gate={
+                    "gate": "needs_human_download",
+                    "gate_reason": "只完成下载安全预览，未接受进入正式材料目录。",
+                    "blocking_rule": "download_preview_not_accepted",
+                    "next_action": "确认预览安全后重新执行 auto-collect，或人工提供材料目录。",
+                },
+            )
+        )
+    payload = {
+        "schema_version": f"{SCHEMA_PREFIX}.auto_collect_route.v1",
+        "workflow_version": WORKFLOW_VERSION,
+        "generated_at": utc_now(),
+        "manifest_path": Path(manifest_path).as_posix(),
+        "output_dir": base.as_posix(),
+        "material_collection": material_payload,
+        "routes": routes,
+        "summary": {
+            "direct_asset_urls": material_payload.get("summary", {}).get("direct_asset_urls", 0),
+            "github_repositories": material_payload.get("summary", {}).get("github_repositories", 0),
+            "accepted_downloads": material_payload.get("summary", {}).get("accepted_downloads", 0),
+            "routes": len(routes),
+        },
+        "next_action": auto_collect_next_action(routes),
+    }
+    write_json(base / "auto_collect_and_route.json", payload)
+    write_text(base / "auto_collect_and_route.md", render_auto_collect_report(payload))
+    return payload
+
+
+def auto_collect_next_action(routes: list[dict[str, Any]]) -> str:
+    skills = []
+    for route in routes:
+        if not isinstance(route, dict):
+            continue
+        recommended = route.get("recommended_next") if isinstance(route.get("recommended_next"), dict) else {}
+        skill = str(recommended.get("skill") or "")
+        if skill and skill not in skills:
+            skills.append(skill)
+    if not skills:
+        return "没有可继续处理的本地材料，继续搜索源码、附件或官方题包。"
+    if any(skill == "cloversec-ctf-build-dockerizer" for skill in skills):
+        return "查看 resource_routes 下的 Dockerizer 交接表，把源码、Dockerfile、compose 或镜像 tar 交给 cloversec-ctf-build-dockerizer。"
+    if any(skill == "cloversec-ctf-attachment-packager" for skill in skills):
+        return "查看 resource_routes 下的附件检查结果，确认压缩包、pcap、图片等附件能解压且与题目一致。"
+    if any(skill == "cloversec-ctf-writeup-scaffold" for skill in skills):
+        return "当前材料主要是 WP、手册或截图，可用于生成手册；还需要继续找源码、附件或官方题包才能制作题目。"
+    return "查看 resource_routes 下的 resource_route.json，按推荐 skill 继续处理。"
+
+
 def route_resource(
     *,
     root: str | Path,
     output_dir: str | Path | None = None,
     max_files: int = 2000,
+    gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Classify a local challenge/material directory and prepare the next handoff."""
     source_root = Path(root)
@@ -617,7 +713,14 @@ def route_resource(
             resource_classification=classification,
             output_path=container_path,
         )
-    route = build_resource_route(source_root, classification, container_payload, classification_path, container_path if container_payload else None)
+    route = build_resource_route(
+        source_root,
+        classification,
+        container_payload,
+        classification_path,
+        container_path if container_payload else None,
+        gate=gate,
+    )
     handoff_payload = handoff.write_resource_handoff(classification, base)
     route_path = base / "resource_route.json"
     write_json(route_path, route)
@@ -980,6 +1083,7 @@ def build_resource_route(
     container_payload: dict[str, Any],
     classification_path: Path,
     container_path: Path | None,
+    gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     root_classification = classification.get("root_classification") if isinstance(classification.get("root_classification"), dict) else {}
     project_type = str(root_classification.get("project_type") or "")
@@ -1041,6 +1145,7 @@ def build_resource_route(
         "workflow_version": WORKFLOW_VERSION,
         "generated_at": utc_now(),
         "root": root.as_posix(),
+        "gate": gate or {},
         "summary": {
             "project_type": project_type,
             "resource_types": dict(sorted((classification.get("summary", {}).get("by_resource_type") or {}).items())),
@@ -1097,6 +1202,43 @@ def render_material_collection_report(payload: dict[str, Any]) -> str:
         lines.extend(["", "## 失败原因", ""])
         for item in payload["errors"]:
             lines.append(f"- {item.get('repo', '')} {item.get('provider', '')}: {item.get('error', '')}")
+    return "\n".join(lines) + "\n"
+
+
+def render_auto_collect_report(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary", {}) if isinstance(payload.get("summary"), dict) else {}
+    lines = [
+        "# 自动材料收集与分流报告",
+        "",
+        f"- 直接附件链接：{summary.get('direct_asset_urls', 0)}",
+        f"- GitHub 仓库线索：{summary.get('github_repositories', 0)}",
+        f"- 已接受安全下载：{summary.get('accepted_downloads', 0)}",
+        f"- 已生成资源分流：{summary.get('routes', 0)}",
+        "",
+        "## 资源分流",
+        "",
+    ]
+    routes = payload.get("routes") if isinstance(payload.get("routes"), list) else []
+    if not routes:
+        lines.append("- 暂无可进入资源识别的本地材料。")
+    for route in routes:
+        if not isinstance(route, dict):
+            continue
+        recommended = route.get("recommended_next") if isinstance(route.get("recommended_next"), dict) else {}
+        lines.append(
+            f"- `{route.get('root', '')}` -> {recommended.get('skill', '') or '待人工确认'}：{recommended.get('reason', '')}"
+        )
+        dockerizer_handoff = route.get("dockerizer_handoff") if isinstance(route.get("dockerizer_handoff"), dict) else {}
+        if dockerizer_handoff:
+            lines.append(f"  - Dockerizer 命令：`{dockerizer_handoff.get('recommended_command', '')}`")
+    lines.extend(
+        [
+            "",
+            "## 下一步",
+            "",
+            f"- {payload.get('next_action', '')}",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -1599,8 +1741,8 @@ def execute_stage_research(base: Path, *, max_search_tasks: int, search_limit: i
 def execute_stage_collect(base: Path) -> dict[str, Any]:
     manifest = base / "search_results.json"
     if manifest.exists():
-        result = collect_materials(manifest_path=manifest, output_dir=base, download_direct=False)
-        return {"status": "ok", "evidence_path": (base / "material_candidates.json").as_posix(), "summary": result.get("summary", {})}
+        result = auto_collect_and_route(manifest_path=manifest, output_dir=base, accept_safe_downloads=True)
+        return {"status": "ok", "evidence_path": (base / "auto_collect_and_route.json").as_posix(), "summary": result.get("summary", {})}
     if (base / "material_candidates.json").exists() or (base / "resource_route.json").exists():
         return {"status": "ok", "evidence_path": first_existing(base, ["material_candidates.json", "resource_route.json"]).as_posix()}
     return {"status": "blocked", "errors": [{"message": "缺少 search_results.json，无法收集材料候选。"}]}
@@ -1682,8 +1824,18 @@ def execute_stage_final_report(base: Path) -> dict[str, Any]:
     if not cases_path.exists():
         return {"status": "blocked", "errors": [{"message": "缺少 cases 文件，无法生成最终报告。"}]}
     cases = data.load_cases(cases_path)
-    result = final_reporter.create_final_outputs(cases, base / "最终交付", base_dir=base)
-    return {"status": "ok", "evidence_path": result.get("summary", {}).get("report_path", ""), "summary": result.get("summary", {})}
+    internal_output = base / "_cache" / "final_report"
+    result = final_reporter.create_final_outputs(cases, internal_output, base_dir=base)
+    delivery = delivery_packager.create_delivery_package(workdir=base, outputs_dir=internal_output, output_dir=base / "最终交付")
+    return {
+        "status": "ok" if not delivery.get("package_issues") else "incomplete",
+        "evidence_path": delivery.get("paths", {}).get("readme", ""),
+        "summary": {
+            "final_report": result.get("summary", {}),
+            "delivery": delivery.get("summary", {}),
+            "package_issues": delivery.get("package_issues", []),
+        },
+    }
 
 
 def applied_stage_status(applied: dict[str, Any]) -> str:
@@ -2077,11 +2229,12 @@ def check_hub_prepare_completion(workdir: Path, case: dict[str, Any], case_id: s
 
 
 def check_final_report_completion(workdir: Path, case_id: str) -> dict[str, Any]:
-    required = ["最终归档表.xlsx", "语雀粘贴表.md", "最终报告.md"]
-    paths = [next((path for path in workdir.rglob(name) if path.is_file()), None) for name in required]
-    if all(paths):
-        return completion_ok("final_report", paths[0] or "")
-    return completion_error("final_report", case_id, "缺少最终归档表.xlsx、语雀粘贴表.md 或 最终报告.md。")
+    required = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
+    delivery_dir = workdir / "最终交付"
+    paths = [delivery_dir / name for name in required]
+    if delivery_dir.exists() and all(path.is_file() for path in paths):
+        return completion_ok("final_report", delivery_dir)
+    return completion_error("final_report", case_id, "缺少最终归档表.xlsx、语雀粘贴表.md 或 交付说明.md。")
 
 
 def case_has_source_evidence(case: dict[str, Any]) -> bool:
@@ -2851,7 +3004,18 @@ def main(argv: list[str] | None = None) -> int:
     materials_parser.add_argument("--max-repo-files", type=int, default=80)
     materials_parser.add_argument("--github-ref", default="main")
     materials_parser.add_argument("--no-download-direct", action="store_true")
+    materials_parser.add_argument("--accept-safe-downloads", action="store_true")
     materials_parser.add_argument("--output")
+
+    auto_collect_parser = subparsers.add_parser("auto-collect", help="download safe materials, route local resources, and write Dockerizer/attachment handoff")
+    auto_collect_parser.add_argument("--manifest", required=True)
+    auto_collect_parser.add_argument("--output-dir", required=True)
+    auto_collect_parser.add_argument("--max-direct-downloads", type=int, default=10)
+    auto_collect_parser.add_argument("--max-repo-previews", type=int, default=10)
+    auto_collect_parser.add_argument("--max-repo-files", type=int, default=80)
+    auto_collect_parser.add_argument("--github-ref", default="main")
+    auto_collect_parser.add_argument("--no-accept-safe-downloads", action="store_true")
+    auto_collect_parser.add_argument("--output")
 
     route_parser = subparsers.add_parser("route-resource", help="classify a local resource directory and prepare the next skill handoff")
     route_parser.add_argument("root")
@@ -2969,6 +3133,22 @@ def main(argv: list[str] | None = None) -> int:
             max_repo_files=args.max_repo_files,
             github_ref=args.github_ref,
             download_direct=not args.no_download_direct,
+            accept_safe_downloads=args.accept_safe_downloads,
+        )
+        if args.output:
+            write_json(args.output, payload)
+        print(json.dumps(payload["summary"], ensure_ascii=False))
+        return 0
+
+    if args.command == "auto-collect":
+        payload = auto_collect_and_route(
+            manifest_path=args.manifest,
+            output_dir=args.output_dir,
+            max_direct_downloads=args.max_direct_downloads,
+            max_repo_previews=args.max_repo_previews,
+            max_repo_files=args.max_repo_files,
+            github_ref=args.github_ref,
+            accept_safe_downloads=not args.no_accept_safe_downloads,
         )
         if args.output:
             write_json(args.output, payload)

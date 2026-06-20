@@ -183,15 +183,14 @@
 
 `proof/` 默认只复制小型 JSON/Markdown 证据和 hash，不执行未知 solver，不点击 Hub 最终提交。
 
-## 0.5.0 Dockerizer 改造确认
+## Dockerizer 自动改造
 
 容器题、compose 项目和源码型在线题如果没有完成平台契约改造，批量报告和失败案例库必须阻断归档：
 
 ```json
 {
   "dockerizer": {
-    "status": "accepted|rendered|validated|completed",
-    "user_confirmed": true
+    "status": "rendered|validated|passed|complete|completed"
   },
   "docker_artifacts": {
     "platform_contract_verified": true,
@@ -199,14 +198,14 @@
   },
   "platform_delivery": {
     "must_use_dockerizer": true,
-    "confirmation_action": "dockerizer",
-    "blocking_until_confirmed": true,
+    "auto_action": "auto-render",
+    "blocking_until_rendered": true,
     "dockerizer_conversion_accepted": true
   }
 }
 ```
 
-任一满足条件可以证明已经完成平台改造确认：`dockerizer.status` 为 `accepted/rendered/validated/passed/complete/completed`，或 `dockerizer.user_confirmed=true`，或 `docker_artifacts.platform_contract_verified=true`。否则相关题目必须写入 `Dockerizer 改造待确认` 和 `platform_conversion_required`。
+任一满足条件可以证明已经完成平台改造：`dockerizer.status` 为 `rendered/validated/passed/complete/completed`，或 `docker_artifacts.platform_contract_verified=true`，或 `platform_delivery.dockerizer_conversion_accepted=true`。否则相关题目必须写入 `Dockerizer 改造待处理` 和 `platform_conversion_required`。
 
 ## 0.5.0 手册质量
 
@@ -574,6 +573,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_final.py generate
 - `cloversec_ctf_review.py`：`验证状态`、`是否通过`、`问题`、`手册状态`
 - `cloversec_ctf_retag.py`：`HUB编号`、`环境包/附件包路径`
 - `cloversec_ctf_final.py`：生成 `最终归档表.xlsx`、`语雀粘贴表.md`、`最终报告.md`，其中 `Flag` 必须完整保留；同时保留 `archive.xlsx`、`yuque_table.md`、`final_report.md` 兼容副本
+- `cloversec_ctf_delivery.py`：生成给人接手的中文交付目录，根目录放 `交付说明.md`、`最终归档表.xlsx`、`语雀粘贴表.md` 和每题中文目录；容器题使用 `题目源码/题目镜像/题目手册`，附件题使用 `题目附件/题目手册`
 
 `quality_review.json` 使用 `pass`、`fail`、`skip` 三种状态。没有真实 Docker run 或按手册解题记录时，对应检查必须是 `skip`。
 受控 Docker 执行只在显式传入 `--execute-docker` 或 `--execute` 时运行，并把命令、退出码、平台、日志路径、端口探测、tar SHA256 写入结构化证据。

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def main() -> int:
     notes = DIST / "release-notes.md"
     notes.write_text(render_release_notes(display_name, version), encoding="utf-8")
 
-    shutil.make_archive(str(DIST / archive_base), "gztar", root_dir=PLUGIN.parent, base_dir=PLUGIN_NAME)
+    tar_dir(PLUGIN, DIST / f"{archive_base}.tar.gz", prefix=PLUGIN_NAME)
     print(f"created release artifacts in {DIST}")
     return 0
 
@@ -51,6 +52,13 @@ def main() -> int:
 def zip_dir(source: Path, output: Path, *, prefix: str | Path) -> None:
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         add_dir(archive, source, prefix=Path(prefix))
+
+
+def tar_dir(source: Path, output: Path, *, prefix: str | Path) -> None:
+    with tarfile.open(output, "w:gz") as archive:
+        for path in sorted(source.rglob("*")):
+            if path.is_file() and not should_skip(path):
+                archive.add(path, arcname=(Path(prefix) / path.relative_to(source)).as_posix())
 
 
 def add_dir(archive: zipfile.ZipFile, source: Path, *, prefix: Path) -> None:

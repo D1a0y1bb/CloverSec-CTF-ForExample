@@ -138,7 +138,9 @@ class EndToEndTests(unittest.TestCase):
             self.assertTrue((root / "logs" / "workflow_engine.jsonl").exists())
             self.assertTrue((root / "归档" / "_cache" / "archive_workflow.json").exists())
             self.assertTrue((root / "质量检查" / "quality_summary.json").exists())
-            self.assertTrue((root / "最终交付" / "最终报告.md").exists())
+            self.assertTrue((root / "最终交付" / "交付说明.md").exists())
+            self.assertTrue((root / "_cache" / "final_report" / "最终报告.md").exists())
+            self.assertFalse((root / "最终交付" / "最终报告.md").exists())
             state = json.loads((root / "workflow_state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["stages"]["final_report"]["status"], "completed")
 

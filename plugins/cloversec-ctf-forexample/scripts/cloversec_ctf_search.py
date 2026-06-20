@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/0.9.9-beta (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/1.0.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -1533,8 +1533,10 @@ def result_has_writeup_signal(result: dict[str, Any], layer: str = "") -> bool:
     summary = str(result.get("summary") or result.get("snippet") or "")
     kind = str(result.get("kind") or "")
     text = f"{title} {url} {summary} {kind}".lower()
-    if layer == "writeup_candidate" or kind in {"writeup", "site_search"}:
+    if kind == "writeup":
         return True
+    if kind in {"site_search", "code"} and not any(term in text for term in WRITEUP_TERMS | {"solution", "solver", "exp", "题解", "复现"}):
+        return False
     return any(term in text for term in WRITEUP_TERMS | {"solution", "solver", "exp"})
 
 
@@ -1569,6 +1571,33 @@ def result_has_official_signal(result: dict[str, Any]) -> bool:
     if challenge_metadata_for_result(result):
         return True
     return provider in {"github", "github-tree", "github-release", "direct-url"} and kind in {"challenge_metadata", "release_asset", "raw_file"}
+
+
+def result_has_official_challenge_page_signal(result: dict[str, Any], profile: dict[str, Any] | None = None) -> bool:
+    url = str(result.get("url") or "")
+    title = str(result.get("title") or "")
+    summary = str(result.get("summary") or result.get("snippet") or "")
+    kind = str(result.get("kind") or "")
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if not host or host.endswith("ctftime.org"):
+        return False
+    if host in {"github.com", "www.github.com", "raw.githubusercontent.com"}:
+        return False
+    if challenge_metadata_for_result(result) or result_has_asset_signal(result):
+        return True
+    haystack = f"{title} {url} {summary} {kind}".lower()
+    if result_has_writeup_signal(result, str(result.get("layer") or "")):
+        return False
+    path = parsed.path.lower()
+    page_hint = any(token in path for token in ["/challenge", "/challenges", "/task", "/tasks", "/problem", "/problems"])
+    official_hint = any(token in haystack for token in ["official", "official-challenges", "official challenges", "官方", "challenge page", "题目页"])
+    profile_terms = set((profile or {}).get("query_specific_terms") or set())
+    challenge_terms = {term for term in profile_terms if term not in CATEGORY_TERMS and not re.fullmatch(r"20\d{2}", term)}
+    term_match = bool(challenge_terms) and any(term in haystack for term in challenge_terms)
+    if not challenge_terms:
+        return bool(page_hint and official_hint)
+    return bool((page_hint or official_hint) and term_match)
 
 
 def is_ctftime_task_only(result: dict[str, Any]) -> bool:
@@ -1629,17 +1658,24 @@ def continuation_gate(
         return {
             "gate": "cannot_continue",
             "gate_reason": "只有平台页或任务页线索，没有源码、附件或可下载题包。",
-            "blocking_rule": "missing_original_material",
+            "blocking_rule": "only_ctftime_task" if is_ctftime_task_only(result) or layer == "ctftime_task_lead" else "missing_original_material",
             "next_action": "继续搜索公开源码、附件、Release，或让用户提供题包入口。",
         }
     has_asset = result_has_asset_signal(result, layer)
     has_writeup = result_has_writeup_signal(result, layer)
+    if result_has_official_challenge_page_signal(result):
+        return {
+            "gate": "needs_human_download",
+            "gate_reason": "发现官方题目页，需要下载或确认页面内的附件、源码或题包后才能制作。",
+            "blocking_rule": "official_page_needs_material",
+            "next_action": "打开官方题目页或用浏览器辅助搜索确认附件/源码入口，再进入下载沙箱。",
+        }
     if has_asset:
         if github_directory_needs_download(result):
             return {
                 "gate": "needs_human_download",
                 "gate_reason": "发现 GitHub 题目目录，需要下载或预览后才能制作。",
-                "blocking_rule": "needs_source_download",
+                "blocking_rule": "github_dir_unverified",
                 "next_action": "预览 GitHub tree/raw/release，确认后进入下载沙箱。",
             }
         return {
@@ -1652,7 +1688,7 @@ def continuation_gate(
         return {
             "gate": "cannot_continue",
             "gate_reason": "只有公开 WP 或 solver 线索，没有原始题包。",
-            "blocking_rule": "writeup_only",
+            "blocking_rule": "writeup_without_attachment",
             "next_action": "继续搜索附件、源码、Release 或平台题包。",
         }
     profile = material_profile or {}
@@ -1863,6 +1899,15 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
             "reproducibility_status": "solver_or_writeup_only",
             "missing_reason": missing_reason or "只有 solver/writeup 仓库，缺源码、附件或官方题包",
             "next_action": "继续搜索官方附件、源码或让用户提供题包入口。",
+            "requires_user_confirmation": True,
+        }
+    if result_has_official_challenge_page_signal(result):
+        return {
+            "material_level": "official_challenge_page",
+            "material_status": MATERIAL_STATUS_MISSING,
+            "reproducibility_status": "official_page_needs_material",
+            "missing_reason": missing_reason or "发现官方题目页，但还需要下载或确认附件、源码或题包",
+            "next_action": "打开官方题目页或用浏览器辅助搜索确认附件/源码入口，再进入下载沙箱。",
             "requires_user_confirmation": True,
         }
     if layer == "writeup_candidate":
@@ -2348,10 +2393,18 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
         score += 30
         reasons.append("direct asset or release file")
         layer = "attachment_candidate"
-    elif any(term in haystack for term in WRITEUP_TERMS) or kind in {"writeup", "code", "site_search"}:
+    elif result_has_official_challenge_page_signal(result, profile):
+        score += 35
+        reasons.append("official challenge page")
+        layer = "confirmed_challenge"
+    elif any(term in haystack for term in WRITEUP_TERMS) or kind == "writeup":
         score += 18
         reasons.append("writeup or code clue")
         layer = "writeup_candidate"
+    elif kind in {"code", "site_search"}:
+        score += 12
+        reasons.append("code or site clue")
+        layer = "attachment_candidate" if result_has_asset_signal(result) else "writeup_candidate"
     elif provider in {"github", "github-code", "github-release", "github-tree"}:
         score += 12
         reasons.append("github source")
