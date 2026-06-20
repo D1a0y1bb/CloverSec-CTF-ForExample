@@ -615,6 +615,35 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertIn("Pwn-JSFS/题目手册/题目解题手册.md", names)
             self.assertFalse(any(name.startswith("__MACOSX/") or name.endswith(".DS_Store") or "/_cache/" in name for name in names))
 
+    def test_delivery_package_rejects_output_dir_that_would_delete_workdir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_output = Path(tmp) / "jsfs-cratectf-2024-platform"
+            raw_output.mkdir()
+            (raw_output / "archive" / "Pwn-JSFS" / "题目源码").mkdir(parents=True)
+
+            with self.assertRaises(ValueError):
+                delivery.create_delivery_package(workdir=raw_output, outputs_dir=raw_output, output_dir=raw_output)
+
+            self.assertTrue((raw_output / "archive" / "Pwn-JSFS" / "题目源码").exists())
+
+    def test_archive_package_creates_visible_dirs_and_placeholder_manual_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["writeup"] = {}
+            case["source_files"] = []
+            case["attachments"] = []
+            case["docker_artifacts"]["tar_path"] = ""
+
+            manifest = archive.create_archive_package(case, tmp_path / "归档")
+
+            archive_dir = Path(manifest["archive_dir"])
+            self.assertTrue((archive_dir / "题目源码").is_dir())
+            self.assertTrue((archive_dir / "题目镜像").is_dir())
+            self.assertTrue((archive_dir / "题目手册" / "题目解题手册.md").exists())
+            self.assertIn("missing writeup", "\n".join(manifest["issues"]))
+            self.assertEqual(manifest["xlsx_fields"]["是否归档"], "否")
+
     def test_delivery_package_keeps_official_handout_tar_gz_as_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -936,6 +965,35 @@ class ArchiveReviewFinalTests(unittest.TestCase):
         self.assertEqual(evidence["plan"]["probe_urls"], [])
         self.assertFalse(any(str(probe.get("url", "")).startswith("http://") for probe in evidence["probes"]))
 
+    def test_quality_review_docker_execution_uses_tcp_probe_and_cleans_failed_container(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            calls: list[list[str]] = []
+
+            def fake_run(args, **kwargs):
+                calls.append(args)
+                if args[:3] == ["docker", "image", "inspect"]:
+                    return subprocess.CompletedProcess(args, 0, stdout='[{"Os":"linux","Architecture":"amd64"}]', stderr="")
+                if args[:2] == ["docker", "run"]:
+                    return subprocess.CompletedProcess(args, 1, stdout="", stderr="created then failed")
+                return subprocess.CompletedProcess(args, 0, stdout="ok\n", stderr="")
+
+            case = {
+                "case_id": "tcp-review",
+                "docker_artifacts": {
+                    "image_name": "demo/tcp:local",
+                    "ports": ["19999:9999"],
+                    "service_protocol": "tcp",
+                },
+            }
+            with mock.patch.object(review.subprocess, "run", side_effect=fake_run):
+                with mock.patch.object(review, "is_host_port_available", return_value=True):
+                    evidence = review.execute_docker_review(case, tmp_path / "quality", startup_wait=0)
+
+        self.assertEqual(evidence["summary"]["status"], "fail")
+        self.assertTrue(any(args[:3] == ["docker", "rm", "-f"] for args in calls))
+        self.assertFalse(any(str(item.get("url", "")).startswith("http://") for item in evidence["probes"]))
+
     def test_new_mcp_servers_list_expected_tools(self):
         servers = [
             (
@@ -965,7 +1023,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.6")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.7")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

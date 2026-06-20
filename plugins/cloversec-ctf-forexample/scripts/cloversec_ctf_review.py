@@ -7,6 +7,8 @@ import argparse
 import copy
 import json
 import re
+import shlex
+import socket
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -173,6 +175,14 @@ def execute_docker_review(
     ports = [str(item) for item in docker_artifacts.get("ports", []) if str(item).strip()]
     if not ports and isinstance(environment.get("port_mappings"), list):
         ports = [str(item) for item in environment["port_mappings"] if str(item).strip()]
+    probe_protocol = normalize_probe_protocol(
+        docker_artifacts.get("probe_protocol")
+        or docker_artifacts.get("service_protocol")
+        or environment.get("probe_protocol")
+        or environment.get("service_protocol")
+    )
+    port_plan = rewrite_ports_to_available(ports)
+    ports = port_plan["ports"]
 
     container_name = f"cloversec-review-{_safe_token(str(case.get('case_id') or 'case'))}-{int(time.time())}"
     evidence: dict[str, Any] = {
@@ -184,6 +194,7 @@ def execute_docker_review(
         "container_name": container_name,
         "steps": [],
         "probes": [],
+        "port_rewrites": port_plan["rewrites"],
         "summary": {
             "status": "fail",
             "run_verified": False,
@@ -194,6 +205,7 @@ def execute_docker_review(
 
     issues: list[str] = []
     container_started = False
+    run_attempted = False
     if not image_name:
         issues.append("docker_artifacts.image_name 为空")
         evidence["summary"]["issues"] = issues
@@ -219,19 +231,26 @@ def execute_docker_review(
         run_args.append(image_name)
         actual_start_command = start_command or str(environment.get("start_command") or "").strip()
         if actual_start_command:
-            run_args.extend(actual_start_command.split())
+            run_args.extend(shlex.split(actual_start_command))
         run = _run_command(run_args, timeout=command_timeout)
         evidence["steps"].append(run)
+        run_attempted = True
         container_started = run.get("status") == "pass"
 
         if container_started:
             time.sleep(max(startup_wait, 0))
-            targets = list(probe_urls or []) + _probe_urls_from_ports(ports)
-            if targets:
-                for url in targets:
-                    evidence["probes"].append(_probe_url(url, timeout=probe_timeout))
+            if probe_protocol == "tcp":
+                targets = _tcp_probes_from_ports(ports)
+                if targets:
+                    for probe in targets:
+                        evidence["probes"].append(_probe_tcp(probe["host"], probe["port"], timeout=probe_timeout))
             else:
-                evidence["probes"].append({"url": "", "status": "skip", "message": "没有可探测的 host 端口或 probe URL"})
+                targets = list(probe_urls or []) + _probe_urls_from_ports(ports)
+                if targets:
+                    for url in targets:
+                        evidence["probes"].append(_probe_url(url, timeout=probe_timeout))
+            if not evidence["probes"]:
+                evidence["probes"].append({"url": "", "target": "", "status": "skip", "message": "没有可探测的 host 端口或 probe URL"})
             logs = _run_command(["docker", "logs", container_name], timeout=command_timeout)
             logs_path = output / "docker_logs.txt"
             logs_path.write_text(str(logs.get("stdout") or "") + str(logs.get("stderr") or ""), encoding="utf-8")
@@ -241,13 +260,15 @@ def execute_docker_review(
         if container_started:
             evidence["steps"].append(_run_command(["docker", "stop", container_name], timeout=command_timeout))
             evidence["steps"].append(_run_command(["docker", "rm", container_name], timeout=command_timeout))
+        elif run_attempted:
+            evidence["steps"].append(_run_command(["docker", "rm", "-f", container_name], timeout=command_timeout))
 
     for step in evidence["steps"]:
         if step.get("status") == "fail":
             issues.append(f"{step.get('id')}: exit_code={step.get('exit_code')}")
     for probe in evidence["probes"]:
         if probe.get("status") == "fail":
-            issues.append(f"probe failed: {probe.get('url')}")
+            issues.append(f"probe failed: {probe.get('url') or probe.get('target')}")
     if evidence["summary"].get("platform") and evidence["summary"]["platform"] != TARGET_PLATFORM:
         issues.append(f"镜像平台不是 {TARGET_PLATFORM}: {evidence['summary']['platform']}")
 
@@ -284,7 +305,7 @@ def render_review_markdown(review: dict[str, Any]) -> str:
         lines.append(f"- 平台：{summary.get('platform', '')}")
         lines.append(f"- 容器名：{review['docker_execution'].get('container_name', '')}")
         for item in review["docker_execution"].get("probes", []):
-            lines.append(f"- Probe：{item.get('url', '')} {item.get('status', '')} {item.get('message', '')}")
+            lines.append(f"- Probe：{item.get('url') or item.get('target') or ''} {item.get('status', '')} {item.get('message', '')}")
     docker_status = review.get("summary", {}).get("docker_status") if isinstance(review.get("summary", {}).get("docker_status"), dict) else {}
     if docker_status:
         lines.extend(["", "## Docker 分层状态", ""])
@@ -414,6 +435,15 @@ def _probe_urls_from_ports(ports: list[str]) -> list[str]:
     return urls
 
 
+def _tcp_probes_from_ports(ports: list[str]) -> list[dict[str, str]]:
+    probes = []
+    for mapping in ports:
+        host_port = _host_port(mapping)
+        if host_port:
+            probes.append({"protocol": "tcp", "host": "127.0.0.1", "port": host_port, "target": f"tcp://127.0.0.1:{host_port}"})
+    return probes
+
+
 def _host_port(mapping: str) -> str:
     value = mapping.strip()
     if not value or ":" not in value:
@@ -423,6 +453,64 @@ def _host_port(mapping: str) -> str:
         host_part = host_part.rsplit(":", 1)[1]
     host_part = host_part.split("/", 1)[0]
     return host_part if host_part.isdigit() else ""
+
+
+def normalize_probe_protocol(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"tcp", "socket", "nc", "netcat"}:
+        return "tcp"
+    return "http"
+
+
+def rewrite_ports_to_available(ports: list[str]) -> dict[str, Any]:
+    rewritten = []
+    rewrites = []
+    for mapping in ports:
+        host_port, container_port = split_port_mapping(mapping)
+        if not container_port:
+            rewritten.append(mapping)
+            continue
+        selected_host = host_port
+        if not selected_host or not is_host_port_available(selected_host):
+            selected_host = find_available_port()
+            rewrites.append({"from": mapping, "to": f"{selected_host}:{container_port}", "reason": "host_port_unavailable"})
+        rewritten.append(f"{selected_host}:{container_port}" if selected_host else mapping)
+    return {"ports": rewritten, "rewrites": rewrites}
+
+
+def split_port_mapping(mapping: str) -> tuple[str, str]:
+    value = str(mapping or "").strip()
+    if not value:
+        return "", ""
+    clean = value.split("/", 1)[0]
+    if ":" not in clean:
+        return "", clean if clean.isdigit() else ""
+    host, container = clean.rsplit(":", 1)
+    if ":" in host:
+        host = host.rsplit(":", 1)[1]
+    return (host if host.isdigit() else "", container if container.isdigit() else "")
+
+
+def is_host_port_available(port: str) -> bool:
+    try:
+        port_int = int(port)
+    except ValueError:
+        return False
+    if port_int <= 0 or port_int > 65535:
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port_int))
+        except OSError:
+            return False
+    return True
+
+
+def find_available_port() -> str:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return str(sock.getsockname()[1])
 
 
 def _probe_url(url: str, *, timeout: float) -> dict[str, Any]:
@@ -437,6 +525,19 @@ def _probe_url(url: str, *, timeout: float) -> dict[str, Any]:
         }
     except Exception as exc:  # noqa: BLE001
         return {"url": url, "status": "fail", "message": str(exc)}
+
+
+def _probe_tcp(host: Any, port: Any, *, timeout: float) -> dict[str, Any]:
+    host_text = str(host or "127.0.0.1").strip() or "127.0.0.1"
+    port_text = str(port or "").strip()
+    target = f"tcp://{host_text}:{port_text}"
+    if not port_text.isdigit():
+        return {"protocol": "tcp", "target": target, "status": "skip", "message": "empty tcp port"}
+    try:
+        with socket.create_connection((host_text, int(port_text)), timeout=max(float(timeout), 0.1)):
+            return {"protocol": "tcp", "target": target, "status": "pass", "message": "tcp connect ok"}
+    except Exception as exc:  # noqa: BLE001
+        return {"protocol": "tcp", "target": target, "status": "fail", "message": str(exc)}
 
 
 def _platform_from_inspect_output(output: str) -> str:

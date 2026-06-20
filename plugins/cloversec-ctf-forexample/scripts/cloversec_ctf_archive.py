@@ -35,6 +35,9 @@ def create_archive_package(
     root = Path(output_root)
     archive_dir = root / archive_folder_name(case)
     attachment_only = is_attachment_archive(case)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    for subdir in expected_archive_subdirs(case):
+        (archive_dir / subdir).mkdir(parents=True, exist_ok=True)
 
     issues: list[str] = []
     files: list[dict[str, Any]] = []
@@ -77,6 +80,10 @@ def create_archive_package(
             files.extend(_copy_or_record(item, archive_dir / role_dir("writeup", attachment_only), "writeup", copy_files, issues))
     else:
         issues.append("missing writeup: writeup.manual_path/formal_manual_path 为空")
+        placeholder = archive_dir / role_dir("writeup", attachment_only) / FORMAL_MANUAL_NAME
+        placeholder.parent.mkdir(parents=True, exist_ok=True)
+        placeholder.write_text(render_missing_manual_placeholder(case), encoding="utf-8")
+        files.append(_file_record(placeholder, "writeup", archive_dir, status="generated_placeholder"))
 
     archive = case.get("archive") if isinstance(case.get("archive"), dict) else {}
     screenshot_inputs = _iter_path_items(archive.get("screenshots"), default_role="screenshot")
@@ -226,11 +233,34 @@ def is_attachment_archive(case: dict[str, Any]) -> bool:
     has_source = bool(case.get("source_files"))
     has_image = bool(str(docker_artifacts.get("tar_path") or "").strip())
     question_type = str(metadata.get("题目类型") or metadata.get("resource_type") or "")
+    if any(token in question_type for token in ["环境", "容器", "container", "docker", "service"]):
+        return False
     return (not has_source and not has_image) or ("附件" in question_type and not has_image)
 
 
 def expected_archive_subdirs(case: dict[str, Any]) -> list[str]:
     return list(naming.ATTACHMENT_CHALLENGE_SUBDIRS if is_attachment_archive(case) else naming.CONTAINER_CHALLENGE_SUBDIRS)
+
+
+def render_missing_manual_placeholder(case: dict[str, Any]) -> str:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    name = str(metadata.get("名称") or case.get("case_id") or "未命名题目")
+    category = str(metadata.get("分类") or "")
+    return "\n".join(
+        [
+            "# 题目解题手册",
+            "",
+            "## 当前状态",
+            "",
+            f"- 题目：{name}",
+            f"- 分类：{category}",
+            "- 手册状态：待补充",
+            "",
+            "该文件是归档器生成的占位说明，不代表手册已经通过质量检查。",
+            "需要补充题目说明、环境说明、附件说明、解题步骤、命令输出、截图、Flag 和复现说明后，才能作为正式交付手册。",
+            "",
+        ]
+    )
 
 
 def role_dir(role: str, attachment_only: bool) -> str:

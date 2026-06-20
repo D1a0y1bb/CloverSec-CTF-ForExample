@@ -16,7 +16,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -94,6 +94,7 @@ def create_delivery_package(
     if not outputs.exists():
         raise FileNotFoundError(outputs)
     delivery = Path(output_dir) if output_dir else outputs / "最终交付包"
+    ensure_safe_delivery_target(work, delivery)
     prepare_clean_delivery_dir(delivery)
 
     selected = select_delivery_sources(work, outputs)
@@ -329,6 +330,13 @@ def prepare_clean_delivery_dir(delivery: Path) -> None:
     delivery.mkdir(parents=True, exist_ok=True)
 
 
+def ensure_safe_delivery_target(workdir: Path, delivery: Path) -> None:
+    work = workdir.resolve()
+    target = delivery.resolve() if delivery.exists() else delivery.absolute()
+    if target == work or target in work.parents:
+        raise ValueError(f"output_dir cannot be the workdir or a parent of workdir: {delivery}")
+
+
 def copy_challenge_archives(
     *,
     archive_roots: list[Path],
@@ -354,6 +362,7 @@ def copy_challenge_archives(
                     continue
                 subdirs.append(subdir)
                 target_subdir = target_case_dir / subdir
+                target_subdir.mkdir(parents=True, exist_ok=True)
                 for source in sorted(path for path in source_subdir.rglob("*") if path.is_file()):
                     if not challenge_file_allowed(source, source_subdir, subdir):
                         continue
@@ -584,6 +593,7 @@ def copy_legacy_dir(
     if not source_dir.is_dir():
         missing.append({"key": f"legacy:{subdir}", "target": target_dir.as_posix()})
         return []
+    target_dir.mkdir(parents=True, exist_ok=True)
     copied = False
     for source in sorted(path for path in source_dir.rglob("*") if path.is_file()):
         if source_filter and not source_filter(source, source_dir):

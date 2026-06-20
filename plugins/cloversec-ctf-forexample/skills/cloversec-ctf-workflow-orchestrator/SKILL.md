@@ -68,10 +68,17 @@ reports/
 默认可自动执行的阶段：
 
 ```text
-research, collect, dedupe, download_preview, archive, quality, final_report
+research, collect, dedupe, download_preview, download_accept, archive, quality, final_report
 ```
 
-`download_accept`、真实 Docker、Hub 最终提交、retag 执行仍然需要用户确认。Hub 草稿可以准备，最终提交不自动点击。中文最终交付包不依赖 Hub 已提交；缺 Hub 编号时写入 `待处理问题.md`。
+`download_accept` 没有用户确认时会停在 `pending_user`；用户确认下载预览都是 safe 后，继续执行同一条 workflow，并加 `--allow-download-accept`。真实 Docker、Hub 最终提交、retag 执行仍然需要用户确认。Hub 草稿可以准备，最终提交不自动点击。中文最终交付包不依赖 Hub 已提交；缺 Hub 编号时写入 `待处理问题.md`。
+
+自然提示词验收要求：
+
+- 用户只说“帮我完整收集一道 CTF 题目”时，最终回复不能只给 `download_preview.json`、`archive/`、`reports/`、`manifests/` 或 `_cache`。
+- 如果已经有安全下载预览或用户已经确认 safe，必须继续运行到 `final_report`，并用 `cloversec_ctf_delivery.py` 生成中文最终交付目录。
+- 最终只把 `outputs/` 或 `最终交付包/` 报给用户；如果当前只生成了 `archive/` 中间目录，必须先整理成最终交付包再汇报。
+- `ctf_cases.jsonl` 为空时不能继续归档，必须从 `search_results.json` 重新生成题目清单，或继续搜索真实题目。
 
 ## 资源分流规则
 

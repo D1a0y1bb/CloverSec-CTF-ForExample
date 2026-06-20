@@ -41,6 +41,63 @@ class Workflow030Tests(unittest.TestCase):
             self.assertEqual(plan["request"]["categories"], ["web"])
             self.assertTrue(any("IrisCTF 2025 web writeup" == item["query"] for item in plan["search_tasks"]))
 
+    def test_research_stage_rejects_empty_cases_and_regenerates_from_search_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            out.mkdir()
+            (out / "ctf_cases.jsonl").write_text("", encoding="utf-8")
+            search_manifest = {
+                "query": "CrateCTF 2024 JSFS",
+                "years": [2024],
+                "results": [
+                    {
+                        "title": "CrateCTF 2024 JSFS writeup",
+                        "url": "https://example.com/jsfs",
+                        "source_url": "https://example.com/jsfs",
+                        "layer": "confirmed_challenge",
+                        "score": 80,
+                        "source_type": "writeup",
+                        "metadata": {"event": "CrateCTF", "year": "2024", "category": "Pwn", "challenge": "JSFS"},
+                    }
+                ],
+            }
+            workflow.write_json(out / "search_results.json", search_manifest)
+
+            result = workflow.execute_stage_research(out, max_search_tasks=0, search_limit=5, sources=[])
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue((out / "ctf_cases.jsonl").read_text(encoding="utf-8").strip())
+
+    def test_download_accept_uses_existing_safe_preview_after_confirmation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            sandbox = out / "downloads_sandbox"
+            sandbox.mkdir(parents=True)
+            downloaded = sandbox / "0001-challenge.zip"
+            downloaded.write_bytes(b"zip")
+            workflow.write_json(
+                out / "download_preview.json",
+                {
+                    "records": [{"safety_status": "safe", "local_path": downloaded.as_posix()}],
+                    "summary": {"total": 1, "safe": 1, "needs_review": 0, "blocked": 0, "accepted": 0},
+                },
+            )
+
+            result = workflow.execute_stage_download_accept(out, allow_download_accept=True)
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue((out / "downloads_accepted" / "0001-challenge.zip").exists())
+
+    def test_delivery_output_dir_does_not_select_parent_outputs_when_workdir_is_inside_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            outputs = Path(tmp) / "outputs"
+            workdir = outputs / "jsfs-cratectf-2024-platform"
+            workdir.mkdir(parents=True)
+
+            selected = workflow.delivery_output_dir_for_workdir(workdir)
+
+            self.assertEqual(selected, workdir / "最终交付")
+
     def test_auto_collect_next_action_matches_recommended_skill(self):
         writeup_action = workflow.auto_collect_next_action(
             [{"recommended_next": {"skill": "cloversec-ctf-writeup-scaffold"}}]

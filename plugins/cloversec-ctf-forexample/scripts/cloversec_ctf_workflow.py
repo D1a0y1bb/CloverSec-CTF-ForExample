@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.6"
+WORKFLOW_VERSION = "1.0.7"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -79,6 +79,7 @@ ENGINE_AUTO_STAGES = [
     "collect",
     "dedupe",
     "download_preview",
+    "download_accept",
     "archive",
     "quality",
     "final_report",
@@ -1755,8 +1756,21 @@ def execute_stage_research(base: Path, *, max_search_tasks: int, search_limit: i
             fetch_snapshots=False,
         )
         return {"status": "ok", "evidence_path": result.get("search_results_path", ""), "summary": result.get("summary", {})}
-    if cases.exists():
+    if cases.exists() and cases_file_has_rows(cases):
         return {"status": "ok", "evidence_path": cases.as_posix(), "summary": {"reason": "existing ctf_cases.jsonl"}}
+    search_results = base / "search_results.json"
+    if search_results.exists():
+        manifest = read_json(search_results)
+        regenerated_cases = search.results_to_cases(manifest)
+        if regenerated_cases:
+            write_cases_jsonl(regenerated_cases, cases)
+            return {
+                "status": "ok",
+                "evidence_path": cases.as_posix(),
+                "summary": {"reason": "regenerated cases from existing search_results.json", "cases": len(regenerated_cases)},
+            }
+    if cases.exists() and not cases_file_has_rows(cases):
+        return {"status": "blocked", "errors": [{"message": "ctf_cases.jsonl 为空，不能把 research 当成已完成。"}]}
     return {"status": "blocked", "errors": [{"message": "缺少 task_plan.json 或 ctf_cases.jsonl，无法执行 research。"}]}
 
 
@@ -1801,6 +1815,9 @@ def execute_stage_download_preview(base: Path) -> dict[str, Any]:
 
 
 def execute_stage_download_accept(base: Path, *, allow_download_accept: bool) -> dict[str, Any]:
+    accepted_dir = base / "downloads_accepted"
+    if accepted_dir.exists() and any(path.is_file() for path in accepted_dir.rglob("*")):
+        return {"status": "ok", "evidence_path": accepted_dir.as_posix(), "summary": {"reason": "existing accepted downloads"}}
     if not allow_download_accept:
         return {
             "status": "pending_user",
@@ -1808,8 +1825,13 @@ def execute_stage_download_accept(base: Path, *, allow_download_accept: bool) ->
             "errors": [{"message": "下载接受会把外部文件放入 downloads_accepted，需要用户显式允许 --allow-download-accept。"}],
         }
     manifest = base / "search_results.json"
+    preview = base / "download_preview.json"
+    if preview.exists():
+        accepted = accept_existing_download_preview(base)
+        if accepted.get("summary", {}).get("accepted", 0):
+            return {"status": "ok", "evidence_path": preview.as_posix(), "summary": accepted.get("summary", {})}
     if not manifest.exists():
-        return {"status": "blocked", "errors": [{"message": "缺少 search_results.json，无法接受下载。"}]}
+        return {"status": "blocked", "errors": [{"message": "缺少 search_results.json 或可接受的 download_preview.json，无法接受下载。"}]}
     result = download_sandbox_from_manifest(manifest_path=manifest, output_dir=base, accept=True)
     return {"status": "ok", "evidence_path": (base / "download_preview.json").as_posix(), "summary": result.get("summary", {})}
 
@@ -1945,6 +1967,46 @@ def latest_cases_path(base: Path) -> Path:
     return next((path for path in candidates if path.exists()), base / "ctf_cases.jsonl")
 
 
+def cases_file_has_rows(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        return any(line.strip() for line in path.read_text(encoding="utf-8").splitlines())
+    except OSError:
+        return False
+
+
+def write_cases_jsonl(cases: list[dict[str, Any]], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(case, ensure_ascii=False) + "\n" for case in cases), encoding="utf-8")
+
+
+def accept_existing_download_preview(base: Path) -> dict[str, Any]:
+    preview = base / "download_preview.json"
+    accepted_dir = base / "downloads_accepted"
+    payload = read_json(preview) if preview.exists() else {}
+    records = payload.get("records") if isinstance(payload.get("records"), list) else []
+    accepted_dir.mkdir(parents=True, exist_ok=True)
+    accepted = 0
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("safety_status") != "safe":
+            continue
+        source = Path(str(record.get("local_path") or ""))
+        if not source.is_file():
+            continue
+        target = accepted_dir / source.name
+        shutil.copy2(source, target)
+        record["accepted_path"] = target.as_posix()
+        accepted += 1
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    summary["accepted"] = accepted
+    payload["summary"] = summary
+    write_json(preview, payload)
+    return payload
+
+
 def delivery_output_dir_for_workdir(base: Path) -> Path:
     """Return the human-facing final delivery directory for a workflow workdir."""
     candidates = [
@@ -1952,10 +2014,17 @@ def delivery_output_dir_for_workdir(base: Path) -> Path:
         base.parent / "outputs",
         base / "outputs",
     ]
+    base_resolved = base.resolve()
     for candidate in candidates:
-        if candidate.exists() and candidate.is_dir() and candidate.resolve() != base.resolve():
+        if candidate.exists() and candidate.is_dir() and not paths_overlap(candidate.resolve(), base_resolved):
             return candidate
     return base / "最终交付"
+
+
+def paths_overlap(a: Path, b: Path) -> bool:
+    if a == b:
+        return True
+    return a in b.parents or b in a.parents
 
 
 def first_existing(base: Path, names: list[str]) -> Path:
