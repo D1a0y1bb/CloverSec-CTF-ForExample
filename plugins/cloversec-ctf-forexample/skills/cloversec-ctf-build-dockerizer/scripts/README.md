@@ -10,9 +10,9 @@
 - `render_bundle.py`：根据固定 Bundle/Recipe 渲染单容器多服务交付目录
 - `validate_bundle.py`：校验 Bundle/Recipe 渲染目录的结构与 recipe 契约
 - `import_compose.py`：将 compose/Vulhub-like 输入转换为 scenario draft、renderable subset 和 import report
-- `generate_check_stub.py`：生成 RDG/SecOps check-service 可编辑脚本骨架，默认带人工确认标记
-- `workflow.py`：推荐工作流入口，依次完成题目分析、方案生成、确认、交付生成、验证和状态查看，并记录 `.ctfbuild/` 状态文件
-- `audit_input.py`：输入审计，输出风险等级、推荐处理路径、支持等级、验证等级、是否需要人工确认和发现项
+- `generate_check_stub.py`：生成 RDG/SecOps check-service 可编辑脚本骨架，默认带审查标记
+- `workflow.py`：推荐工作流入口，支持 `auto-render` 自动完成输入审计、配置推导、交付生成、静态契约校验和状态查看，并记录 `.ctfbuild/` 状态文件
+- `audit_input.py`：输入审计，输出风险等级、推荐处理路径、支持等级、验证等级和发现项
 - `derive_config.py`：自动探测并输出 ProposedConfig（AI 编排模式专用）
 - `parse_config_block.py`：解析方案确认 YAML（stdin）并生成标准 challenge.yaml
 - `detect_stack.py`：输出技术栈侦测结果和置信度
@@ -32,31 +32,28 @@
 python3 scripts/derive_config.py --project-dir .
 ```
 
-确认前：
+普通题目直接使用自动生成入口：
 
 ```bash
-python3 scripts/workflow.py intake --project-dir .
-python3 scripts/workflow.py propose --project-dir .
-python3 scripts/workflow.py status --project-dir .
+python3 scripts/workflow.py auto-render --project-dir .
 ```
 
 `workflow.py --pretty status` 和 `workflow.py status --pretty` 都会输出 JSON，等价于 `--format json`。
 
-用户确认方案后：
+只需要看输入审计或状态时：
 
 ```bash
-python3 scripts/workflow.py accept --project-dir .
-python3 scripts/workflow.py render --project-dir .
-python3 scripts/workflow.py validate --project-dir .
+python3 scripts/workflow.py intake --project-dir .
+python3 scripts/workflow.py status --project-dir .
 ```
 
-低风险且已有明确 `challenge.yaml` 时，熟练用户可用快速审查入口。该入口仍要求写明原因；mixed/dirty/high_risk 输入或未接受 proposal 的高风险输入会被拒绝：
+低风险且已有明确 `challenge.yaml` 时，熟练用户仍可用快速审查入口。mixed/dirty/high_risk 输入会被拒绝：
 
 ```bash
 python3 scripts/workflow.py reviewed-render --project-dir . --reason "reviewed explicit challenge.yaml"
 ```
 
-接受后如人工修改了 `challenge.yaml`，使用下面命令登记当前配置，不重新生成文件：
+人工修改 `challenge.yaml` 后，重新执行自动生成入口即可刷新静态校验摘要。需要只登记当前配置时再使用：
 
 ```bash
 python3 scripts/workflow.py accept --project-dir . --refresh --notes "reviewed manual edits"
@@ -87,7 +84,7 @@ Scenario 说明：
 
 - 直接调用 `validate_scenario.py` 时，默认只校验 scenario/compose 结构。
 - 追加 `--validate-rendered` 后，会对每个渲染出的服务目录调用 `validate.sh`。
-- `render_scenario.py` 用户侧调用时，必须在用户确认服务清单和端口摘要后传入 `--accepted --reason "..."`。
+- `render_scenario.py` 需要传入 `--accepted --reason "..."` 记录本次场景渲染原因；低风险场景可继续生成，高风险运行条件要列给用户判断。
 - `import_compose.py` 会在 draft 中保留 ports、environment、depends_on、volumes、networks、healthcheck、command/entrypoint 等线索；只有能安全转换的服务会进入 renderable subset。
 - 由 Compose 导入的 `depends_on` 会被 `render_scenario.py` 写回 `docker-compose.yml`，并由 `validate_scenario.py` 校验依赖目标是否存在。
 
@@ -97,7 +94,7 @@ check-service 生成器说明：
 - Redis 支持 `--redis-key` 和 `--redis-expect-value`。
 - MySQL 支持 `--mysql-query` 和 `--mysql-expect-text`。
 - SSH 支持 `--ssh-expect-banner`。
-- 生成脚本默认带 `CHECK_REVIEW_REQUIRED`，人工确认健康检查和业务断言后才能移除。
+- 生成脚本默认带 `CHECK_REVIEW_REQUIRED`，健康检查和业务断言审查后才能移除。
 
 Validate 分层说明：
 

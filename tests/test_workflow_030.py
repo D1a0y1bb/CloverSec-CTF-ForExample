@@ -532,6 +532,52 @@ class Workflow030Tests(unittest.TestCase):
             self.assertEqual(cases[0]["research"]["gate"], "needs_human_download")
             self.assertNotEqual(cases[0]["metadata"]["材料状态"], "公开 WP 线索")
 
+    def test_execute_search_tasks_prefers_official_github_repo_over_writeup_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = root / "run"
+            workflow.init_workflow(event="IrisCTF", years=[2025], categories=["web"], limit=1, out_dir=run)
+
+            def fake_search_plus(*args, **kwargs):  # noqa: ARG001
+                return {
+                    "results": [
+                        {
+                            "provider": "duckduckgo",
+                            "kind": "writeup",
+                            "title": "irisctf 2025 Web Writeups - ireland.re",
+                            "url": "https://ireland.re/posts/irisctf_2025/",
+                            "summary": "A public writeup collection.",
+                            "source_type": "public_web",
+                            "confidence": "medium",
+                            "metadata": {},
+                        },
+                        {
+                            "provider": "github",
+                            "kind": "repository",
+                            "title": "IrisSec/IrisCTF-2025-Challenges",
+                            "url": "https://github.com/IrisSec/IrisCTF-2025-Challenges",
+                            "summary": "Official challenges for IrisCTF 2025.",
+                            "source_type": "github",
+                            "confidence": "high",
+                            "metadata": {},
+                        },
+                    ],
+                    "errors": [],
+                    "summary": {"total_results": 2},
+                    "decision_required": [],
+                }
+
+            with mock.patch.object(workflow.search_plus, "search_plus", side_effect=fake_search_plus):
+                payload = workflow.execute_search_tasks(workdir=run, max_tasks=1, fetch_snapshots=False)
+
+            self.assertEqual(payload["summary"]["cases"], 1)
+            cases = [json.loads(line) for line in (run / "ctf_cases.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(cases[0]["evidence"][0]["source_url"], "https://github.com/IrisSec/IrisCTF-2025-Challenges")
+            self.assertEqual(cases[0]["metadata"]["分类"], "Web")
+            self.assertEqual(cases[0]["research"]["material_level"], "official_challenge_repository")
+            self.assertEqual(cases[0]["research"]["gate"], "needs_human_download")
+            self.assertNotEqual(cases[0]["metadata"]["材料状态"], "公开 WP 线索")
+
     def test_execute_search_tasks_marks_writeup_only_as_not_continuable(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

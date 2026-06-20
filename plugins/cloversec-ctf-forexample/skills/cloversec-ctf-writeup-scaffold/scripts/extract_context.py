@@ -241,6 +241,7 @@ def file_priority(path: Path) -> int:
 
 def collect_files(project_dir: Path, extra_paths: Iterable[Path]) -> list[Path]:
     files: list[Path] = []
+    project_root = project_dir.resolve()
     for current_root, dirs, filenames in os.walk(project_dir):
         root_path = Path(current_root)
         try:
@@ -263,14 +264,30 @@ def collect_files(project_dir: Path, extra_paths: Iterable[Path]) -> list[Path]:
             if is_text_candidate(path):
                 files.append(path)
     for extra in extra_paths:
+        extra = extra.resolve()
+        if extra == project_root:
+            continue
         if not extra.exists():
             continue
+        try:
+            extra.relative_to(project_root)
+            inside_project = True
+        except ValueError:
+            inside_project = False
         if extra.is_file() and is_text_candidate(extra):
             files.append(extra)
             continue
         if extra.is_dir():
             for current_root, dirs, filenames in os.walk(extra):
                 root_path = Path(current_root)
+                if not inside_project:
+                    try:
+                        depth = len(root_path.relative_to(extra).parts)
+                    except ValueError:
+                        depth = 0
+                    if depth > MAX_DEPTH:
+                        dirs[:] = []
+                        continue
                 dirs[:] = [item for item in dirs if item not in EXCLUDED_DIRS and not item.startswith(".")]
                 for filename in filenames:
                     path = root_path / filename
@@ -454,6 +471,21 @@ def normalize_difficulty_level(value: Any) -> str:
     return match.group(1) if match else ""
 
 
+def normalize_flag_type(value: Any) -> str:
+    raw = sanitize_text(str(value or "")).lower()
+    if not raw:
+        return ""
+    if raw in {"静态flag", "静态", "static", "staticflag", "fixed", "固定flag", "固定"}:
+        return "静态Flag"
+    if raw in {"动态flag", "动态", "dynamic", "dynamicflag", "changeflag", "runtime"}:
+        return "动态Flag"
+    if "dynamic" in raw or "动态" in raw or "changeflag" in raw:
+        return "动态Flag"
+    if "static" in raw or "静态" in raw or "固定" in raw:
+        return "静态Flag"
+    return ""
+
+
 def infer_difficulty_from_text(texts: list[str]) -> tuple[str, list[dict[str, str]], str]:
     for level, keywords in DIFFICULTY_KEYWORDS.items():
         for text in texts:
@@ -552,10 +584,15 @@ def infer_from_yaml(data: dict[str, Any], rel_path: str) -> dict[str, dict[str, 
         out["description"] = make_field(description.strip(), "structured", "high", [evidence(rel_path, "challenge.description")])
 
     stack = target.get("stack") if isinstance(target, dict) else None
-    if isinstance(stack, str):
-        category = normalize_category(stack)
+    category_text = target.get("category") if isinstance(target, dict) else None
+    category_source = "challenge.category"
+    if not isinstance(category_text, str) or not category_text.strip():
+        category_text = stack
+        category_source = "challenge.stack"
+    if isinstance(category_text, str):
+        category = normalize_category(category_text)
         if category:
-            out["category"] = make_field(category, "structured", "high", [evidence(rel_path, "challenge.stack")])
+            out["category"] = make_field(category, "structured", "high", [evidence(rel_path, category_source)])
 
     expose_ports = target.get("expose_ports") if isinstance(target, dict) else None
     if isinstance(expose_ports, list) and expose_ports:
@@ -580,6 +617,18 @@ def infer_from_yaml(data: dict[str, Any], rel_path: str) -> dict[str, dict[str, 
     flag_path = nested_get(target, "flag", "path")
     if isinstance(flag_path, str) and flag_path:
         out["flag_path"] = make_field(flag_path, "structured", "high", [evidence(rel_path, "challenge.flag.path")])
+
+    flag_value = target.get("flag") if isinstance(target, dict) else None
+    if isinstance(flag_value, str) and flag_value.strip() and not is_placeholder_flag(flag_value.strip()):
+        out["flag_value"] = make_field(flag_value.strip(), "structured", "high", [evidence(rel_path, "challenge.flag")])
+
+    flag_type = target.get("flag_type") if isinstance(target, dict) else None
+    if not isinstance(flag_type, str) or not flag_type.strip():
+        nested_flag_type = nested_get(target, "flag", "type")
+        flag_type = nested_flag_type if isinstance(nested_flag_type, str) else ""
+    normalized_flag_type = normalize_flag_type(flag_type)
+    if normalized_flag_type:
+        out["flag_type"] = make_field(normalized_flag_type, "structured", "high", [evidence(rel_path, "challenge.flag_type")])
 
     permission = nested_get(target, "flag", "permission")
     if permission is not None:
@@ -1032,7 +1081,7 @@ def infer_context(project_dir: Path, extra_paths: list[Path]) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract structured context for writeup rendering.")
     parser.add_argument("paths", nargs="*", help="Optional explicit files or directories to include.")
-    parser.add_argument("--project-dir", default=".", help="Project directory to inspect.")
+    parser.add_argument("--project-dir", help="Project directory to inspect.")
     parser.add_argument("--output", help="Write JSON output to a file.")
     parser.add_argument("--pretty", action="store_true", help="Pretty print JSON.")
     parser.add_argument("--proposal-out", help="Optional markdown file for proposal summary.")
@@ -1071,8 +1120,17 @@ def render_proposal_markdown(context: dict[str, Any]) -> str:
 
 def main() -> int:
     args = parse_args()
-    project_dir = Path(args.project_dir).resolve()
-    extra_paths = [Path(item).resolve() for item in args.paths]
+    positional_paths = [Path(item).resolve() for item in args.paths]
+    if args.project_dir:
+        project_dir = Path(args.project_dir).resolve()
+        extra_paths = positional_paths
+    elif positional_paths:
+        first = positional_paths[0]
+        project_dir = first if first.is_dir() else first.parent
+        extra_paths = positional_paths[1:] if first.is_dir() else positional_paths
+    else:
+        project_dir = Path(".").resolve()
+        extra_paths = []
     context = infer_context(project_dir, extra_paths)
     payload = json.dumps(context, ensure_ascii=False, indent=2 if args.pretty else None)
     if args.output:

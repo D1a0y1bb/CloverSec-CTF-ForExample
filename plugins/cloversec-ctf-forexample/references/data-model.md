@@ -123,7 +123,7 @@
 }
 ```
 
-资源识别结果是分流建议。进入 Dockerizer、附件题检查、Hub 或最终归档前仍要保留人工确认点。
+资源识别结果是分流建议。源码、Dockerfile、compose、镜像 tar 或端口服务题进入 Dockerizer 时默认走 `auto-render`，不再额外要求人工审批；附件题检查、Hub 最终提交、retag 执行、真实 Docker 执行和不确定业务取舍仍要保留人工确认点。
 
 ## 容器推断
 

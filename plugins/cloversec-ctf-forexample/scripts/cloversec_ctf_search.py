@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/1.1.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/1.1.1 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -1546,11 +1546,66 @@ def result_has_writeup_signal(result: dict[str, Any], layer: str = "") -> bool:
     summary = str(result.get("summary") or result.get("snippet") or "")
     kind = str(result.get("kind") or "")
     text = f"{title} {url} {summary} {kind}".lower()
+    if looks_official_challenge_repository(result):
+        return False
     if kind == "writeup":
         return True
     if kind in {"site_search", "code"} and not any(term in text for term in WRITEUP_TERMS | {"solution", "solver", "exp", "题解", "复现"}):
         return False
     return any(term in text for term in WRITEUP_TERMS | {"solution", "solver", "exp"})
+
+
+def is_github_repository_root_url(url: str) -> bool:
+    parsed = urlparse(str(url or ""))
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        return False
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    return len(parts) == 2
+
+
+def looks_official_challenge_repository(result: dict[str, Any], profile: dict[str, Any] | None = None) -> bool:
+    url = str(result.get("url") or "")
+    provider = str(result.get("provider") or "")
+    kind = str(result.get("kind") or "")
+    if not is_github_repository_root_url(url):
+        return False
+    if provider not in {"github", "agent-web-search", "browser-google", "browser-baidu", "direct-url"} and kind != "repository":
+        return False
+    title = str(result.get("title") or "")
+    summary = str(result.get("summary") or result.get("snippet") or "")
+    repo_name = Path(urlparse(url).path.strip("/")).name.lower()
+    haystack = f"{title} {url} {summary} {repo_name}".lower()
+    if any(term in haystack for term in ["writeup", "writeups", "wp", "solution", "solver", "复现", "题解"]):
+        return False
+    challenge_hint = any(
+        term in haystack
+        for term in [
+            "challenge",
+            "challenges",
+            "official-challenges",
+            "official_challenges",
+            "source",
+            "sources",
+            "handout",
+            "attachments",
+            "problems",
+            "tasks",
+            "题目",
+            "附件",
+            "源码",
+        ]
+    )
+    if not challenge_hint:
+        return False
+    if profile:
+        event_terms: set[str] = set(profile.get("event_terms") or set())
+        event_phrases: set[str] = set(profile.get("event_phrases") or set())
+        year_terms: set[str] = set(profile.get("year_terms") or set())
+        if event_terms and not event_name_matches(haystack, event_terms, event_phrases):
+            return False
+        if year_terms and not (set(re.findall(r"(?<!\d)20\d{2}(?!\d)", haystack)) & year_terms):
+            return False
+    return True
 
 
 def looks_source_or_challenge_path(url: str, result: dict[str, Any] | None = None) -> bool:
@@ -1571,6 +1626,8 @@ def result_has_asset_signal(result: dict[str, Any], layer: str = "") -> bool:
     files = metadata.get("files") if isinstance(metadata.get("files"), list) else []
     if files or metadata_attachment_candidates(result):
         return True
+    if looks_official_challenge_repository(result):
+        return True
     if is_github_tree_url(url) and looks_source_or_challenge_path(url, result):
         return True
     if layer == "attachment_candidate" or looks_attachment_candidate_url(url):
@@ -1585,6 +1642,8 @@ def result_has_official_signal(result: dict[str, Any]) -> bool:
     kind = str(result.get("kind") or "")
     url = str(result.get("url") or "")
     if challenge_metadata_for_result(result):
+        return True
+    if looks_official_challenge_repository(result):
         return True
     if is_github_tree_url(url) and looks_source_or_challenge_path(url, result):
         return True
@@ -1639,6 +1698,10 @@ def github_directory_needs_download(result: dict[str, Any]) -> bool:
     return is_github_tree_url(url) and not metadata_attachment_candidates(result)
 
 
+def github_repository_needs_download(result: dict[str, Any]) -> bool:
+    return looks_official_challenge_repository(result) and not metadata_attachment_candidates(result)
+
+
 def resource_classification_has_local_material(resource_classification: dict[str, Any] | None) -> bool:
     if not isinstance(resource_classification, dict):
         return False
@@ -1686,12 +1749,12 @@ def continuation_gate(
             "next_action": "打开官方题目页或用浏览器辅助搜索确认附件/源码入口，再进入下载沙箱。",
         }
     if has_asset:
-        if github_directory_needs_download(result):
+        if github_directory_needs_download(result) or github_repository_needs_download(result):
             return {
                 "gate": "needs_human_download",
-                "gate_reason": "发现 GitHub 题目目录，需要下载或预览后才能制作。",
+                "gate_reason": "发现 GitHub 官方题库入口，需要下载或预览源码、附件和题目目录后才能制作。",
                 "blocking_rule": "github_dir_unverified",
-                "next_action": "预览 GitHub tree/raw/release，确认后进入下载沙箱。",
+                "next_action": "预览 GitHub repository/tree/raw/release，确认后进入下载沙箱。",
             }
         return {
             "gate": "can_continue",
@@ -1735,7 +1798,7 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         source_type = result.get("source_type") or "public_web"
         case_id = f"research-{index:06d}"
         confidence = result_to_case_confidence(result)
-        category = infer_case_category(result)
+        category = infer_case_category(result) or infer_case_category_from_manifest(manifest)
         years = infer_case_years(result, manifest)
         event = infer_case_event(result, manifest)
         challenge_metadata = challenge_metadata_for_result(result)
@@ -1913,6 +1976,15 @@ def material_profile_for_result(result: dict[str, Any], *, layer: str, missing_r
             "next_action": "按 metadata 下载附件或进入 Dockerizer 交接，不把 metadata 文件本身当成最终交付。",
             "requires_user_confirmation": bool(missing_reason),
         }
+    if looks_official_challenge_repository(result):
+        return {
+            "material_level": "official_challenge_repository",
+            "material_status": MATERIAL_STATUS_ASSET_ONLY,
+            "reproducibility_status": "official_repository_needs_preview",
+            "missing_reason": missing_reason or "发现官方题库仓库，需要确认具体题目目录、附件和源码",
+            "next_action": "预览 GitHub repository/tree/release，选择具体题目目录后进入下载沙箱。",
+            "requires_user_confirmation": True,
+        }
     if is_direct_asset or layer == "attachment_candidate":
         return {
             "material_level": "attachment_candidate",
@@ -2015,6 +2087,27 @@ def infer_case_category(result: dict[str, Any]) -> str:
     haystack = f"{result.get('title', '')} {result.get('url', '')} {result.get('summary', '')}"
     categories = sorted(detect_categories(haystack))
     if not categories:
+        return ""
+    mapping = {
+        "web": "Web",
+        "pwn": "Pwn",
+        "reverse": "Reverse",
+        "crypto": "Crypto",
+        "misc": "Misc",
+        "forensics": "Forensics",
+        "ai": "AI",
+        "osint": "OSINT",
+        "mobile": "Mobile",
+        "iot": "IoT",
+        "blockchain": "Blockchain",
+    }
+    return mapping.get(categories[0], categories[0])
+
+
+def infer_case_category_from_manifest(manifest: dict[str, Any]) -> str:
+    query = str(manifest.get("query") or "")
+    categories = sorted(detect_categories(query))
+    if len(categories) != 1:
         return ""
     mapping = {
         "web": "Web",
@@ -2430,6 +2523,10 @@ def classify_result(result: dict[str, Any], profile: dict[str, Any]) -> tuple[st
         score += 70
         reasons.append("official challenge metadata")
         layer = "confirmed_challenge"
+    elif looks_official_challenge_repository(result, profile):
+        score += 52
+        reasons.append("official challenge repository")
+        layer = "confirmed_challenge"
     elif is_github_challenge_directory(result, profile):
         score += 45
         reasons.append("github challenge directory")
@@ -2501,6 +2598,8 @@ def reproducible_material_score(result: dict[str, Any], *, layer: str, profile: 
     text = f"{title} {url} {summary} {kind} {provider} {path}".lower()
     if challenge_metadata_for_result(result) or is_challenge_metadata_path(url, metadata):
         return 100
+    if looks_official_challenge_repository(result, profile):
+        return 86
     if kind == "release_asset" or looks_attachment_candidate_url(url):
         return 95
     if kind == "raw_file" and looks_source_or_challenge_path(url, result):

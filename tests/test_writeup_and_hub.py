@@ -127,7 +127,19 @@ class WriteupAndHubTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (project / "meta.yaml").write_text(
-                "name: Crator\nstack: Web\nexpose_ports:\n  - 8080\nscore: 100\nsource: 搬运\n",
+                "\n".join(
+                    [
+                        "name: Crator",
+                        "category: Web",
+                        "expose_ports:",
+                        "  - 8080",
+                        "score: 100",
+                        "source: 搬运",
+                        "flag: irisctf{per_tenant_databases_are_a_cool_concept_indeed}",
+                        "flag_type: static",
+                    ]
+                )
+                + "\n",
                 encoding="utf-8",
             )
             (project / "hub_fields.json").write_text(
@@ -152,9 +164,59 @@ class WriteupAndHubTests(unittest.TestCase):
 
         fields = context["fields"]
         self.assertEqual(fields["title"]["value"], "Crator")
+        self.assertEqual(fields["category"]["value"], "Web")
         self.assertEqual(fields["ports"]["value"], ["8080"])
-        self.assertNotIn("flag_value", fields)
-        self.assertIn("题目Flag", context["proposal"]["missing_fields"])
+        self.assertEqual(fields["source"]["value"], "搬运")
+        self.assertEqual(fields["score"]["value"], "100")
+        self.assertEqual(fields["flag_value"]["value"], "irisctf{per_tenant_databases_are_a_cool_concept_indeed}")
+        self.assertEqual(fields["flag_type"]["value"], "静态Flag")
+        evidence_paths = [
+            item.get("path", "")
+            for field in fields.values()
+            for item in field.get("evidence", [])
+        ]
+        self.assertFalse(any("tests/" in path or "plugins/" in path for path in evidence_paths))
+
+    def test_writeup_extract_context_cli_treats_positional_directory_as_project_dir(self):
+        script_path = ROOT / "plugins" / "cloversec-ctf-forexample" / "skills" / "cloversec-ctf-writeup-scaffold" / "scripts" / "extract_context.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "bad-todo"
+            project.mkdir()
+            (project / "README.md").write_text("# srcdoc-memos\n\nFlag: flag{dynamic_flag_placeholder}\n", encoding="utf-8")
+            (project / "meta.yaml").write_text(
+                "\n".join(
+                    [
+                        "name: bad-todo",
+                        "category: Web",
+                        "flag: irisctf{per_tenant_databases_are_a_cool_concept_indeed}",
+                        "flag_type: static",
+                        "source: 搬运",
+                        "score: 100",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(script_path), str(project), "--pretty"],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=ROOT,
+            )
+
+        payload = json.loads(result.stdout)
+        fields = payload["fields"]
+        self.assertEqual(payload["project_dir"], project.resolve().as_posix())
+        self.assertEqual(fields["title"]["value"], "bad-todo")
+        self.assertEqual(fields["flag_value"]["value"], "irisctf{per_tenant_databases_are_a_cool_concept_indeed}")
+        evidence_paths = [
+            item.get("path", "")
+            for field in fields.values()
+            for item in field.get("evidence", [])
+        ]
+        self.assertFalse(any("tests/" in path or "plugins/" in path for path in evidence_paths))
 
     def test_screenshot_plan_uses_stable_names(self):
         plan = hub.default_screenshot_plan()

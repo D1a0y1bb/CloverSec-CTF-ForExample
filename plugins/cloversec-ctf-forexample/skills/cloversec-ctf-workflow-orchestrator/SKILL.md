@@ -45,7 +45,7 @@ reports/
 
 ## 完整流程执行规则
 
-用户要求“完整处理”“全流程”“一路做完”“完整收集一道题”时，按下列阶段推进，并在需要确认的地方停止等待：
+用户要求“完整处理”“全流程”“一路做完”“完整收集一道题”时，按下列阶段推进。普通搜索、下载预览、资源识别、Dockerizer 自动渲染和静态校验都直接执行；只有会运行未知代码、写入外部系统或需要业务取舍时才停止等待用户判断：
 
 用户只说“帮我完整收集一道 CTF 题目”时，默认找公开真实比赛题：赛事、题名、官方题包、源码、附件、WP 和来源证据。不要把任务理解成“自己新写一道题”。只有用户明确说“出题”“原创题”“新建题目”时，才进入原创题制作。
 
@@ -53,13 +53,14 @@ reports/
 任务创建 -> 执行采集 -> 材料收集 -> 资源识别 -> Dockerizer 或附件检查 -> 手册字段 -> 质量检查 -> 中文最终交付包 -> Hub 草稿 -> Hub 浏览器辅助 -> Hub 审核状态/retag
 ```
 
-默认直接执行能安全读取、搜索、下载预览和识别的阶段。下列动作必须等用户确认：
+默认直接执行能安全读取、搜索、下载预览、识别和普通 Dockerizer 自动渲染的阶段。下列动作必须等用户确认：
 
 - 把下载沙箱内容移入正式题目目录。
-- 生成或覆盖 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag`、`check/check.sh`。
 - 执行 Docker build/run/save/load，尤其是 `--privileged`、capability、宿主目录挂载、内网访问。
 - Hub 页面上传附件、填写真实提交内容、最终提交。
 - 审核后根据 Hub 编号 retag、导出镜像 tar、回写最终归档。
+
+发现源码、Dockerfile、compose、镜像 tar 或端口服务时，直接交给 `cloversec-ctf-build-dockerizer` 的 `auto-render` 流程；不要因为它会生成或覆盖 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag` 就额外要求审批。Dockerizer 输出中如果标出 high_risk、unsupported、缺少关键业务判断或需要真实 Docker 执行，再把问题列给用户决定。
 
 中断后优先读取 `workflow_state.json`，从未完成阶段继续，不把未验证阶段写成通过。
 

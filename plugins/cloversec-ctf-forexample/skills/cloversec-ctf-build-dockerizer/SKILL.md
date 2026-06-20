@@ -78,8 +78,8 @@ bash scripts/validate.sh Dockerfile start.sh challenge.yaml
 | 明确 `challenge.yaml`，低风险 | `workflow.py auto-render --project-dir <题目目录>` | `data/schema.md`、`docs/stack_cookbook.md` |
 | 目录里有旧 Dockerfile、零散脚本、多栈线索或默认启动命令不可信 | 先执行 `workflow.py intake` 看风险；未触发阻塞时执行 `workflow.py auto-render` | `scripts/README.md`、`docs/troubleshooting.md` |
 | compose/Vulhub-like 输入 | `import_compose.py` -> 审查 `scenario.draft.yaml` -> 渲染 `scenario.renderable.yaml` | `data/scenario_schema.md` |
-| Scenario 正向编排 | 输出服务清单和端口摘要，用户判断后执行 `render_scenario.py` -> `validate_scenario.py --validate-rendered` | `data/scenario_schema.md` |
-| Bundle 老环境组合 | 输出 Recipe/custom 摘要，用户判断后执行 `render_bundle.py` -> `validate_bundle.py` -> `validate.sh` | `docs/bundle_design.md`、`data/bundle_recipes.yaml` |
+| Scenario 正向编排 | 输出服务清单和端口摘要，低风险场景继续执行 `render_scenario.py` -> `validate_scenario.py --validate-rendered` | `data/scenario_schema.md` |
+| Bundle 老环境组合 | 输出 Recipe/custom 摘要，低风险组合继续执行 `render_bundle.py` -> `validate_bundle.py` -> `validate.sh` | `docs/bundle_design.md`、`data/bundle_recipes.yaml` |
 | Linux kernel CVE/LPE | `stack=linux-qemu`，需要启动 guest、写入 guest flag 或复现 PoC 时再跑 `linux_qemu_manual_check.sh` | `docs/linux_qemu_manual_validation.md` |
 | RDG/SecOps 需要 check 脚本 | `generate_check_stub.py` 生成骨架，人工确认后移除 `CHECK_REVIEW_REQUIRED` | `docs/validation_guide.md` |
 
@@ -91,7 +91,7 @@ bash scripts/validate.sh Dockerfile start.sh challenge.yaml
 
 - high_risk 输入
 - unsupported 输入
-- compose/Vulhub-like 多服务结构
+- compose/Vulhub-like 结构
 - Scenario、本地多服务编排或 Bundle 老环境组合
 - Linux-QEMU VM 资产缺失或疑似占位
 - cPanel/WHM 控制面板类输入
@@ -151,13 +151,13 @@ Scenario：
 先输出服务清单、端口和交付目录摘要；低风险场景可继续生成，涉及高风险运行时再停下：
 
 ```bash
-python3 scripts/render_scenario.py --config scenario.yaml --output /tmp/scenario --accepted --reason "user accepted scenario proposal"
+python3 scripts/render_scenario.py --config scenario.yaml --output /tmp/scenario --accepted --reason "low-risk scenario render"
 python3 scripts/validate_scenario.py --output /tmp/scenario --validate-rendered
 ```
 
 Bundle：
 
-先输出 recipe/custom、端口、服务列表和支持等级；确认后：
+先输出 recipe/custom、端口、服务列表和支持等级；低风险组合可继续生成，涉及高风险运行时再停下：
 
 ```bash
 python3 scripts/render_bundle.py --recipe legacy-centos7-python39-mysql57-redis5 --output /tmp/bundle
@@ -171,7 +171,7 @@ Check-service 骨架：
 python3 scripts/generate_check_stub.py --type http --output check/check.sh --target-port 80 --path /
 ```
 
-生成脚本默认带 `CHECK_REVIEW_REQUIRED`，必须人工确认检查逻辑后移除。
+生成脚本默认带 `CHECK_REVIEW_REQUIRED`，健康检查和业务断言审查后才能移除。
 
 ## 按需读取索引
 

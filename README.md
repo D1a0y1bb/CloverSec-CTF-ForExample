@@ -1,153 +1,127 @@
 <p align="center">
-  <img src="plugins/cloversec-ctf-forexample/assets/app-icon.png" width="120" alt="CloverSec CTF For Example icon" />
+  <img src="plugins/cloversec-ctf-forexample/assets/app-icon.png" width="112" alt="CloverSec CTF For Example" />
 </p>
 
 <h1 align="center">CloverSec CTF For Example</h1>
 
 <p align="center">
-  <strong>CloverSec CTF 周期性工作 Codex Plugin：收集题目、整理资源、容器改造、写手册、归档、检查和 Hub 提交准备。</strong>
+  The CloverSec competition-work Codex plugin, built for the recurring grind of the competition role —<br/>
+  challenge collection, gap triage, standardized containerization, manual writing, archiving, and internal Hub submission.
 </p>
 
 <p align="center">
   <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v1.1.0-2563eb"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-22c55e"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
-  <img alt="MCP" src="https://img.shields.io/badge/MCP-8-8b5cf6">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP%20servers-8-8b5cf6">
 </p>
+
+<p align="center">
+  <b>English</b>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="README.zh-CN.md">简体中文</a>
+</p>
+
+---
 
 ## Overview
 
-`CloverSec CTF For Example` 是给 Codex 使用的 CTF 工作插件。它不是一个单独命令，而是一组 skill、脚本和 MCP server。你把目标说清楚，例如“收集 2025 IrisCTF 的 Web 题、WP 和附件线索”，Codex 会按场景调用搜索、下载预览、资源识别、Dockerizer 交接、手册、归档、质量检查和 Hub 提交准备能力。
+**CloverSec CTF For Example** is a Codex plugin built by the CloverSec Security AI Lab for competition work — it tackles the slowest, most repetitive part of CTF challenge prep (and competition work in general): finding source and writeups, sorting attachments, turning source into platform containers, writing Chinese solution manuals, archiving, quality-checking, and getting everything ready right up to the Hub submit button.
 
-它适合处理竞赛岗位里重复、耗时、容易漏文件的工作：找资料、整理附件、识别源码、生成 Dockerizer 输入、写中文手册、检查 Flag 和截图、做中文交付包、准备 Hub 填表材料。人的判断仍然保留在关键位置，比如未知 Docker 执行、Hub 最终提交、分类不确定、材料缺失和平台不兼容题。
+It isn't one command. It's a set of skills, scripts, and MCP servers that Codex reaches for as the task demands. You state the goal — say, *"collect the Web challenges, writeups, and attachment leads from 2025 IrisCTF"* — and Codex routes through search, download preview, resource classification, Dockerizer handoff, manual writing, archiving, quality review, and Hub prep on its own.
 
-我们准备了一个演示视频，用来展示一批 CTF 题目怎样从公开线索整理到内部交付包：题目信息收集、附件和源码整理、平台镜像改造、手册撰写、检查、Hub 浏览器辅助填表和最终 xlsx/语雀表。
+Judgment stays with you where it matters. Running an unknown Docker image, the final Hub submit, an ambiguous category, missing material, a platform-incompatible challenge — each of these stops and waits for you instead of guessing.
 
-## 1.1.0 交付样式
+## Quick start
 
-`1.1.0` 按内部已经认可的真实题目归档样例调整输出，不再把英文过程文件当成最终交付入口。
-
-批次根目录主要放这些文件：
+In the Codex plugin page, choose **Add plugin marketplace**:
 
 ```text
-交付说明.md
-最终归档表.xlsx
-语雀粘贴表.md
-分类-题目名/
+Source:    D1a0y1bb/CloverSec-CTF-ForExample
+Git ref:   v1.1.0
+Sparse path: (leave empty)
 ```
 
-容器题目录按三件套整理：
-
-```text
-分类-题目名/
-├── 题目源码/
-├── 题目镜像/
-└── 题目手册/
-    └── 题目解题手册.md
-```
-
-附件题目录按两件套整理，不生成 `题目镜像/`：
-
-```text
-分类-题目名/
-├── 题目附件/
-└── 题目手册/
-    └── 题目解题手册.md
-```
-
-正式手册按真实样例的结构输出：先写题目说明、环境和附件，再写解题过程、关键命令、截图说明、Flag 和复现说明。`manual_template.md`、`manual_filled_draft.md`、中间 JSON、过程日志不作为人接手的主入口。
-
-收集表也按人工整理过的 `最新赛事收集.xlsx` 风格生成：中文字段、固定列宽、统一行高、细边框、等线 12 号字体。表格给人看，JSONL 给 Agent 继续处理，两边通过同一条记录对应。
-
-## Quick Start
-
-在 Codex 插件页选择“添加插件市场”：
-
-```text
-来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v1.1.0
-稀疏路径：留空
-```
-
-也可以用命令行：
+Or from the command line:
 
 ```bash
 codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v1.1.0
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
-安装或更新后新开 Codex 会话，然后直接描述目标：
+After installing (or updating), open a fresh Codex session and just describe the goal:
 
 ```text
-使用 CloverSec CTF For Example，帮我收集 2025 IrisCTF 的 Web 题、writeup 和附件线索。
+Using CloverSec CTF For Example, collect the Web challenges, writeups,
+and attachment leads from 2025 IrisCTF.
 ```
 
 ```text
-根据这个 ctf_cases.jsonl，整理附件、源码、WP，识别哪些题需要进入 Dockerizer，最后输出中文交付包。
+From this ctf_cases.jsonl, sort the attachments, source, and writeups,
+decide which challenges need the Dockerizer, and produce a Chinese deliverable.
 ```
 
-## Recommended Setup
+## Setup
 
-| 项目 | 是否必须 | 用途 |
+| Item | Required? | Why |
 | --- | --- | --- |
-| `gh auth login` | 推荐 | GitHub 搜索、仓库预览、Release 资源更稳定 |
-| Docker Desktop | 容器题需要 | build/run/inspect/save/load、amd64 检查 |
-| PyYAML | 容器改造需要 | Dockerizer 解析 `challenge.yaml`、`stacks.yaml` 和模板数据 |
-| openpyxl | 推荐 | 生成更整齐的 xlsx；未安装时仍可导出基础 xlsx |
-| Chrome 已登录 Hub | Hub 辅助填写需要 | 使用当前浏览器页面准备提交，不保存 Cookie、token 或密码 |
-| 题目目录或清单 | 推荐 | 可以是 `ctf_case.json`、`ctf_cases.jsonl`、xlsx、zip、URL |
+| `gh auth login` | Recommended | Steadier GitHub search, repo preview, and Release assets |
+| Docker Desktop | For container challenges | build / run / inspect / save / load, amd64 checks |
+| PyYAML | For containerization | Dockerizer parses `challenge.yaml`, `stacks.yaml`, template data |
+| openpyxl | Recommended | Cleaner xlsx; basic xlsx still exports without it |
+| Chrome signed in to Hub | For Hub assist | Drives the live page; never stores cookies, tokens, or passwords |
+| A challenge dir or list | Recommended | `ctf_case.json`, `ctf_cases.jsonl`, xlsx, zip, or URL |
 
-安装 Dockerizer 依赖：
+Install the Dockerizer dependencies:
 
 ```bash
 pip install -r plugins/cloversec-ctf-forexample/skills/cloversec-ctf-build-dockerizer/scripts/requirements.txt
 ```
 
-检查本机能力：
+Check what your machine can do:
 
 ```bash
 python3 scripts/doctor.py
 ```
 
-## Common Requests
+## What to ask for
 
-| 你可以这样说 | 插件通常会做什么 | 主要产物 |
+| Say something like | What the plugin usually does | Main output |
 | --- | --- | --- |
-| `帮我收集 2024 LA CTF 的 Web 题、WP 和附件线索` | 搜索公开来源，生成题目清单、中文收集表和证据 | `search_results.json`、`ctf_cases.jsonl`、`赛事题目信息收集表.xlsx` |
-| `根据这个 ctf_cases.jsonl 收集附件和 writeup` | 下载预览、GitHub Release/tree 预览、记录 hash 和失败原因 | `downloads_sandbox/`、`material_candidates.json` |
-| `识别这个题目目录下一步怎么处理` | 判断 Docker/compose/source/attachment/writeup 等资源类型，并生成中文处理建议 | `resource_classification.json`、`资源整理与处理建议表.xlsx`、`Dockerizer交接表.xlsx` |
-| `这个源码题整理成平台容器交付` | 交给 `cloversec-ctf-build-dockerizer` 做平台化改造 | `Dockerfile`、`start.sh`、`changeflag.sh`、`flag` |
-| `这个附件题检查后归档` | 检查压缩包、hash、解压、路径风险 | `attachment_manifest.json` |
-| `根据题目目录生成手册和 Hub 字段` | 生成中文正式手册、Hub 字段、xlsx 字段 | `题目解题手册.md`、`hub_fields.json`、`xlsx_fields.json` |
-| `生成 Hub 提交材料` | 生成字段、上传清单、Chrome 填写计划，最终提交前停止 | `hub_upload_manifest.json`、`hub_session_state.json` |
-| `生成最终交付包` | 整理中文目录、最终表格、语雀表、质量报告 | `交付说明.md`、`最终归档表.xlsx`、`语雀粘贴表.md` |
+| *Collect the Web challenges, WPs, and attachment leads from 2024 LA CTF* | Searches public sources, builds a challenge list, Chinese collection sheet, and evidence | `search_results.json`, `ctf_cases.jsonl`, `赛事题目信息收集表.xlsx` |
+| *From this ctf_cases.jsonl, gather attachments and writeups* | Download preview, GitHub Release/tree preview, records hashes and failure reasons | `downloads_sandbox/`, `material_candidates.json` |
+| *Tell me how to handle this challenge directory* | Classifies Docker / compose / source / attachment / writeup, with a Chinese next-step suggestion | `resource_classification.json`, `资源整理与处理建议表.xlsx`, `Dockerizer交接表.xlsx` |
+| *Turn this source challenge into a platform container* | Hands off to `cloversec-ctf-build-dockerizer` for platform conversion | `Dockerfile`, `start.sh`, `changeflag.sh`, `flag` |
+| *Check and archive this attachment challenge* | Inspects the archive, hashes, extraction, path risk | `attachment_manifest.json` |
+| *Write the manual and Hub fields from this directory* | Generates the formal Chinese manual, Hub fields, xlsx fields | `题目解题手册.md`, `hub_fields.json`, `xlsx_fields.json` |
+| *Prepare the Hub submission* | Builds fields, upload list, Chrome fill plan — stops before the final submit | `hub_upload_manifest.json`, `hub_session_state.json` |
+| *Produce the final deliverable* | Assembles the Chinese folders, final sheets, Yuque table, quality report | `交付说明.md`, `最终归档表.xlsx`, `语雀粘贴表.md` |
 
-## Full Workflow
+## Running a full batch
 
-完整处理一批题目时，可以这样给 Codex 下任务：
-
-```text
-使用 CloverSec CTF For Example，帮我完整处理 2026 年公开 CTF 题目 10 道。
-要求：
-1. 先创建工作目录和任务计划。
-2. 收集候选题、来源证据、WP、附件和源码线索。
-3. 只把来源明确、年份和分类能确认的题目写入 ctf_cases.jsonl。
-4. 下载材料先进 downloads_sandbox，做 hash、大小、压缩包预览和风险检查。
-5. 对每道题生成 resource_classification.json。
-6. 源码题、Dockerfile、compose、镜像 tar、Web/Pwn 服务题必须进入 cloversec-ctf-build-dockerizer。
-7. 附件题走附件检查和归档。
-8. 生成中文正式手册、Hub 字段、xlsx 字段、归档目录、质量检查和最终交付包。
-9. Docker 执行、Hub 最终提交、镜像 retag 前都要等我确认。
-```
-
-中断后继续：
+To take a whole batch end to end, hand Codex a task like this:
 
 ```text
-继续这个 runs/xxxxxxxxx 工作目录，从 workflow_state.json 里未完成的阶段继续处理。
+Using CloverSec CTF For Example, process 10 public 2026 CTF challenges end to end.
+Requirements:
+1. Create the working directory and a task plan first.
+2. Collect candidates, source evidence, writeups, attachment and source leads.
+3. Only write challenges with a clear source and a confirmable year/category into ctf_cases.jsonl.
+4. Download into downloads_sandbox first — hash, size, archive preview, risk checks.
+5. Produce a resource_classification.json per challenge.
+6. Source challenges, Dockerfiles, compose, image tars, and Web/Pwn service challenges must go through cloversec-ctf-build-dockerizer.
+7. Attachment challenges go through attachment checks and archiving.
+8. Produce the formal Chinese manual, Hub fields, xlsx fields, archive layout, quality review, and final deliverable.
+9. Stop and wait for me before any Docker run, final Hub submit, or image retag.
 ```
 
-查看状态：
+Resume after an interruption:
+
+```text
+Continue the runs/xxxxxxxxx working directory, picking up the unfinished
+stages from workflow_state.json.
+```
+
+Check progress:
 
 ```bash
 python3 scripts/show_progress.py runs/xxxxxxxxx/workflow_state.json
@@ -155,10 +129,12 @@ python3 scripts/show_progress.py runs/xxxxxxxxx/workflow_state.json --watch
 python3 scripts/show_progress.py runs/xxxxxxxxx/workflow_state.json --table
 ```
 
-默认输出是中文工作汇报，适合人直接看；`--json` 给脚本和 Agent 读取；`--table` 保留旧的紧凑表格，方便调试阶段状态。
-如果只拿到安装后的插件目录，也可以在插件目录里运行 `python3 scripts/show_progress.py workflow_state.json`。
+The default output is a Chinese progress report meant for a human to read; `--json` is for scripts and agents, and `--table` keeps the old compact view for debugging stage state. If all you have is the installed plugin directory, run `python3 scripts/show_progress.py workflow_state.json` from inside it.
 
-需要让脚本按已有材料继续执行安全阶段时，可以直接跑工作流执行器：
+<details>
+<summary><b>Advanced — drive the stages directly</b></summary>
+
+Run safe stages over existing material with the workflow engine:
 
 ```bash
 python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py run \
@@ -172,13 +148,13 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py run \
   --stage final_report
 ```
 
-批量处理 Docker 构建前，可以对明确范围做一次授权。授权文件会写进工作目录，Docker 执行器会读取它；没有授权时不会直接执行真实 Docker 操作。
+Authorize a Docker batch over an explicit scope. The authorization is written into the working directory; the Docker executor reads it, and without it no real Docker action runs:
 
 ```bash
 python3 scripts/authorize_batch.py --workdir runs/xxxxxxxxx --action docker_build --case-id case-001 --case-id case-002
 ```
 
-搜索质量验证可以生成本地报告，报告留在 `docs/validation/`，不进入发布包：
+Verify search quality. The report stays in `docs/validation/` and never ships in a release:
 
 ```bash
 python3 scripts/search_recall_benchmark.py \
@@ -189,81 +165,80 @@ python3 scripts/search_recall_benchmark.py \
   --json-output docs/validation/search-recall-benchmark-v1.1.0.json
 ```
 
-这个基准不是看关键词有没有出现，而是看已人工核对过存在的公开资源是否被搜到。当前基准覆盖西电 XDSEC miniLCTF、中科大 Hackergame、HGame、IrisCTF、LA CTF 和 Google CTF，按 GitHub repo / URL 归一化命中统计召回。
+This benchmark doesn't check whether a keyword appeared — it checks whether a public resource that a human confirmed exists was actually found. It currently covers XDSEC miniLCTF, USTC Hackergame, HGAME, IrisCTF, LA CTF, and Google CTF, scoring recall by normalized GitHub repo / URL hits.
 
-## Capability Table
+</details>
 
-| 能力 | 说明 |
+## Capabilities
+
+| Capability | What it does |
 | --- | --- |
-| Workflow intake | 从年份、赛事、方向、数量创建任务目录、搜索计划和状态文件 |
-| Research intake | 多来源搜索、Agent 联网搜索结果导入、浏览器可见结果导入 |
-| Handoff tables | 生成中文 xlsx、JSONL 和 schema，让人能看、Agent 能继续处理 |
-| Asset collection | 下载预览、GitHub Release/tree 预览、hash、失败原因 |
-| Resource classifier | 识别源码、Dockerfile、compose、附件、writeup、截图、二进制、pcap |
-| Container validator | 提取端口、启动命令、Flag 路径和 Dockerizer 交接信息 |
-| Dockerizer | 用户已验证的 CloverSec 平台容器题改造 skill |
-| Writeup scaffold | 用户已验证的中文手册和字段生成 skill |
-| Archive packager | 生成中文归档目录、manifest、资源索引 |
-| Quality review | 检查资源、手册、Flag、归档、Docker evidence 状态 |
-| Hub submission | 生成 Hub 草稿、上传清单、浏览器辅助计划，最终提交前停止 |
-| Hub retag | 审核通过后按正式 `HUB编号` 生成镜像 tag 和导出计划 |
-| Final report | 生成最终 xlsx、语雀表、报告和待处理事项 |
+| Workflow intake | Builds the task directory, search plan, and state file from year / event / category / count |
+| Research intake | Multi-source search, agent web-search import, browser-visible result import |
+| Handoff tables | Chinese xlsx + JSONL + schema — readable by people, resumable by the agent |
+| Asset collection | Download preview, GitHub Release/tree preview, hashes, failure reasons |
+| Resource classifier | Identifies source, Dockerfile, compose, attachment, writeup, screenshot, binary, pcap |
+| Container validator | Extracts ports, start command, Flag path, Dockerizer handoff info |
+| Dockerizer | The user-verified skill for CloverSec-platform container conversion |
+| Writeup scaffold | The user-verified skill for the Chinese manual and field generation |
+| Archive packager | Builds the Chinese archive layout, manifest, resource index |
+| Quality review | Checks resources, manual, Flag, archive, and Docker-evidence state |
+| Hub submission | Builds the Hub draft, upload list, browser fill plan — stops before final submit |
+| Hub retag | After approval, generates the image tag and export plan from the official `HUB编号` |
+| Final report | Produces the final xlsx, Yuque table, report, and open issues |
 
-## Development Notes
+## Sheets for people, data for the agent
 
-- 关键用户可见提示集中在 `plugins/cloversec-ctf-forexample/references/i18n.zh-CN.json`，后续要做英文版时优先替换这份 catalog。
-- 公开搜索、下载预览、端口探测等 HTTP 请求统一走 `cloversec_ctf_http.py`，避免各脚本各自处理超时、重试和重定向。
-- MCP 工具调用会记录到本机运行日志，默认在 `~/.codex/cloversec-ctf-forexample/mcp-runtime/`，用于排查批量任务里哪个工具失败。
-- `cloversec_ctf_workflow.py run` 会写 `workflow_engine_run.json`、`logs/workflow_engine.jsonl` 和 `当前状态.md`，中断后可以继续同一工作目录。
-- Hub 最终提交不能批量预授权，仍然需要人工确认。
+Every handoff stage emits both a sheet a human can read and the structured data the agent keeps working from. Same record, two views.
 
-## Resource Rules
-
-| 材料情况 | 处理方式 |
-| --- | --- |
-| 只有题名、平台页或 WP | 只算线索，记录缺材料，不写成可交付 |
-| 只有附件 zip/tar | 走附件检查、手册、归档和质量检查 |
-| 有源码但没有 Dockerfile | 必须进入 Dockerizer，生成平台交付方案 |
-| 有源码和上游 Dockerfile/compose | 上游文件只当迁移输入，仍必须进入 Dockerizer |
-| 只有镜像 tar | 可 inspect/hash，但不能直接算平台交付件 |
-| Pwn jail、kernel、eBPF、QEMU、高权限题 | 记录平台差异和运行条件，不默认写成通过 |
-
-容器题最终要满足 `/start.sh`、`/changeflag.sh`、`/flag`、端口、linux/amd64、镜像 tar 和内部 xlsx 字段要求。直接 `docker build/run` 只能作为验证证据，不能替代 Dockerizer 平台改造。
-
-## Handoff Files
-
-0.8.0 开始，插件会把“给人看的表”和“给 Agent 继续处理的数据”一起生成，不再只给一堆 JSON。
-
-| 阶段 | 给人看的文件 | 给 Agent 的文件 | 作用 |
+| Stage | For people | For the agent | Point |
 | --- | --- | --- | --- |
-| 题目信息收集 | `赛事题目信息收集表.xlsx` | `赛事题目信息收集表.jsonl`、`ctf_cases.jsonl` | 看清每道题是不是可处理、缺什么材料、下一步做什么 |
-| 资源识别 | `资源整理与处理建议表.xlsx` | `资源整理与处理建议表.jsonl` | 看清每个文件是源码、附件、WP、截图还是未知资源 |
-| Dockerizer 交接 | `Dockerizer交接表.xlsx` | `Dockerizer交接表.jsonl` | 源码题、Dockerfile、compose、镜像 tar 和 Web/Pwn 服务题进入 Dockerizer |
+| Collection | `赛事题目信息收集表.xlsx` | `赛事题目信息收集表.jsonl`, `ctf_cases.jsonl` | What's workable, what's missing, what's next |
+| Resource ID | `资源整理与处理建议表.xlsx` | `资源整理与处理建议表.jsonl` | Source, attachment, WP, screenshot, or unknown |
+| Dockerizer handoff | `Dockerizer交接表.xlsx` | `Dockerizer交接表.jsonl` | Which challenges enter the Dockerizer |
 
-表格字段是中文，方便人工接手；JSONL 的行内容和表格一致，方便后续 Agent 继续处理。已有 Dockerfile 或 compose 只能当迁移输入，不能直接算 CloverSec 平台交付件。
+An existing Dockerfile or compose file is a migration input only — never a finished CloverSec-platform deliverable on its own.
+
+## Resource rules
+
+| Situation | How it's handled |
+| --- | --- |
+| Only a title, platform page, or WP | Treated as a lead — logged as missing material, not written up as deliverable |
+| Only an attachment zip/tar | Attachment check, manual, archive, quality review |
+| Source but no Dockerfile | Must enter the Dockerizer to produce a platform deliverable |
+| Source plus an upstream Dockerfile/compose | Upstream files are migration input only — still must enter the Dockerizer |
+| Only an image tar | Can inspect/hash, but not counted as a platform deliverable |
+| Pwn jail, kernel, eBPF, QEMU, high-privilege | Platform differences and run conditions logged — never assumed passing |
+
+A container challenge must end up satisfying `/start.sh`, `/changeflag.sh`, `/flag`, the port, linux/amd64, the image tar, and the internal xlsx fields. A bare `docker build/run` counts only as verification evidence — it does not replace Dockerizer platform conversion.
+
+## Under the hood
+
+- User-facing strings live in `plugins/cloversec-ctf-forexample/references/i18n.zh-CN.json` — swap this catalog first if an English build comes later.
+- HTTP requests (search, download preview, port probing) all go through `cloversec_ctf_http.py`, so timeouts, retries, and redirects are handled in one place rather than re-invented per script.
+- MCP tool calls are logged to a local runtime dir — `~/.codex/cloversec-ctf-forexample/mcp-runtime/` by default — to trace which tool failed in a batch.
+- `cloversec_ctf_workflow.py run` writes `workflow_engine_run.json`, `logs/workflow_engine.jsonl`, and `当前状态.md`, so an interrupted batch can resume in the same directory.
+- The final Hub submit can't be pre-authorized in bulk — it always needs a human.
 
 ## References
 
-- [工作流说明](plugins/cloversec-ctf-forexample/references/workflow.md)
-- [数据模型](plugins/cloversec-ctf-forexample/references/data-model.md)
-- [调研与搜索](plugins/cloversec-ctf-forexample/references/research-intake.md)
-- [资源收集](plugins/cloversec-ctf-forexample/references/asset-collector.md)
-- [Hub 提交](plugins/cloversec-ctf-forexample/references/hub-submission.md)
-- [脚本说明](plugins/cloversec-ctf-forexample/scripts/README.md)
+- [Workflow](plugins/cloversec-ctf-forexample/references/workflow.md)
+- [Data model](plugins/cloversec-ctf-forexample/references/data-model.md)
+- [Research & search](plugins/cloversec-ctf-forexample/references/research-intake.md)
+- [Asset collection](plugins/cloversec-ctf-forexample/references/asset-collector.md)
+- [Hub submission](plugins/cloversec-ctf-forexample/references/hub-submission.md)
+- [Scripts](plugins/cloversec-ctf-forexample/scripts/README.md)
 
 ## Development
 
-常用验证：
-
 ```bash
-python3 /Users/d1a0y1bb/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/cloversec-ctf-forexample
 python3 scripts/validate_release.py
 python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scripts/package_plugin_release.py
 ```
 
-发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v1.1.0`；正文第一行使用 `# CloverSec CTF For Example 1.1.0`。
+Codex users can additionally validate against the local plugin-creator (`validate_plugin.py` under `~/.codex/skills/.system/plugin-creator/`). Bump the version with `scripts/bump_version.py` before a release; the Release title is the tag (e.g. `v1.1.0`) and the body's first line is `# CloverSec CTF For Example 1.1.0`.
 
 ## License
 
-MIT License. Copyright (c) D1a0y1bb.
+MIT © D1a0y1bb - CloverSec Security

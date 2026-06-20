@@ -1,6 +1,6 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "The process of CloverSec regarding the collection and conversion of CTF questions, the construction and deployment of the platform using Docker, report writing, archiving, review, and submission to Codex.",
   "author": {
     "name": "CloverSec-D1a0y1bb",
@@ -37,7 +37,7 @@
     ],
     "defaultPrompt": [
       "帮我收集 10 道 2026 年的 CTF 竞赛题目",
-      "把这个包含了很多外部题目源码的目录整理成内部规范的手册、交付包",
+      "帮我把这个目录整理成竞赛内部规范的完整交付包",
       "帮我收集 2024 LA CTF 的 Web 题、WP 和附件线索"
     ]
   }

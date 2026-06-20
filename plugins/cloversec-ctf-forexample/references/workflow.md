@@ -57,7 +57,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_workflow.py run \
 - `.workflow.lock`：防止同一工作目录被两个执行器同时写。
 - `当前状态.md`：给用户看的批次进度。
 
-默认自动阶段只做读取、搜索、下载预览、识别、归档预览、质量汇总和最终文件生成。`download_accept`、真实 Docker 执行、Hub 最终提交、retag 执行必须等用户确认。
+默认自动阶段包括读取、搜索、下载预览、识别、Dockerizer `auto-render`、归档预览、质量汇总和最终文件生成。`download_accept`、真实 Docker 执行、Hub 最终提交、retag 执行必须等用户确认。
 
 查看进度：
 
