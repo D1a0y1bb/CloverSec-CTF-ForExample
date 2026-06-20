@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.workflow.state.v1"
-WORKFLOW_VERSION = "1.0.4"
+WORKFLOW_VERSION = "1.0.5"
 STAGES = [
     "research",
     "collect",

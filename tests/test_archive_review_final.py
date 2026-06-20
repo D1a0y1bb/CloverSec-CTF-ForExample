@@ -629,6 +629,49 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((delivery_dir / "交付说明.md").exists())
             self.assertFalse((outputs / f"交付包-{workdir.name}").exists())
 
+    def test_delivery_scan_removes_macos_metadata_before_reporting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            delivery_dir = tmp_path / "outputs"
+            challenge_dir = delivery_dir / "Web-Natural Prompt"
+            (challenge_dir / "题目源码").mkdir(parents=True)
+            (challenge_dir / "题目镜像").mkdir()
+            (challenge_dir / "题目手册").mkdir()
+            (delivery_dir / "交付说明.md").write_text("# 交付说明\n", encoding="utf-8")
+            (delivery_dir / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (delivery_dir / "语雀粘贴表.md").write_text("", encoding="utf-8")
+            (delivery_dir / "待处理问题.md").write_text("", encoding="utf-8")
+            (delivery_dir / "质量检查报告.md").write_text("", encoding="utf-8")
+            (delivery_dir / ".DS_Store").write_bytes(b"mac")
+            (challenge_dir / ".DS_Store").write_bytes(b"mac")
+
+            issues = delivery.scan_delivery_package(delivery_dir)
+
+            self.assertFalse((delivery_dir / ".DS_Store").exists())
+            self.assertFalse((challenge_dir / ".DS_Store").exists())
+            self.assertFalse(any(item["path"].endswith(".DS_Store") for item in issues))
+
+    def test_delivery_package_same_outputs_dir_does_not_write_cache_to_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+            archived_case = sample_case(tmp_path)
+            archived_case["metadata"]["名称"] = "Natural Prompt"
+            archived_case["metadata"]["分类"] = "Web"
+            (workdir / "ctf_case.archived.json").write_text(json.dumps(archived_case, ensure_ascii=False), encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=outputs)
+
+            self.assertEqual(Path(manifest["paths"]["delivery_dir"]), outputs)
+            self.assertTrue((outputs / "最终归档表.xlsx").exists())
+            self.assertTrue((outputs / "语雀粘贴表.md").exists())
+            self.assertFalse((outputs / "_cache").exists())
+            self.assertFalse((outputs / "_delivery_cache").exists())
+            self.assertFalse(any(path.name in {"_cache", "_delivery_cache"} for path in outputs.rglob("*")))
+
     def test_delivery_package_reorganizes_legacy_single_challenge_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -887,7 +930,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.4")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.5")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

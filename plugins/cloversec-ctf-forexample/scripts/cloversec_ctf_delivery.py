@@ -15,7 +15,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -25,7 +25,7 @@ CHALLENGE_SUBDIRS = ["题目源码", "题目镜像", "题目手册", "题目附�
 PROCESS_EVIDENCE_DIR = "过程证据"
 MACHINE_DATA_DIR = "机器数据"
 IMAGE_SUFFIXES = {".tar", ".gz", ".tgz"}
-BLOCKED_PATH_PARTS = {".ctfbuild", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+BLOCKED_PATH_PARTS = {".ctfbuild", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "_cache", "_delivery_cache"}
 BLOCKED_PROCESS_FILENAMES = {
     "docker_artifacts.json",
     "docker_artifacts.validated.json",
@@ -176,6 +176,12 @@ def create_delivery_package(
     manifest["package_issues"] = package_issues
     manifest["summary"]["package_issues"] = len(package_issues)
     readme_path.write_text(render_delivery_readme(manifest), encoding="utf-8")
+    cleanup_ds_store(delivery)
+    package_issues = scan_delivery_package(delivery)
+    manifest["package_issues"] = package_issues
+    manifest["summary"]["package_issues"] = len(package_issues)
+    readme_path.write_text(render_delivery_readme(manifest), encoding="utf-8")
+    cleanup_ds_store(delivery)
     return manifest
 
 
@@ -229,7 +235,7 @@ def ensure_final_sources(workdir: Path, outputs_dir: Path, selected: dict[str, A
         return
     import cloversec_ctf_final as final
 
-    generated = outputs_dir / "_cache" / "delivery_final"
+    generated = workdir / "_delivery_cache" / "final"
     payload = final.create_final_outputs(cases, generated, base_dir=outputs_dir)
     summary = payload.get("summary", {}) if isinstance(payload.get("summary"), dict) else {}
     final_xlsx = Path(str(summary.get("xlsx_path") or ""))
@@ -651,11 +657,13 @@ def copy_process_machine_data(workdir: Path, outputs_dir: Path, delivery: Path, 
                 continue
             if not is_machine_data_file(source):
                 continue
+            relative = safe_relative_path(source, root)
+            if any(part in BLOCKED_PATH_PARTS for part in relative.parts):
+                continue
             key = source.resolve().as_posix()
             if key in seen:
                 continue
             seen.add(key)
-            relative = safe_relative_path(source, root)
             target = target_root / root_label / relative
             add_record(
                 copy_or_reference(
@@ -913,6 +921,7 @@ def build_summary(
 
 
 def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
+    cleanup_ds_store(delivery)
     issues: list[dict[str, str]] = []
     allowed_root_files = set(ALL_ROOT_FILES)
     allowed_subdirs = set(CHALLENGE_SUBDIRS)
