@@ -1,4 +1,5 @@
 import json
+import tarfile
 import subprocess
 import sys
 import tempfile
@@ -614,6 +615,40 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertIn("Pwn-JSFS/题目手册/题目解题手册.md", names)
             self.assertFalse(any(name.startswith("__MACOSX/") or name.endswith(".DS_Store") or "/_cache/" in name for name in names))
 
+    def test_delivery_package_keeps_official_handout_tar_gz_as_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            archive_dir = workdir / "archive" / "Web-Password Manager"
+            (archive_dir / "题目源码").mkdir(parents=True)
+            (archive_dir / "题目镜像").mkdir()
+            (archive_dir / "题目手册").mkdir()
+            handout = archive_dir / "题目源码" / "password-manager.tar.gz"
+            inner = tmp_path / "README.md"
+            inner.write_text("# handout\n", encoding="utf-8")
+            with tarfile.open(handout, "w:gz") as package:
+                package.add(inner, arcname="README.md")
+            docker_like = archive_dir / "题目源码" / "docker-image.tar"
+            with tarfile.open(docker_like, "w") as package:
+                package.add(inner, arcname="manifest.json")
+                package.add(inner, arcname="repositories")
+                package.add(inner, arcname="layer/layer.tar")
+            (archive_dir / "题目镜像" / "password-manager-amd64.tar").write_bytes(b"image-tar")
+            (archive_dir / "题目手册" / "题目解题手册.md").write_text("# 手册\n", encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            challenge_dir = delivery_dir / "Web-Password Manager"
+            self.assertTrue((challenge_dir / "题目源码" / "password-manager.tar.gz").exists())
+            self.assertFalse((challenge_dir / "题目源码" / "docker-image.tar").exists())
+            self.assertEqual(manifest["summary"]["package_issues"], 0)
+
     def test_delivery_package_default_output_dir_is_chinese_final_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -930,7 +965,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.5")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.6")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

@@ -91,6 +91,24 @@ class ResourceClassificationTests(unittest.TestCase):
         self.assertFalse(payload["must_use_dockerizer"])
         self.assertEqual(payload["root_classification"]["platform_delivery"]["status"], "needs_user_material")
 
+    def test_frontend_service_javascript_is_not_solver_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pages").mkdir()
+            (root / "pages" / "index.js").write_text(
+                "export function solve() { return fetch('/api/check').then(r => r.text()); }\n"
+                "const placeholder = 'flag{demo}';\n",
+                encoding="utf-8",
+            )
+            (root / "package.json").write_text('{"scripts":{"start":"next start"}}\n', encoding="utf-8")
+
+            payload = resource.classify_resource_root(root)
+            by_name = {item["name"]: item for item in payload["resources"]}
+
+        self.assertEqual(by_name["index.js"]["resource_type"], "source_file")
+        self.assertEqual(payload["root_classification"]["project_type"], "source_project")
+        self.assertEqual(payload["root_classification"]["recommended_next_skill"], "cloversec-ctf-build-dockerizer")
+
     def test_classifies_docker_image_tar(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

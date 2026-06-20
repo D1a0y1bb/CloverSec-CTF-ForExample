@@ -16,7 +16,7 @@ import cloversec_ctf_handoff as handoff
 
 
 SCHEMA_VERSION = "cloversec.ctf.resource_classification.v1"
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 
 TEXT_EXTENSIONS = {
     ".c",
@@ -99,6 +99,12 @@ SERVICE_HINTS = {
     "main",
     "index",
     "src",
+    "pages",
+    "public",
+    "frontend",
+    "backend",
+    "api",
+    "components",
     "routes",
     "views",
     "templates",
@@ -420,12 +426,35 @@ def looks_solver_source(path: Path, root: Path, text_sample: str) -> bool:
     relative_parts = [part.lower() for part in path.relative_to(root).parts]
     stem = path.stem.lower()
     name = path.name.lower()
-    if any(hint in part for part in relative_parts for hint in SOLVER_HINTS):
+    path_hint = any(hint in part for part in relative_parts for hint in SOLVER_HINTS)
+    if path_hint:
         return True
-    if any(hint in stem or hint in name for hint in SOLVER_HINTS):
-        return True
+    if is_service_source_path(relative_parts, stem, name):
+        return False
     lowered = text_sample.lower()
-    return any(marker in lowered for marker in ["flag{", "ctf{", "solve(", "pwn.remote", "pwntools", "sage"])
+    strong_solver_markers = [
+        "from pwn import",
+        "pwn.remote",
+        "pwntools",
+        "sage.all",
+        "remote(",
+        "process(",
+        "cryptohack",
+    ]
+    if any(marker in lowered for marker in strong_solver_markers):
+        return True
+    return any(marker in lowered for marker in ["flag{", "ctf{", "solve("])
+
+
+def is_service_source_path(relative_parts: list[str], stem: str, name: str) -> bool:
+    joined = "/".join(relative_parts)
+    if any(hint == part for hint in SERVICE_HINTS for part in relative_parts):
+        return True
+    if any(f"/{hint}/" in f"/{joined}/" for hint in SERVICE_HINTS):
+        return True
+    if stem in SERVICE_HINTS or name in {"index.js", "app.js", "server.js", "main.js", "route.js"}:
+        return True
+    return False
 
 
 def path_has_solver_hint(path: str) -> bool:

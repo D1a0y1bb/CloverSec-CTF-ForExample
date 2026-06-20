@@ -12,7 +12,7 @@ import cloversec_ctf_docker as docker_runner
 import cloversec_ctf_mcp_runtime as mcp_runtime
 
 
-SERVER_VERSION = "1.0.5"
+SERVER_VERSION = "1.0.6"
 SERVER_NAME = "cloversec-ctf-docker"
 
 TOOLS = [

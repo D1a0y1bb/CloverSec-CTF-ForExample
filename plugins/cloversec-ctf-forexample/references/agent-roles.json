@@ -1,6 +1,6 @@
 {
   "schema_version": "cloversec.ctf.agent_roles.v1",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "roles": [
     {
       "role": "Research",

@@ -1,6 +1,6 @@
 {
   "name": "cloversec-ctf-forexample",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "The process of CloverSec regarding the collection and conversion of CTF questions, the construction and deployment of the platform using Docker, report writing, archiving, review, and submission to Codex.",
   "author": {
     "name": "CloverSec-D1a0y1bb",

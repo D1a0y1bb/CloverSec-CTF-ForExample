@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.5"
+WORKFLOW_VERSION = "1.0.6"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -721,7 +721,7 @@ def route_resource(
         container_path if container_payload else None,
         gate=gate,
     )
-    handoff_payload = handoff.write_resource_handoff(classification, base)
+    handoff_payload = handoff.write_resource_handoff(classification, base, container_inference=container_payload)
     route_path = base / "resource_route.json"
     write_json(route_path, route)
     write_text(base / "resource_route_report.md", render_resource_route_report(route))

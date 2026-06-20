@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import tarfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,7 +16,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -359,7 +360,7 @@ def copy_challenge_archives(
                     relative = source.relative_to(source_subdir)
                     if subdir == "题目手册" and source.suffix.lower() == ".md":
                         relative = Path("题目解题手册.md")
-                    is_image_tar = subdir == "题目镜像" and source.suffix.lower() in IMAGE_SUFFIXES
+                    is_image_tar = subdir == "题目镜像" and looks_tar_archive_name(source)
                     effective_copy_limit = source.stat().st_size if is_image_tar and copy_image_tars else copy_limit
                     target = target_subdir / relative
                     record = copy_or_reference(
@@ -427,7 +428,7 @@ def find_legacy_image_sources(workdir: Path) -> list[Path]:
         if not image_dir.is_dir():
             continue
         for path in image_dir.rglob("*"):
-            if path.is_file() and looks_image_tar(path):
+            if path.is_file() and looks_tar_archive_name(path):
                 append_unique_path(output, path)
     return output
 
@@ -437,16 +438,16 @@ def image_paths_from_payload(payload: Any) -> list[Path]:
     if isinstance(payload, dict):
         for key in ["tar_path", "path"]:
             text = str(payload.get(key) or "").strip()
-            if text and looks_image_tar(Path(text)):
+            if text and looks_tar_archive_name(Path(text)):
                 output.append(Path(text))
         artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), dict) else {}
         image_tar = artifacts.get("image_tar") if isinstance(artifacts.get("image_tar"), dict) else {}
         text = str(image_tar.get("path") or "").strip()
-        if text and looks_image_tar(Path(text)):
+        if text and looks_tar_archive_name(Path(text)):
             output.append(Path(text))
         plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
         text = str(plan.get("tar_path") or "").strip()
-        if text and looks_image_tar(Path(text)):
+        if text and looks_tar_archive_name(Path(text)):
             output.append(Path(text))
         for value in payload.values():
             output.extend(image_paths_from_payload(value))
@@ -532,7 +533,7 @@ def copy_legacy_single_challenges(
             subdirs.extend(image_result)
             image_sources = [Path(str(path)) for path in item.get("image_sources", []) if str(path).strip()]
             for image_source in image_sources:
-                if not image_source.is_file() or not looks_image_tar(image_source):
+                if not image_source.is_file() or not looks_tar_archive_name(image_source):
                     continue
                 effective_copy_limit = image_source.stat().st_size if copy_image_tars else copy_limit
                 record = copy_or_reference(
@@ -589,7 +590,7 @@ def copy_legacy_dir(
             continue
         relative = source.relative_to(source_dir)
         target = target_dir / relative
-        is_image_tar = subdir == "题目镜像" and source.suffix.lower() in IMAGE_SUFFIXES
+        is_image_tar = subdir == "题目镜像" and looks_tar_archive_name(source)
         effective_copy_limit = source.stat().st_size if is_image_tar and copy_image_tars else copy_limit
         record = copy_or_reference(
             source,
@@ -618,7 +619,7 @@ def challenge_file_allowed(path: Path, root: Path, subdir: str) -> bool:
         return False
     if path.suffix in {".pyc", ".pyo"} or path.name == ".DS_Store":
         return False
-    if subdir == "题目源码" and looks_image_tar(path):
+    if subdir == "题目源码" and is_docker_image_tar_file(path):
         return False
     if subdir == "题目手册" and manual_name_blocked(path.name):
         return False
@@ -627,9 +628,23 @@ def challenge_file_allowed(path: Path, root: Path, subdir: str) -> bool:
     return True
 
 
-def looks_image_tar(path: Path) -> bool:
+def looks_tar_archive_name(path: Path) -> bool:
     name = path.name.lower()
     return path.suffix.lower() in IMAGE_SUFFIXES or name.endswith(".tar.gz")
+
+
+def is_docker_image_tar_file(path: Path) -> bool:
+    """Return true only for real docker save/load archives, not ordinary handout tarballs."""
+    if not looks_tar_archive_name(path):
+        return False
+    if not path.is_file():
+        return False
+    try:
+        with tarfile.open(path, "r:*") as archive:
+            names = [member.name.strip("./").lower() for member in archive.getmembers()[:2000]]
+    except (tarfile.TarError, OSError):
+        return False
+    return "manifest.json" in names and ("repositories" in names or any(name.endswith("/layer.tar") for name in names))
 
 
 def is_machine_data_file(path: Path) -> bool:
@@ -1131,7 +1146,7 @@ def zip_member_allowed(relative: Path) -> bool:
     parts = relative.parts
     if not parts:
         return False
-    if any(part in {"__MACOSX", ".DS_Store", "_cache"} for part in parts):
+    if any(part in {"__MACOSX", ".DS_Store", "_cache", "_delivery_cache"} for part in parts):
         return False
     if any(part.startswith("._") for part in parts):
         return False

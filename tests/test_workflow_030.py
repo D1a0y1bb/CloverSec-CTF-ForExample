@@ -552,17 +552,28 @@ class Workflow030Tests(unittest.TestCase):
     def test_route_resource_creates_dockerizer_handoff_for_dockerfile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "Dockerfile").write_text("FROM python:3.12-slim\nEXPOSE 80\nCMD [\"python3\", \"-m\", \"http.server\", \"80\"]\n", encoding="utf-8")
-            (root / "app.py").write_text("print('demo')\n", encoding="utf-8")
+            challenge = root / "challenge_source"
+            challenge.mkdir()
+            (challenge / "Dockerfile").write_text("FROM oven/bun:latest\nEXPOSE 41236\nCMD [\"bun\", \"index.js\"]\n", encoding="utf-8")
+            (challenge / "index.js").write_text("console.log(Bun.env.FLAG); Bun.listen({ port: 41236, socket: { data() {} } });\n", encoding="utf-8")
 
             payload = workflow.route_resource(root=root, output_dir=root / "classification")
+            docker_rows = [
+                json.loads(line)
+                for line in (root / "classification" / "Dockerizer交接表.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
 
             self.assertEqual(payload["recommended_next"]["skill"], "cloversec-ctf-build-dockerizer")
             self.assertEqual(payload["dockerizer_handoff"]["required_skill"], "cloversec-ctf-build-dockerizer")
             self.assertEqual(payload["dockerizer_handoff"]["auto_action"], "auto-render")
             self.assertIn("auto-render", payload["dockerizer_handoff"]["recommended_command"])
-            self.assertIn("Dockerfile", payload["dockerizer_handoff"]["existing_dockerfiles"])
-            self.assertIn("80", ",".join(payload["dockerizer_handoff"]["port_hints"]))
+            self.assertIn("challenge_source/Dockerfile", payload["dockerizer_handoff"]["existing_dockerfiles"])
+            self.assertIn("41236", ",".join(payload["dockerizer_handoff"]["port_hints"]))
+            self.assertEqual(docker_rows[0]["入口目录"], (root / "challenge_source").as_posix())
+            self.assertEqual(docker_rows[0]["服务协议"], "tcp")
+            self.assertIn("41236:41236", docker_rows[0]["端口线索"])
+            self.assertIn("需要适配平台 /flag", docker_rows[0]["运行时Flag"])
             self.assertTrue((root / "classification" / "resource_route.json").exists())
 
 

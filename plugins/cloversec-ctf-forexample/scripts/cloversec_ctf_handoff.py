@@ -35,11 +35,14 @@ DOCKERIZER_FIELDS = [
     "记录ID",
     "题目",
     "源码目录",
+    "入口目录",
     "Dockerfile",
     "compose",
+    "服务协议",
     "端口线索",
     "启动命令",
     "Flag路径",
+    "运行时Flag",
     "缺失项",
     "自动动作",
     "下一步动作",
@@ -75,7 +78,7 @@ def write_collection_handoff(cases: list[dict[str, Any]], output_dir: str | Path
     }
 
 
-def write_resource_handoff(classification: dict[str, Any], output_dir: str | Path) -> dict[str, Any]:
+def write_resource_handoff(classification: dict[str, Any], output_dir: str | Path, *, container_inference: dict[str, Any] | None = None) -> dict[str, Any]:
     rows = resource_rows_from_classification(classification)
     resource_payload = write_handoff_group(
         output_dir,
@@ -84,7 +87,7 @@ def write_resource_handoff(classification: dict[str, Any], output_dir: str | Pat
         rows=rows,
         description="资源整理阶段的人和 Agent 共用工作表。",
     )
-    docker_rows = dockerizer_rows_from_classification(classification)
+    docker_rows = dockerizer_rows_from_classification(classification, container_inference=container_inference or {})
     docker_payload = write_handoff_group(
         output_dir,
         table_name="Dockerizer交接表",
@@ -136,13 +139,16 @@ def resource_rows_from_classification(classification: dict[str, Any]) -> list[di
     return rows
 
 
-def dockerizer_rows_from_classification(classification: dict[str, Any]) -> list[dict[str, str]]:
+def dockerizer_rows_from_classification(classification: dict[str, Any], *, container_inference: dict[str, Any] | None = None) -> list[dict[str, str]]:
     platform_delivery = classification.get("platform_delivery") if isinstance(classification.get("platform_delivery"), dict) else {}
     root_classification = classification.get("root_classification") if isinstance(classification.get("root_classification"), dict) else {}
     if not platform_delivery.get("must_use_dockerizer") and not root_classification.get("platform_delivery", {}).get("must_use_dockerizer"):
         return []
     resources = classification.get("resources") if isinstance(classification.get("resources"), list) else []
     root = str(classification.get("root") or "")
+    container_inference = container_inference or {}
+    runtime = container_inference.get("runtime") if isinstance(container_inference.get("runtime"), dict) else {}
+    flag_policy = container_inference.get("flag_runtime_policy") if isinstance(container_inference.get("flag_runtime_policy"), dict) else {}
     dockerfiles = [str(item.get("relative_path") or "") for item in resources if item.get("resource_type") == "dockerfile"]
     compose_files = [str(item.get("relative_path") or "") for item in resources if item.get("resource_type") == "compose_file"]
     flag_files = [str(item.get("relative_path") or "") for item in resources if item.get("resource_type") == "flag_file"]
@@ -152,25 +158,51 @@ def dockerizer_rows_from_classification(classification: dict[str, Any]) -> list[
         if item.get("resource_type") in {"source_file", "source_manifest", "source_archive", "docker_image_tar"}
     ]
     port_hints, command_hints = dockerizer_runtime_hints(root, dockerfiles, compose_files)
+    runtime_ports = [str(item) for item in runtime.get("ports", [])] if isinstance(runtime.get("ports"), list) else []
+    runtime_commands = [
+        str(item)
+        for item in [runtime.get("container_command"), runtime.get("dockerfile_cmd"), runtime.get("dockerfile_entrypoint")]
+        if str(item or "").strip()
+    ]
+    source_subdir = str(runtime.get("source_subdir") or root)
+    service_protocol = str(runtime.get("service_protocol") or runtime.get("probe_protocol") or "")
+    flag_runtime = flag_runtime_summary(flag_policy)
     missing = []
     if not dockerfiles and not compose_files and not source_like:
         missing.append("缺少源码、Dockerfile、compose 或镜像 tar")
-    if not flag_files:
+    if not flag_files and not flag_policy.get("file_flag_refs"):
         missing.append("未发现 Flag 文件路径")
+    if flag_policy.get("requires_platform_flag_file"):
+        missing.append("题目运行时只发现环境变量 Flag，Dockerizer 需要适配平台 /flag")
     row = {
         "记录ID": "dockerizer-0001",
         "题目": Path(root).name if root else "",
         "源码目录": root,
+        "入口目录": source_subdir,
         "Dockerfile": ";".join(dockerfiles),
         "compose": ";".join(compose_files),
-        "端口线索": port_hints,
-        "启动命令": command_hints,
-        "Flag路径": ";".join(flag_files),
+        "服务协议": service_protocol,
+        "端口线索": ";".join(runtime_ports) or port_hints,
+        "启动命令": ";".join(runtime_commands) or command_hints,
+        "Flag路径": ";".join(flag_files or [str(item) for item in flag_policy.get("file_flag_refs", []) if str(item).strip()]),
+        "运行时Flag": flag_runtime,
         "缺失项": ";".join(missing),
         "自动动作": "auto_action=auto-render",
-        "下一步动作": f"交给 cloversec-ctf-build-dockerizer 自动生成 CloverSec 平台交付件并做静态校验；在 Dockerizer skill 的 scripts 目录执行 workflow.py auto-render --project-dir {root}",
+        "下一步动作": f"交给 cloversec-ctf-build-dockerizer 自动生成 CloverSec 平台交付件并做静态校验；在 Dockerizer skill 的 scripts 目录执行 workflow.py auto-render --project-dir {source_subdir or root}",
     }
     return [row]
+
+
+def flag_runtime_summary(policy: dict[str, Any]) -> str:
+    if not policy:
+        return ""
+    if policy.get("requires_platform_flag_file"):
+        return "需要适配平台 /flag"
+    if policy.get("file_flag_refs"):
+        return "已发现 /flag 读取"
+    if policy.get("env_flag_refs"):
+        return "只发现环境变量 Flag"
+    return ""
 
 
 def dockerizer_runtime_hints(root: str, dockerfiles: list[str], compose_files: list[str]) -> tuple[str, str]:
