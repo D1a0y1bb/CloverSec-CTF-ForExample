@@ -103,17 +103,26 @@ def rule_value(*keys: str, default: Any = None) -> Any:
     return current
 
 
-CATEGORY_RULES = rule_value("categories", "categories", default={})
-DIFFICULTY_ALIASES = rule_value("difficulty", "difficulty", "aliases", default={})
-DIFFICULTY_KEYWORDS = rule_value("difficulty", "difficulty", "keywords", default={})
-STARS_MAP = rule_value("difficulty", "difficulty", "stars", default={})
-PLACEHOLDERS = rule_value("defaults", "placeholders", default={})
-DEFAULT_NOTES = rule_value("defaults", "notes", default={})
-MANUAL_DEFAULTS = rule_value("defaults", "manual", default={})
-EXCLUDED_DIRS = set(rule_value("sources", "collection", "excluded_dirs", default=[]))
-TEXT_EXTENSIONS = set(rule_value("sources", "collection", "allowed_extensions", default=[]))
-PREFERRED_FILES = {str(name).lower() for name in rule_value("sources", "collection", "preferred_files", default=[])}
-MAX_DEPTH = int(rule_value("sources", "collection", "max_depth", default=4) or 4)
+def dict_rule(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def list_rule(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+CATEGORY_RULES = dict_rule(rule_value("categories", "categories", default={}))
+DIFFICULTY_ALIASES = dict_rule(rule_value("difficulty", "difficulty", "aliases", default={}))
+DIFFICULTY_KEYWORDS = dict_rule(rule_value("difficulty", "difficulty", "keywords", default={}))
+STARS_MAP = dict_rule(rule_value("difficulty", "difficulty", "stars", default={}))
+PLACEHOLDERS = dict_rule(rule_value("defaults", "placeholders", default={}))
+DEFAULT_NOTES = dict_rule(rule_value("defaults", "notes", default={}))
+MANUAL_DEFAULTS = dict_rule(rule_value("defaults", "manual", default={}))
+EXCLUDED_DIRS = set(list_rule(rule_value("sources", "collection", "excluded_dirs", default=[])))
+TEXT_EXTENSIONS = set(list_rule(rule_value("sources", "collection", "allowed_extensions", default=[])))
+PREFERRED_FILES = {str(name).lower() for name in list_rule(rule_value("sources", "collection", "preferred_files", default=[]))}
+MAX_DEPTH_VALUE = rule_value("sources", "collection", "max_depth", default=4)
+MAX_DEPTH = int(MAX_DEPTH_VALUE) if str(MAX_DEPTH_VALUE).isdigit() else 4
 
 ALLOWED_DIFFICULTIES = ["简单", "中等", "困难"]
 ALLOWED_CATEGORIES = list(CATEGORY_RULES.keys()) if CATEGORY_RULES else ["Web", "Pwn", "Crypto", "Misc", "Reverse", "Mobile", "IoT"]
