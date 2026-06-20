@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/1.0.14 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/1.1.0 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -2300,6 +2300,7 @@ def enrich_results(results: list[dict[str, Any]], *, query: str, years: list[int
         layer, score, reasons, issues = classify_result(current, profile)
         current["layer"] = layer
         current["score"] = score
+        current["reproducible_material_score"] = reproducible_material_score(current, layer=layer, profile=profile)
         current["lead_only"] = layer == "platform_lead"
         current["ranking_reasons"] = reasons
         current["quality_issues"] = issues
@@ -2489,6 +2490,37 @@ def has_challenge_specific_evidence(haystack: str, profile: dict[str, Any]) -> b
     return bool(terms) and all(term in haystack for term in terms)
 
 
+def reproducible_material_score(result: dict[str, Any], *, layer: str, profile: dict[str, Any] | None = None) -> int:
+    url = str(result.get("url") or "")
+    kind = str(result.get("kind") or "")
+    provider = str(result.get("provider") or "")
+    title = str(result.get("title") or "")
+    summary = str(result.get("summary") or result.get("snippet") or "")
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    path = str(metadata.get("path") or urlparse(url).path or "").lower()
+    text = f"{title} {url} {summary} {kind} {provider} {path}".lower()
+    if challenge_metadata_for_result(result) or is_challenge_metadata_path(url, metadata):
+        return 100
+    if kind == "release_asset" or looks_attachment_candidate_url(url):
+        return 95
+    if kind == "raw_file" and looks_source_or_challenge_path(url, result):
+        return 90
+    if is_github_tree_url(url) and looks_source_or_challenge_path(url, result):
+        bonus = 88
+        if any(token in text for token in ["dockerfile", "docker-compose", "compose.yml", "challenge.yaml", "challenge.yml", "meta.yaml"]):
+            bonus += 7
+        return bonus
+    if provider in {"github", "github-tree", "direct-url"} and result_has_asset_signal(result, layer):
+        return 82
+    if result_has_official_challenge_page_signal(result, profile):
+        return 40
+    if layer in {"writeup_candidate", "ctftime_task_lead"} or result_has_writeup_signal(result, layer):
+        return 8
+    if layer == "platform_lead":
+        return 0
+    return 15 if layer == "attachment_candidate" else 0
+
+
 def is_github_challenge_directory(result: dict[str, Any], profile: dict[str, Any]) -> bool:
     provider = str(result.get("provider") or "")
     url = str(result.get("url") or "")
@@ -2654,12 +2686,32 @@ def rank_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         results,
         key=lambda item: (
+            result_action_rank(item),
+            -int(item.get("reproducible_material_score") or 0),
             LAYER_PRIORITY.get(str(item.get("layer") or "noise"), 9),
             -int(item.get("score") or 0),
             str(item.get("provider") or ""),
             str(item.get("title") or "").lower(),
         ),
     )
+
+
+def result_action_rank(item: dict[str, Any]) -> int:
+    layer = str(item.get("layer") or "noise")
+    material_score = int(item.get("reproducible_material_score") or 0)
+    if layer == "noise":
+        return 9
+    if material_score >= 80:
+        return 0
+    if layer == "confirmed_challenge":
+        return 1
+    if layer == "attachment_candidate":
+        return 2
+    if layer == "writeup_candidate":
+        return 3
+    if layer in {"platform_lead", "ctftime_task_lead"}:
+        return 4
+    return 8
 
 
 def dedupe_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:

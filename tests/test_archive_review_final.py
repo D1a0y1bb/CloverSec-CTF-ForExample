@@ -855,6 +855,111 @@ class ArchiveReviewFinalTests(unittest.TestCase):
 
             self.assertEqual(issues, [])
 
+    def test_delivery_scan_rejects_container_attachment_that_duplicates_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            delivery_dir = Path(tmp) / "outputs"
+            challenge = delivery_dir / "Pwn-JSFS"
+            (challenge / "题目源码" / "app").mkdir(parents=True)
+            (challenge / "题目镜像").mkdir()
+            (challenge / "题目手册").mkdir()
+            (challenge / "题目附件" / "app").mkdir(parents=True)
+            (challenge / "题目源码" / "app" / "server.js").write_text("console.log('same')\n", encoding="utf-8")
+            (challenge / "题目附件" / "app" / "server.js").write_text("console.log('same')\n", encoding="utf-8")
+            (challenge / "题目附件" / "solve.py").write_text("print('debug exploit')\n", encoding="utf-8")
+            (challenge / "题目镜像" / "jsfs.tar").write_bytes(b"tar")
+            (challenge / "题目手册" / "题目解题手册.md").write_text("# 手册\n", encoding="utf-8")
+            for filename in ["交付说明.md", "语雀粘贴表.md", "待处理问题.md", "质量检查报告.md"]:
+                (delivery_dir / filename).write_text("# ok\n", encoding="utf-8")
+            (delivery_dir / "最终归档表.xlsx").write_bytes(b"xlsx")
+
+            issues = delivery.scan_delivery_package(delivery_dir)
+
+            issue_paths = {item["path"] for item in issues}
+            self.assertIn("Pwn-JSFS/题目附件/app/server.js", issue_paths)
+            self.assertFalse(any(item["path"].endswith("solve.py") for item in issues))
+
+    def test_delivery_package_skips_legacy_attachment_files_that_duplicate_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "crator"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            (workdir / "ctf_case.json").write_text(json.dumps({"metadata": {"分类": "Web", "名称": "crator"}}, ensure_ascii=False), encoding="utf-8")
+            source = workdir / "dockerizer_work"
+            attachment = workdir / "题目附件"
+            (source / "app").mkdir(parents=True)
+            (attachment / "app").mkdir(parents=True)
+            (source / "Dockerfile").write_text("FROM busybox\n", encoding="utf-8")
+            (source / "start.sh").write_text("#!/bin/bash\n/app/run\n", encoding="utf-8")
+            (source / "changeflag.sh").write_text("#!/bin/bash\ncat \"$1\" > /flag\n", encoding="utf-8")
+            (source / "flag").write_text("flag{demo}\n", encoding="utf-8")
+            (source / "app" / "server.js").write_text("console.log('same')\n", encoding="utf-8")
+            (attachment / "app" / "server.js").write_text("console.log('same')\n", encoding="utf-8")
+            (attachment / "solve.py").write_text("print('debug exploit')\n", encoding="utf-8")
+            (workdir / "题目镜像").mkdir()
+            (workdir / "题目镜像" / "crator.tar").write_bytes(b"tar")
+            (workdir / "手册").mkdir()
+            (workdir / "手册" / "题目解题手册.md").write_text("# 题目解题手册\n", encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            challenge_dir = delivery_dir / "Web-crator"
+            self.assertFalse((challenge_dir / "题目附件" / "app" / "server.js").exists())
+            self.assertTrue((challenge_dir / "题目附件" / "solve.py").exists())
+            self.assertEqual(manifest["summary"]["package_issues"], 0)
+
+    def test_delivery_zip_uses_sibling_path_and_utf8_chinese_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            delivery_dir = Path(tmp) / "最终交付"
+            challenge = delivery_dir / "Web-中文题"
+            (challenge / "题目附件").mkdir(parents=True)
+            (challenge / "题目手册").mkdir()
+            (challenge / "题目附件" / "附件.txt").write_text("demo\n", encoding="utf-8")
+            (challenge / "题目手册" / "题目解题手册.md").write_text("# 手册\n", encoding="utf-8")
+            for filename in ["交付说明.md", "语雀粘贴表.md", "待处理问题.md", "质量检查报告.md"]:
+                (delivery_dir / filename).write_text("# ok\n", encoding="utf-8")
+            (delivery_dir / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (delivery_dir / ".DS_Store").write_bytes(b"mac")
+
+            zip_manifest = delivery.create_delivery_zip(delivery_dir)
+
+            zip_path = Path(zip_manifest["zip_path"])
+            self.assertEqual(zip_path.parent, delivery_dir.parent)
+            self.assertFalse(zip_path.as_posix().startswith(delivery_dir.as_posix() + "/"))
+            with zipfile.ZipFile(zip_path) as archive_file:
+                names = archive_file.namelist()
+            self.assertIn("最终归档表.xlsx", names)
+            self.assertIn("Web-中文题/题目附件/附件.txt", names)
+            self.assertFalse(any(".DS_Store" in name or name.startswith("__MACOSX/") for name in names))
+
+    def test_delivery_cli_scan_reports_json_and_exit_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            delivery_dir = Path(tmp) / "交付"
+            delivery_dir.mkdir()
+            (delivery_dir / "README.md").write_text("# wrong\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS / "cloversec_ctf_delivery.py"),
+                    "scan",
+                    str(delivery_dir),
+                    "--json",
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            payload = json.loads(result.stdout)
+            self.assertGreater(payload["issue_count"], 0)
+
     def test_delivery_package_only_keeps_formal_manual_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1235,7 +1340,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.14")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.1.0")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

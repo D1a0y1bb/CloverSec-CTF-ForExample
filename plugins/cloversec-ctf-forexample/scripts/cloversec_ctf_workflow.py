@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.14"
+WORKFLOW_VERSION = "1.1.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -2141,12 +2141,19 @@ def execute_stage_final_report(base: Path) -> dict[str, Any]:
         outputs_dir=internal_output,
         output_dir=delivery_output_dir_for_workdir(base),
     )
+    zip_payload = {}
+    if not delivery.get("package_issues"):
+        zip_payload = delivery_packager.create_delivery_zip(
+            delivery.get("paths", {}).get("delivery_dir", ""),
+            delivery_zip_path_for_workdir(base, Path(str(delivery.get("paths", {}).get("delivery_dir") or ""))),
+        )
     return {
         "status": "ok" if not delivery.get("package_issues") else "incomplete",
         "evidence_path": delivery.get("paths", {}).get("readme", ""),
         "summary": {
             "final_report": result.get("summary", {}),
             "delivery": delivery.get("summary", {}),
+            "delivery_zip": zip_payload,
             "package_issues": delivery.get("package_issues", []),
         },
     }
@@ -2285,6 +2292,12 @@ def delivery_output_dir_for_workdir(base: Path) -> Path:
         if candidate.exists() and candidate.is_dir() and not paths_overlap(candidate.resolve(), base_resolved):
             return candidate
     return base / "最终交付"
+
+
+def delivery_zip_path_for_workdir(base: Path, delivery_dir: Path) -> Path:
+    if delivery_dir.as_posix() and delivery_dir.exists():
+        return delivery_dir.with_suffix(".zip")
+    return delivery_output_dir_for_workdir(base).with_suffix(".zip")
 
 
 def paths_overlap(a: Path, b: Path) -> bool:

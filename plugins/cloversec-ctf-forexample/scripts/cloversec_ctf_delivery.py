@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import tarfile
@@ -16,7 +17,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.14"
+VERSION = "1.1.0"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -152,7 +153,7 @@ def create_delivery_package(
     files.extend(process_records["files"])
     missing.extend(process_records["missing"])
 
-    cleanup_ds_store(delivery)
+    cleanup_system_files(delivery)
     summary = build_summary(work, outputs, delivery, files, missing, selected)
     manifest = {
         "schema_version": SCHEMA_VERSION,
@@ -179,12 +180,12 @@ def create_delivery_package(
     }
     readme_path = delivery / "交付说明.md"
     manifest["paths"]["readme"] = readme_path.as_posix()
-    cleanup_ds_store(delivery)
+    cleanup_system_files(delivery)
     package_issues = scan_delivery_package(delivery)
     manifest["package_issues"] = package_issues
     manifest["summary"]["package_issues"] = len(package_issues)
     readme_path.write_text(render_delivery_readme(manifest), encoding="utf-8")
-    cleanup_ds_store(delivery)
+    cleanup_system_files(delivery)
     return manifest
 
 
@@ -764,7 +765,27 @@ def copy_legacy_single_challenges(
         if item.get("type") == "attachment":
             subdirs.extend(copy_legacy_dir(Path(str(item.get("attachment_dir") or "")), target_case_dir / "题目附件", "题目附件", files, missing, copy_limit, challenge=name))
         else:
-            subdirs.extend(copy_legacy_dir(Path(str(item.get("source_dir") or "")), target_case_dir / "题目源码", "题目源码", files, missing, copy_limit, challenge=name, source_filter=legacy_source_allowed))
+            source_dir = Path(str(item.get("source_dir") or ""))
+            attachment_dir = Path(str(item.get("attachment_dir") or ""))
+            subdirs.extend(copy_legacy_dir(source_dir, target_case_dir / "题目源码", "题目源码", files, missing, copy_limit, challenge=name, source_filter=legacy_source_allowed))
+            if is_existing_dir(attachment_dir):
+                source_hashes = source_file_hashes(source_dir) if is_existing_dir(source_dir) else {}
+
+                def attachment_filter(path: Path, root: Path) -> bool:
+                    return legacy_attachment_allowed(path, root, source_dir, source_hashes)
+
+                subdirs.extend(
+                    copy_legacy_dir(
+                        attachment_dir,
+                        target_case_dir / "题目附件",
+                        "题目附件",
+                        files,
+                        missing,
+                        copy_limit,
+                        challenge=name,
+                        source_filter=attachment_filter,
+                    )
+                )
             image_result = copy_legacy_dir(
                 Path(str(item.get("image_dir") or "")),
                 target_case_dir / "题目镜像",
@@ -855,6 +876,47 @@ def copy_legacy_dir(
 
 def legacy_source_allowed(path: Path, root: Path) -> bool:
     return challenge_file_allowed(path, root, "题目源码")
+
+
+def source_file_hashes(source_dir: Path) -> dict[str, set[str]]:
+    hashes: dict[str, set[str]] = {}
+    if not source_dir.is_dir():
+        return hashes
+    for path in source_dir.rglob("*"):
+        if not path.is_file() or not challenge_file_allowed(path, source_dir, "题目源码"):
+            continue
+        try:
+            digest = file_sha256(path)
+        except OSError:
+            continue
+        hashes.setdefault(digest, set()).add(path.relative_to(source_dir).as_posix())
+    return hashes
+
+
+def legacy_attachment_allowed(path: Path, root: Path, source_dir: Path, source_hashes: dict[str, set[str]]) -> bool:
+    if not challenge_file_allowed(path, root, "题目附件"):
+        return False
+    if not source_dir.is_dir():
+        return True
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        relative = Path(path.name)
+    if (source_dir / relative).is_file():
+        return False
+    try:
+        digest = file_sha256(path)
+    except OSError:
+        return True
+    return digest not in source_hashes
+
+
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def challenge_file_allowed(path: Path, root: Path, subdir: str) -> bool:
@@ -1198,7 +1260,7 @@ def build_summary(
 
 
 def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
-    cleanup_ds_store(delivery)
+    cleanup_system_files(delivery)
     issues: list[dict[str, str]] = []
     allowed_root_files = set(ALL_ROOT_FILES)
     allowed_subdirs = set(CHALLENGE_SUBDIRS)
@@ -1236,6 +1298,8 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
         for name in unknown_subdirs:
             issues.append({"path": f"{child.name}/{name}", "issue": "题目目录下只能有 题目源码/题目镜像/题目手册/题目附件"})
         is_container_delivery = bool({"题目源码", "题目镜像"} & present_subdirs)
+        if is_container_delivery and "题目附件" in present_subdirs and "题目源码" in present_subdirs:
+            issues.extend(duplicate_attachment_source_issues(child))
         if "题目附件" in present_subdirs and not is_container_delivery:
             if "题目手册" not in present_subdirs:
                 issues.append({"path": child.name, "issue": "附件题缺少题目手册目录"})
@@ -1281,6 +1345,40 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
         if path.is_file() and len(parts) >= 3 and parts[1] == "题目手册" and any(keyword in path.name for keyword in blocked_manual_tokens):
             issues.append({"path": relative, "issue": "禁止过程报告、草稿或机器目录进入交付目录"})
     return issues
+
+
+def duplicate_attachment_source_issues(challenge_dir: Path) -> list[dict[str, str]]:
+    source_dir = challenge_dir / "题目源码"
+    attachment_dir = challenge_dir / "题目附件"
+    if not source_dir.is_dir() or not attachment_dir.is_dir():
+        return []
+    issues: list[dict[str, str]] = []
+    source_hashes = source_file_hashes(source_dir)
+    for path in sorted(item for item in attachment_dir.rglob("*") if item.is_file()):
+        try:
+            relative = path.relative_to(attachment_dir)
+        except ValueError:
+            relative = Path(path.name)
+        challenge_rel = path.relative_to(challenge_dir).as_posix()
+        if (source_dir / relative).is_file():
+            issues.append({"path": f"{challenge_dir.name}/{challenge_rel}", "issue": "题目附件不能重复题目源码中的同名文件"})
+            continue
+        try:
+            digest = file_sha256(path)
+        except OSError:
+            continue
+        if digest in source_hashes:
+            source_rel = sorted(source_hashes[digest])[0]
+            if should_report_duplicate_attachment(relative.as_posix(), source_rel):
+                issues.append({"path": f"{challenge_dir.name}/{challenge_rel}", "issue": f"题目附件不能重复题目源码内容：{source_rel}"})
+    return issues
+
+
+def should_report_duplicate_attachment(attachment_rel: str, source_rel: str) -> bool:
+    attachment_name = Path(attachment_rel).name.lower()
+    if attachment_name.endswith((".zip", ".tar", ".tar.gz", ".tgz", ".7z", ".rar", ".pcap", ".pcapng")):
+        return False
+    return attachment_rel == source_rel or Path(attachment_rel).suffix.lower() == Path(source_rel).suffix.lower()
 
 
 def render_delivery_readme(manifest: dict[str, Any]) -> str:
@@ -1374,7 +1472,25 @@ def render_quality_report_default(selected: dict[str, Any]) -> str:
     )
 
 
+def cleanup_system_files(root: Path) -> None:
+    if not root.exists():
+        return
+    for path in sorted(root.rglob("__MACOSX"), reverse=True):
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+    for path in root.rglob("*"):
+        if path.name == ".DS_Store" or path.name.startswith("._"):
+            try:
+                if path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def cleanup_ds_store(root: Path) -> None:
+    cleanup_system_files(root)
     for path in root.rglob(".DS_Store"):
         try:
             path.unlink()
@@ -1400,15 +1516,26 @@ def create_delivery_zip(delivery_dir: str | Path, zip_path: str | Path | None = 
     if issues:
         details = "; ".join(f"{item.get('path', '')}: {item.get('issue', '')}" for item in issues[:5])
         raise ValueError(f"delivery package is not clean enough to zip: {details}")
-    output = Path(zip_path) if zip_path else delivery.with_suffix(".zip")
+    output = Path(zip_path) if zip_path and str(zip_path).strip() else delivery.with_suffix(".zip")
     output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        output_resolved = output.resolve() if output.exists() else output.absolute()
+        delivery_resolved = delivery.resolve()
+        if output_resolved == delivery_resolved or delivery_resolved in output_resolved.parents:
+            raise ValueError("zip_path 不能放在交付目录内部；请放到交付目录同级或其他目录")
+    except FileNotFoundError:
+        pass
     files: list[str] = []
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(item for item in delivery.rglob("*") if item.is_file()):
             relative = path.relative_to(delivery)
             if not zip_member_allowed(relative):
                 continue
-            archive.write(path, relative.as_posix())
+            info = zipfile.ZipInfo(relative.as_posix())
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = (path.stat().st_mode & 0o777) << 16
+            info.flag_bits |= 0x800
+            archive.writestr(info, path.read_bytes())
             files.append(relative.as_posix())
     return {"zip_path": output.as_posix(), "file_count": len(files), "files": files}
 
@@ -1425,6 +1552,33 @@ def zip_member_allowed(relative: Path) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_args = list(argv if argv is not None else [])
+    if argv is None:
+        import sys
+
+        raw_args = sys.argv[1:]
+    if raw_args and raw_args[0] == "scan":
+        parser = argparse.ArgumentParser(description="Scan a human-facing CloverSec CTF delivery folder")
+        parser.add_argument("delivery_path", nargs="?")
+        parser.add_argument("--delivery-dir", dest="delivery_dir", default="")
+        parser.add_argument("--json", action="store_true")
+        args = parser.parse_args(raw_args[1:])
+        target = args.delivery_dir or args.delivery_path
+        if not target:
+            parser.error("需要提供交付目录路径")
+        issues = scan_delivery_package(Path(target))
+        payload = {"schema_version": f"{SCHEMA_VERSION}.scan.v1", "delivery_dir": str(target), "issue_count": len(issues), "issues": issues}
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            if issues:
+                print(f"发现 {len(issues)} 个交付目录问题：")
+                for item in issues:
+                    print(f"- {item.get('path', '')}: {item.get('issue', '')}")
+            else:
+                print("交付目录检查通过")
+        return 1 if issues else 0
+
     parser = argparse.ArgumentParser(description="Create a human-readable CloverSec CTF delivery folder")
     parser.add_argument("--workdir", required=True)
     parser.add_argument("--outputs-dir", default="")

@@ -241,6 +241,32 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(cases[0]["research"]["gate"], "cannot_continue")
         self.assertEqual(cases[0]["research"]["blocking_rule"], "writeup_without_attachment")
 
+    def test_rank_results_prefers_reproducible_release_asset_over_writeup_only(self):
+        writeup = search.normalize_result(
+            provider="duckduckgo",
+            kind="web",
+            title="IrisCTF 2025 password manager writeup",
+            url="https://example.com/irisctf-2025-password-manager-writeup",
+            summary="IrisCTF 2025 web password manager WP",
+            source_type="public_web",
+            confidence="medium",
+        )
+        asset = search.normalize_result(
+            provider="github-release",
+            kind="release_asset",
+            title="IrisCTF 2025 password manager challenge.zip",
+            url="https://github.com/irisctf/irisctf-2025-challenges/releases/download/password-manager/challenge.zip",
+            summary="official challenge attachment and source",
+            source_type="github",
+            confidence="high",
+        )
+
+        ranked = search.rank_results(search.enrich_results([writeup, asset], query="IrisCTF 2025 web password manager", years=[2025]))
+
+        self.assertEqual(ranked[0]["url"], asset["url"])
+        self.assertGreaterEqual(ranked[0]["reproducible_material_score"], 80)
+        self.assertLess(ranked[1]["reproducible_material_score"], ranked[0]["reproducible_material_score"])
+
     def test_official_challenge_page_is_not_downgraded_to_writeup_only(self):
         result = {
             "provider": "agent-web-search",
@@ -719,12 +745,12 @@ class SearchEngineTests(unittest.TestCase):
     def test_github_release_assets_extracts_download_urls(self):
         payload = [
             {
-                "tag_name": "v1.0.14",
+                "tag_name": "v1.1.0",
                 "name": "Release v1",
                 "assets": [
                     {
                         "name": "challenge.zip",
-                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.0.14/challenge.zip",
+                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.1.0/challenge.zip",
                         "size": 123,
                         "content_type": "application/zip",
                         "download_count": 7,
@@ -738,7 +764,7 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(results[0]["provider"], "github-release")
         self.assertEqual(results[0]["metadata"]["asset_name"], "challenge.zip")
-        self.assertEqual(results[0]["metadata"]["tag"], "v1.0.14")
+        self.assertEqual(results[0]["metadata"]["tag"], "v1.1.0")
 
     def test_github_release_assets_cli_writes_structured_provider_error(self):
         with tempfile.TemporaryDirectory() as tmp:

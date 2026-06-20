@@ -112,6 +112,45 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertEqual(module.search_flag_literal("default flag{demo}; real flag is irisctf{webhook_hooked}"), "irisctf{webhook_hooked}")
         self.assertEqual(module.search_flag_literal("placeholder flag{test}"), "")
 
+    def test_writeup_extract_context_prefers_structured_fields_and_rejects_dynamic_placeholder_flag(self):
+        script_path = ROOT / "plugins" / "cloversec-ctf-forexample" / "skills" / "cloversec-ctf-writeup-scaffold" / "scripts" / "extract_context.py"
+        spec = importlib.util.spec_from_file_location("cloversec_extract_context_structured", script_path)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "README.md").write_text(
+                "# srcdoc-memos\n\n旧说明：docker run -p 80:80 demo\n\nFlag: flag{dynamic_flag_placeholder}\n",
+                encoding="utf-8",
+            )
+            (project / "meta.yaml").write_text(
+                "name: Crator\nstack: Web\nexpose_ports:\n  - 8080\nscore: 100\nsource: 搬运\n",
+                encoding="utf-8",
+            )
+            (project / "hub_fields.json").write_text(
+                json.dumps(
+                    {
+                        "题目标题": "Crator",
+                        "题目分类": "Web",
+                        "开放端口": "8080",
+                        "题目Flag": "flag{dynamic_flag_placeholder}",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            context = module.infer_context(project, [])
+
+        fields = context["fields"]
+        self.assertEqual(fields["title"]["value"], "Crator")
+        self.assertEqual(fields["ports"]["value"], ["8080"])
+        self.assertNotIn("flag_value", fields)
+        self.assertIn("题目Flag", context["proposal"]["missing_fields"])
+
     def test_screenshot_plan_uses_stable_names(self):
         plan = hub.default_screenshot_plan()
 

@@ -12,11 +12,11 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "1.0.14"
+VERSION = "1.1.0"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}
-MANIFEST_FILES = {"challenge.yaml", "challenge.yml", "challenge.json", "ctfd.yaml", "ctfd.yml"}
+MANIFEST_FILES = {"challenge.yaml", "challenge.yml", "challenge.json", "ctfd.yaml", "ctfd.yml", "meta.yaml", "meta.yml"}
 README_NAMES = {"readme", "readme.md", "readme.txt", "wp.md", "writeup.md", "solution.md"}
 
 
@@ -47,11 +47,11 @@ def infer_container_project(
     flag_runtime_policy = infer_flag_runtime_policy(root, max_text_bytes=max_text_bytes)
 
     ports = merge_ports(
-        dockerfile_payload.get("exposed_ports", []),
-        compose_payload.get("ports", []),
-        readme_hints.get("ports", []),
-        code_hints.get("ports", []),
         challenge_manifest.get("ports", []),
+        compose_payload.get("ports", []),
+        dockerfile_payload.get("exposed_ports", []),
+        code_hints.get("ports", []),
+        readme_hints.get("ports", []),
     )
     project_type, confidence, evidence = infer_project_type(
         has_dockerfile=bool(dockerfiles),
@@ -419,11 +419,15 @@ def infer_service_protocol(
 def infer_source_subdir(root: Path, dockerfiles: list[Path], compose_files: list[Path], compose_payload: dict[str, Any] | None = None) -> str:
     compose_payload = compose_payload or {}
     root_absolute = root.absolute()
-    compose_build_dirs = []
+    compose_build_dirs: list[Path] = []
     for service in compose_payload.get("services", []) if isinstance(compose_payload.get("services"), list) else []:
         if not isinstance(service, dict):
             continue
-        build = str(service.get("build") or "").strip()
+        build_value = service.get("build")
+        if isinstance(build_value, dict):
+            build = str(build_value.get("context") or "").strip()
+        else:
+            build = str(build_value or "").strip()
         if not build or build.startswith((".", "/")) is False and ":" in build:
             continue
         candidate = (root / build).absolute() if not Path(build).is_absolute() else Path(build).absolute()
@@ -433,27 +437,81 @@ def infer_source_subdir(root: Path, dockerfiles: list[Path], compose_files: list
             continue
         if candidate.is_dir():
             compose_build_dirs.append(candidate)
-    anchors = dockerfiles or compose_build_dirs or compose_files
-    if not anchors:
-        return root.as_posix()
-    parents = [path.absolute().parent if path.is_file() else path.absolute() for path in anchors]
-    try:
-        common_parts = list(parents[0].relative_to(root_absolute).parts)
-    except ValueError:
-        return root.as_posix()
-    for parent in parents[1:]:
+    candidates: set[Path] = {root_absolute}
+    for path in dockerfiles + compose_files:
+        candidates.add(path.absolute().parent)
+    for path in compose_build_dirs:
+        candidates.add(path.absolute())
+    for path in root.rglob("*"):
+        if path.is_file() and path.name.lower() in MANIFEST_FILES:
+            candidates.add(path.absolute().parent)
+    for path in root.rglob("*"):
+        if not path.is_dir():
+            continue
         try:
-            rel_parts = parent.relative_to(root_absolute).parts
+            rel = path.absolute().relative_to(root_absolute)
         except ValueError:
-            return root.as_posix()
-        shared = []
-        for left, right in zip(common_parts, rel_parts):
-            if left != right:
-                break
-            shared.append(left)
-        common_parts = shared
-    common = root_absolute.joinpath(*common_parts) if common_parts else root_absolute
-    return common.as_posix()
+            continue
+        if len(rel.parts) > 3:
+            continue
+        if source_candidate_has_signal(path):
+            candidates.add(path.absolute())
+    scored: list[tuple[int, int, str, Path]] = []
+    for candidate in candidates:
+        try:
+            rel = candidate.relative_to(root_absolute)
+        except ValueError:
+            continue
+        score = score_source_candidate(candidate, root_absolute)
+        scored.append((score, -len(rel.parts), rel.as_posix(), candidate))
+    if not scored:
+        return root.as_posix()
+    best = max(scored, key=lambda item: (item[0], item[1], item[2]))
+    return best[3].as_posix()
+
+
+LOW_VALUE_SOURCE_DIR_NAMES = {"hello", "demo", "sample", "example", "test", "tests", "admin-bot", "bot", "wp", "writeup", "docs"}
+HIGH_VALUE_SOURCE_DIR_NAMES = {"challenge", "challenges", "src", "source", "app", "service", "server", "problem", "题目源码"}
+SOURCE_CODE_EXTENSIONS = {".py", ".js", ".ts", ".php", ".go", ".rs", ".c", ".cc", ".cpp", ".java", ".rb", ".sh"}
+SOURCE_SIGNAL_FILES = {"app.py", "server.py", "main.py", "index.js", "server.js", "app.js", "package.json", "requirements.txt", "go.mod", "cargo.toml"}
+
+
+def source_candidate_has_signal(path: Path) -> bool:
+    names = {item.name.lower() for item in path.iterdir()} if path.exists() else set()
+    if names & {name.lower() for name in MANIFEST_FILES | COMPOSE_FILES | {"dockerfile"} | SOURCE_SIGNAL_FILES}:
+        return True
+    return any(item.is_file() and item.suffix.lower() in SOURCE_CODE_EXTENSIONS for item in path.iterdir()) if path.exists() else False
+
+
+def score_source_candidate(candidate: Path, root_absolute: Path) -> int:
+    score = 0
+    name = candidate.name.lower()
+    if candidate == root_absolute:
+        score += 10
+    if name in HIGH_VALUE_SOURCE_DIR_NAMES or any(token in name for token in ["challenge", "source", "src", "service"]):
+        score += 18
+    if name in LOW_VALUE_SOURCE_DIR_NAMES:
+        score -= 45
+    try:
+        items = list(candidate.iterdir())
+    except OSError:
+        return score
+    names = {item.name.lower() for item in items}
+    if "dockerfile" in names:
+        score += 80
+    if names & COMPOSE_FILES:
+        score += 75
+    if names & MANIFEST_FILES:
+        score += 95
+    if names & HELPER_FILES:
+        score += 35
+    if names & SOURCE_SIGNAL_FILES:
+        score += 25
+    source_count = sum(1 for item in items if item.is_file() and item.suffix.lower() in SOURCE_CODE_EXTENSIONS)
+    score += min(source_count, 8) * 5
+    if names <= {"readme.md", "readme.txt", "wp.md", "writeup.md", "solution.md"}:
+        score -= 35
+    return score
 
 
 def infer_flag_runtime_policy(root: Path, *, max_text_bytes: int) -> dict[str, Any]:

@@ -27,6 +27,13 @@ GENERATED_OUTPUTS = {
     "xlsx_fields.json",
 }
 GENERATED_SUFFIXES = (".expected.md",)
+STRUCTURED_JSON_FILES = {
+    "hub_fields.json",
+    "xlsx_fields.json",
+    "docker_artifacts.json",
+    "environment.json",
+    "container_inference.json",
+}
 
 
 def load_yaml_file(path: Path) -> dict[str, Any]:
@@ -34,6 +41,16 @@ def load_yaml_file(path: Path) -> dict[str, Any]:
         return {}
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def load_json_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
@@ -124,8 +141,10 @@ def merge_field(
 ) -> None:
     if value in (None, "", [], {}):
         return
+    if key == "flag_value" and is_placeholder_flag(str(value)):
+        return
     current = fields.get(key)
-    status_rank = {"placeholder": 0, "inferred": 1, "explicit": 2}
+    status_rank = {"placeholder": 0, "inferred": 1, "explicit": 2, "structured": 3}
     confidence_rank = {"low": 0, "medium": 1, "high": 2}
     candidate_rank = (status_rank.get(status, 0), confidence_rank.get(confidence, 0))
     current_rank = (-1, -1)
@@ -151,7 +170,7 @@ def is_text_candidate(path: Path) -> bool:
 
 def file_priority(path: Path) -> int:
     name = path.name.lower()
-    if name in {"challenge.yaml", "challenge.yml"}:
+    if name in {"meta.yaml", "meta.yml", "challenge.yaml", "challenge.yml", "hub_fields.json", "xlsx_fields.json"}:
         return 120
     if name in {"dockerfile", "start.sh", "changeflag.sh", "check.sh"}:
         return 110
@@ -309,6 +328,9 @@ def search_flag_literal(text: str) -> str:
 
 def is_placeholder_flag(value: str) -> bool:
     text = str(value or "").strip()
+    lower_text = text.lower()
+    if any(token in lower_text for token in ["dynamic_flag_placeholder", "placeholder_flag", "test_flag", "dummy_flag"]):
+        return True
     match = re.match(r"^[A-Za-z0-9_]*(?:flag|ctf)\{(.+)\}$", text, re.IGNORECASE)
     if not match:
         return False
@@ -326,6 +348,11 @@ def is_placeholder_flag(value: str) -> bool:
         "yourflag",
         "thisisatestflag",
         "pleasechangeme",
+        "dynamicflagplaceholder",
+        "dynamicplaceholder",
+        "placeholderdynamicflag",
+        "testflag",
+        "testingflag",
     }
     if normalized in placeholder_values:
         return True
@@ -464,63 +491,128 @@ def infer_from_yaml(data: dict[str, Any], rel_path: str) -> dict[str, dict[str, 
 
     name = target.get("name") if isinstance(target, dict) else None
     if isinstance(name, str) and name.strip():
-        out["title"] = make_field(name.strip(), "explicit", "high", [evidence(rel_path, "challenge.name")])
+        out["title"] = make_field(name.strip(), "structured", "high", [evidence(rel_path, "challenge.name")])
 
     description = target.get("description") if isinstance(target, dict) else None
     if isinstance(description, str) and description.strip():
-        out["description"] = make_field(description.strip(), "explicit", "high", [evidence(rel_path, "challenge.description")])
+        out["description"] = make_field(description.strip(), "structured", "high", [evidence(rel_path, "challenge.description")])
 
     stack = target.get("stack") if isinstance(target, dict) else None
     if isinstance(stack, str):
         category = normalize_category(stack)
         if category:
-            out["category"] = make_field(category, "explicit", "high", [evidence(rel_path, "challenge.stack")])
+            out["category"] = make_field(category, "structured", "high", [evidence(rel_path, "challenge.stack")])
 
     expose_ports = target.get("expose_ports") if isinstance(target, dict) else None
     if isinstance(expose_ports, list) and expose_ports:
-        out["ports"] = make_field([str(item) for item in expose_ports], "explicit", "high", [evidence(rel_path, "challenge.expose_ports")])
+        out["ports"] = make_field([str(item) for item in expose_ports], "structured", "high", [evidence(rel_path, "challenge.expose_ports")])
 
     difficulty = target.get("difficulty") if isinstance(target, dict) else None
     if isinstance(difficulty, str):
         normalized = normalize_difficulty(difficulty)
         if normalized:
-            out["difficulty"] = make_field(normalized, "explicit", "high", [evidence(rel_path, "challenge.difficulty")])
+            out["difficulty"] = make_field(normalized, "structured", "high", [evidence(rel_path, "challenge.difficulty")])
         level = normalize_difficulty_level(difficulty)
         if level:
-            out["difficulty_level"] = make_field(level, "explicit", "high", [evidence(rel_path, "challenge.difficulty")])
+            out["difficulty_level"] = make_field(level, "structured", "high", [evidence(rel_path, "challenge.difficulty")])
 
     for level_key in ["difficulty_level", "difficulty_level_10", "level"]:
         level_value = target.get(level_key) if isinstance(target, dict) else None
         level = normalize_difficulty_level(level_value)
         if level:
-            out["difficulty_level"] = make_field(level, "explicit", "high", [evidence(rel_path, f"challenge.{level_key}")])
+            out["difficulty_level"] = make_field(level, "structured", "high", [evidence(rel_path, f"challenge.{level_key}")])
             break
 
     flag_path = nested_get(target, "flag", "path")
     if isinstance(flag_path, str) and flag_path:
-        out["flag_path"] = make_field(flag_path, "explicit", "high", [evidence(rel_path, "challenge.flag.path")])
+        out["flag_path"] = make_field(flag_path, "structured", "high", [evidence(rel_path, "challenge.flag.path")])
 
     permission = nested_get(target, "flag", "permission")
     if permission is not None:
-        out["flag_permission"] = make_field(str(permission), "explicit", "high", [evidence(rel_path, "challenge.flag.permission")])
+        out["flag_permission"] = make_field(str(permission), "structured", "high", [evidence(rel_path, "challenge.flag.permission")])
 
     entrypoint = nested_get(target, "platform", "entrypoint")
     if isinstance(entrypoint, str) and entrypoint:
-        out["entrypoint"] = make_field(entrypoint, "explicit", "high", [evidence(rel_path, "challenge.platform.entrypoint")])
+        out["entrypoint"] = make_field(entrypoint, "structured", "high", [evidence(rel_path, "challenge.platform.entrypoint")])
 
     start_cmd = nested_get(target, "start", "cmd")
     if isinstance(start_cmd, str) and start_cmd:
-        out["start_cmd"] = make_field(start_cmd, "explicit", "high", [evidence(rel_path, "challenge.start.cmd")])
+        out["start_cmd"] = make_field(start_cmd, "structured", "high", [evidence(rel_path, "challenge.start.cmd")])
 
     source = target.get("source") if isinstance(target, dict) else None
     if isinstance(source, str):
         normalized_source = "原创" if "原创" in source else "搬运" if "搬运" in source else ""
         if normalized_source:
-            out["source"] = make_field(normalized_source, "explicit", "high", [evidence(rel_path, "challenge.source")])
+            out["source"] = make_field(normalized_source, "structured", "high", [evidence(rel_path, "challenge.source")])
 
     score = target.get("score") if isinstance(target, dict) else None
     if score is not None and str(score).strip():
-        out["score"] = make_field(str(score).strip(), "explicit", "high", [evidence(rel_path, "challenge.score")])
+        out["score"] = make_field(str(score).strip(), "structured", "high", [evidence(rel_path, "challenge.score")])
+
+    return out
+
+
+def infer_from_structured_json(data: dict[str, Any], rel_path: str) -> dict[str, dict[str, Any]]:
+    source = data.get("hub_fields") if isinstance(data.get("hub_fields"), dict) else data
+    if isinstance(source.get("xlsx_fields"), dict):
+        source = source["xlsx_fields"]
+    out: dict[str, dict[str, Any]] = {}
+
+    def first_value(*keys: str) -> Any:
+        for key in keys:
+            value = source.get(key) if isinstance(source, dict) else None
+            if value not in (None, "", [], {}):
+                return value
+        return None
+
+    def add_text(field: str, reason: str, *keys: str) -> None:
+        value = first_value(*keys)
+        if isinstance(value, list):
+            cleaned = [str(item).strip() for item in value if str(item).strip()]
+            if cleaned:
+                out[field] = make_field(cleaned, "structured", "high", [evidence(rel_path, reason)])
+            return
+        if value is not None and str(value).strip():
+            out[field] = make_field(str(value).strip(), "structured", "high", [evidence(rel_path, reason)])
+
+    add_text("title", "structured title", "题目标题", "名称", "title", "challenge_name", "name")
+    add_text("description", "structured description", "题目内容", "description", "desc")
+    add_text("score", "structured score", "题目分值", "分值", "score")
+    add_text("source", "structured source", "题目来源", "来源", "source")
+    add_text("question_type", "structured question type", "题目类型", "question_type")
+    add_text("resource_level", "structured resource level", "资源等级", "resource_level")
+    add_text("note", "structured note", "备注", "note")
+    add_text("keywords", "structured keywords", "添加关键字", "关键字", "keywords")
+    add_text("tools", "structured tools", "解题工具", "tools")
+
+    category = first_value("题目分类", "分类", "category")
+    normalized_category = normalize_category(str(category or ""))
+    if normalized_category:
+        out["category"] = make_field(normalized_category, "structured", "high", [evidence(rel_path, "structured category")])
+
+    difficulty = first_value("题目难度", "难度", "difficulty")
+    normalized_difficulty = normalize_difficulty(str(difficulty or ""))
+    if normalized_difficulty:
+        out["difficulty"] = make_field(normalized_difficulty, "structured", "high", [evidence(rel_path, "structured difficulty")])
+    level = normalize_difficulty_level(first_value("题目等级", "难度编号", "星级", "difficulty_level"))
+    if level:
+        out["difficulty_level"] = make_field(level, "structured", "high", [evidence(rel_path, "structured difficulty level")])
+
+    flag_type = str(first_value("Flag类型", "flag_type") or "").strip()
+    if flag_type in ALLOWED_FLAG_TYPES:
+        out["flag_type"] = make_field(flag_type, "structured", "high", [evidence(rel_path, "structured flag type")])
+    flag_value = str(first_value("题目Flag", "Flag", "flag", "flag_value") or "").strip()
+    if flag_value and not is_placeholder_flag(flag_value):
+        out["flag_value"] = make_field(flag_value, "structured", "high", [evidence(rel_path, "structured flag")])
+
+    ports = first_value("开放端口", "ports", "port", "expose_ports")
+    port_values: list[str] = []
+    if isinstance(ports, list):
+        port_values = [str(item).strip() for item in ports if str(item).strip()]
+    elif ports is not None and str(ports).strip():
+        port_values = extract_ports_from_text(str(ports)) or [str(ports).strip()]
+    if port_values:
+        out["ports"] = make_field(port_values, "structured", "high", [evidence(rel_path, "structured ports")])
 
     return out
 
@@ -653,7 +745,8 @@ def infer_context(project_dir: Path, extra_paths: list[Path]) -> dict[str, Any]:
         if path.suffix.lower() == ".md"
         and all(segment not in relative_to(path, project_dir) for segment in ("agents/", "references/", "assets/"))
     ]
-    yaml_files = [path for path in files if path.name.lower() in {"challenge.yaml", "challenge.yml"}]
+    yaml_files = [path for path in files if path.name.lower() in {"meta.yaml", "meta.yml", "challenge.yaml", "challenge.yml"}]
+    structured_json_files = [path for path in files if path.name.lower() in STRUCTURED_JSON_FILES]
     dockerfile = next((path for path in files if path.name.lower() == "dockerfile"), None)
     start_script = next((path for path in files if path.name.lower() == "start.sh"), None)
     changeflag_script = next((path for path in files if path.name.lower() == "changeflag.sh"), None)
@@ -661,13 +754,18 @@ def infer_context(project_dir: Path, extra_paths: list[Path]) -> dict[str, Any]:
 
     fields: dict[str, dict[str, Any]] = {}
 
-    for key, value in parse_markdown_sources(markdown_files, project_dir).items():
-        merge_field(fields, key, value["value"], value["status"], value["confidence"], value["evidence"])
-
-    if yaml_files:
-        yaml_fields = infer_from_yaml(load_yaml_file(yaml_files[0]), relative_to(yaml_files[0], project_dir))
+    for yaml_file in yaml_files:
+        yaml_fields = infer_from_yaml(load_yaml_file(yaml_file), relative_to(yaml_file, project_dir))
         for key, value in yaml_fields.items():
             merge_field(fields, key, value["value"], value["status"], value["confidence"], value["evidence"])
+
+    for json_file in structured_json_files:
+        json_fields = infer_from_structured_json(load_json_file(json_file), relative_to(json_file, project_dir))
+        for key, value in json_fields.items():
+            merge_field(fields, key, value["value"], value["status"], value["confidence"], value["evidence"])
+
+    for key, value in parse_markdown_sources(markdown_files, project_dir).items():
+        merge_field(fields, key, value["value"], value["status"], value["confidence"], value["evidence"])
 
     generic_fields = infer_source_from_generic_files(text_files, project_dir)
     for key, value in generic_fields.items():

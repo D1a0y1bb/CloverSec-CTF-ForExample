@@ -141,6 +141,7 @@ class EndToEndTests(unittest.TestCase):
             self.assertTrue((root / "最终交付" / "交付说明.md").exists())
             self.assertTrue((root / "最终交付" / "待处理问题.md").exists())
             self.assertTrue((root / "最终交付" / "质量检查报告.md").exists())
+            self.assertTrue((root / "最终交付.zip").exists())
             self.assertTrue((root / "_cache" / "final_report" / "最终报告.md").exists())
             self.assertFalse((root / "最终交付" / "最终报告.md").exists())
             state = json.loads((root / "workflow_state.json").read_text(encoding="utf-8"))
@@ -188,6 +189,7 @@ class EndToEndTests(unittest.TestCase):
             self.assertTrue((outputs / "交付说明.md").exists())
             self.assertTrue((outputs / "最终归档表.xlsx").exists())
             self.assertTrue((outputs / "语雀粘贴表.md").exists())
+            self.assertTrue((base / "outputs.zip").exists())
             self.assertFalse((root / "最终交付" / "交付说明.md").exists())
             self.assertFalse((outputs / "最终报告.md").exists())
 
@@ -296,6 +298,53 @@ class EndToEndTests(unittest.TestCase):
             self.assertTrue((rendered / "Dockerfile").exists())
             self.assertTrue((rendered / "start.sh").exists())
             self.assertTrue(summary.exists())
+
+    def test_dockerizer_validate_rejects_bad_start_shell_syntax(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dockerfile = root / "Dockerfile"
+            start = root / "start.sh"
+            changeflag = root / "changeflag.sh"
+            challenge = root / "challenge.yaml"
+            summary = root / "validate.json"
+            dockerfile.write_text(
+                "\n".join(
+                    [
+                        "FROM bash:5.2",
+                        "COPY start.sh /start.sh",
+                        "COPY changeflag.sh /changeflag.sh",
+                        "COPY flag /flag",
+                        "RUN chmod 555 /start.sh && chmod 555 /changeflag.sh && chmod 444 /flag",
+                        "CMD [\"/start.sh\"]",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            start.write_text("#!/bin/bash\nif [ -n \"$FLAG\"; then\n  echo broken\n", encoding="utf-8")
+            changeflag.write_text("#!/bin/bash\nprintf '%s' \"$1\" > /flag\n", encoding="utf-8")
+            (root / "flag").write_text("flag{placeholder}\n", encoding="utf-8")
+            challenge.write_text("name: broken\nstack: web\nexpose_ports:\n  - 80\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(DOCKERIZER / "scripts" / "validate.sh"),
+                    "--static-only",
+                    "--json-summary",
+                    str(summary),
+                    str(dockerfile),
+                    str(start),
+                    str(challenge),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("start.sh 存在 shell 语法错误", result.stdout)
 
     def test_dockerizer_auto_render_blocks_compose_project(self):
         try:

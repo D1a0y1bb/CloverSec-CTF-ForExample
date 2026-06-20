@@ -12,6 +12,20 @@ SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
 
 
 class McpServerProtocolTests(unittest.TestCase):
+    def test_plugin_manifest_declares_all_mcp_servers_with_existing_scripts(self):
+        plugin_dir = ROOT / "plugins" / "cloversec-ctf-forexample"
+        plugin_json = json.loads((plugin_dir / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        mcp_config = json.loads((plugin_dir / ".mcp.json").read_text(encoding="utf-8"))
+        servers = mcp_config["mcpServers"]
+
+        self.assertEqual(plugin_json["mcpServers"], "./.mcp.json")
+        self.assertEqual(len(servers), 8)
+        self.assertIn("cloversec-ctf-workflow", servers)
+        for name, server in servers.items():
+            self.assertEqual(server["command"], "python3")
+            script = plugin_dir / server["args"][0]
+            self.assertTrue(script.exists(), f"{name} script missing: {script}")
+
     def test_all_mcp_servers_support_list_and_representative_call(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

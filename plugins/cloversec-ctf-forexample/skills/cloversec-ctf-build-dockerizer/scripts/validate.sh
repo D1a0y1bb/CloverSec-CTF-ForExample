@@ -827,6 +827,24 @@ run_hard_rules() {
   else
     log_result ERROR "start.sh 首行必须是 #!/bin/bash。修复：将 shebang 改为 #!/bin/bash。"
   fi
+  local start_syntax_error
+  if start_syntax_error="$(bash -n "$START_SH" 2>&1)"; then
+    log_result INFO "start.sh 通过 bash -n 语法检查"
+  else
+    start_syntax_error="${start_syntax_error//$'\n'/; }"
+    log_result ERROR "start.sh 存在 shell 语法错误：${start_syntax_error}"
+  fi
+  local changeflag_path
+  changeflag_path="$(dirname "$START_SH")/changeflag.sh"
+  if [[ -f "$changeflag_path" ]]; then
+    local changeflag_syntax_error
+    if changeflag_syntax_error="$(bash -n "$changeflag_path" 2>&1)"; then
+      log_result INFO "changeflag.sh 通过 bash -n 语法检查"
+    else
+      changeflag_syntax_error="${changeflag_syntax_error//$'\n'/; }"
+      log_result ERROR "changeflag.sh 存在 shell 语法错误：${changeflag_syntax_error}"
+    fi
+  fi
 
   local unrendered_vars
   unrendered_vars="$(find_unrendered_template_vars)"

@@ -91,6 +91,34 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertIn("8080:8080", payload["summary"]["ports"])
         self.assertNotIn("5000:5000", payload["summary"]["ports"])
 
+    def test_manifest_port_has_priority_over_stale_readme_port(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Dockerfile").write_text("FROM python:3.12-alpine\nEXPOSE 8080\n", encoding="utf-8")
+            (root / "challenge.yaml").write_text("name: demo\nexpose_ports:\n  - 8080\n", encoding="utf-8")
+            (root / "README.md").write_text("old note: docker run -p 80:80 demo\n", encoding="utf-8")
+
+            payload = container.infer_container_project(root)
+
+        self.assertEqual(payload["summary"]["ports"][0], "8080:8080")
+        self.assertIn("80:80", payload["summary"]["ports"])
+
+    def test_source_subdir_ignores_low_value_hello_wrapper_when_real_source_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            hello = root / "Hello"
+            hello.mkdir()
+            (hello / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+            src = root / "challenge_source"
+            src.mkdir()
+            (src / "Dockerfile").write_text("FROM python:3.12-alpine\nEXPOSE 8080\n", encoding="utf-8")
+            (src / "challenge.yaml").write_text("name: real-service\nexpose_ports:\n  - 8080\n", encoding="utf-8")
+            (src / "app.py").write_text("print('real service')\n", encoding="utf-8")
+
+            payload = container.infer_container_project(root)
+
+        self.assertEqual(payload["runtime"]["source_subdir"], src.absolute().as_posix())
+
     def test_infers_tcp_service_from_nc_readme_and_flag_runtime_warning(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -432,7 +460,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.14")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.1.0")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 
