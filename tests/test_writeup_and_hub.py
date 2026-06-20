@@ -143,7 +143,12 @@ class WriteupAndHubTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            context = module.infer_context(project, [])
+            original_yaml = module.yaml
+            module.yaml = None
+            try:
+                context = module.infer_context(project, [])
+            finally:
+                module.yaml = original_yaml
 
         fields = context["fields"]
         self.assertEqual(fields["title"]["value"], "Crator")

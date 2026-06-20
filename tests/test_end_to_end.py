@@ -300,6 +300,11 @@ class EndToEndTests(unittest.TestCase):
             self.assertTrue(summary.exists())
 
     def test_dockerizer_validate_rejects_bad_start_shell_syntax(self):
+        try:
+            import yaml  # noqa: F401
+        except ModuleNotFoundError:
+            self.skipTest("PyYAML not installed; Dockerizer validation stops before shell syntax checks")
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             dockerfile = root / "Dockerfile"

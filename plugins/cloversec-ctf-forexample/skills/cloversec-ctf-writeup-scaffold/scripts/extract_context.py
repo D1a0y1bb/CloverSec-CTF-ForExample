@@ -37,13 +37,43 @@ STRUCTURED_JSON_FILES = {
 
 
 def load_yaml_file(path: Path) -> dict[str, Any]:
-    if yaml is None or not path.exists():
+    if not path.exists():
         return {}
+    if yaml is None:
+        return parse_simple_yaml_mapping(path.read_text(encoding="utf-8", errors="ignore"))
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def parse_simple_yaml_mapping(text: str) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    current_key = ""
+    for raw_line in text.splitlines():
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        stripped = line.strip()
+        if stripped.startswith("-") and current_key:
+            value = stripped[1:].strip().strip("'\"")
+            data.setdefault(current_key, [])
+            if isinstance(data[current_key], list) and value:
+                data[current_key].append(value)
+            continue
+        match = re.match(r"^([A-Za-z0-9_.-]+)\s*:\s*(.*)$", stripped)
+        if not match:
+            continue
+        key, value = match.group(1), match.group(2).strip()
+        current_key = key
+        if value == "":
+            data[key] = []
+        elif value.startswith("[") and value.endswith("]"):
+            data[key] = [item.strip().strip("'\"") for item in value[1:-1].split(",") if item.strip()]
+        else:
+            data[key] = value.strip("'\"")
+    return data
 
 
 def load_json_file(path: Path) -> dict[str, Any]:
