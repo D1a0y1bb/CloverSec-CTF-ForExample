@@ -16,7 +16,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.12"
+VERSION = "1.0.13"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -832,6 +832,8 @@ def copy_legacy_dir(
     target_dir.mkdir(parents=True, exist_ok=True)
     copied = False
     for source in sorted(path for path in source_dir.rglob("*") if path.is_file()):
+        if not challenge_file_allowed(source, source_dir, subdir):
+            continue
         if source_filter and not source_filter(source, source_dir):
             continue
         relative = source.relative_to(source_dir)
@@ -1267,6 +1269,13 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
             continue
         if len(parts) >= 2 and parts[1] not in CHALLENGE_SUBDIRS:
             continue
+        if len(parts) >= 3 and parts[1] == "题目手册":
+            if path.is_dir():
+                issues.append({"path": relative, "issue": "题目手册目录只允许题目解题手册.md"})
+                continue
+            if path.is_file() and not (len(parts) == 3 and parts[2] == "题目解题手册.md"):
+                issues.append({"path": relative, "issue": "题目手册目录只允许题目解题手册.md"})
+                continue
         if path.is_file() and len(parts) >= 3 and parts[1] in {"题目手册", "题目镜像"} and path.suffix.lower() in {".json", ".jsonl"}:
             issues.append({"path": relative, "issue": "手册和镜像目录禁止机器 JSON"})
         if path.is_file() and len(parts) >= 3 and parts[1] == "题目手册" and any(keyword in path.name for keyword in blocked_manual_tokens):
@@ -1387,6 +1396,10 @@ def create_delivery_zip(delivery_dir: str | Path, zip_path: str | Path | None = 
     if not delivery.is_dir():
         raise NotADirectoryError(delivery)
     cleanup_ds_store(delivery)
+    issues = scan_delivery_package(delivery)
+    if issues:
+        details = "; ".join(f"{item.get('path', '')}: {item.get('issue', '')}" for item in issues[:5])
+        raise ValueError(f"delivery package is not clean enough to zip: {details}")
     output = Path(zip_path) if zip_path else delivery.with_suffix(".zip")
     output.parent.mkdir(parents=True, exist_ok=True)
     files: list[str] = []

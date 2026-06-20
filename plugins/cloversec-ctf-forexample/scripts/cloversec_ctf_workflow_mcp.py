@@ -12,13 +12,14 @@ from typing import Any
 import cloversec_ctf_audit as audit
 import cloversec_ctf_container as container
 import cloversec_ctf_data as data
+import cloversec_ctf_delivery as delivery
 import cloversec_ctf_handoff as handoff
 import cloversec_ctf_mcp_runtime as mcp_runtime
 import cloversec_ctf_resource as resource
 import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "1.0.12"
+SERVER_VERSION = "1.0.13"
 SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {
@@ -196,6 +197,22 @@ TOOLS = [
                 "sources": {"type": "array", "items": {"type": "string"}},
                 "allow_download_accept": {"type": "boolean"},
                 "execute_docker": {"type": "boolean"},
+            },
+            "required": ["workdir"],
+        },
+    },
+    {
+        "name": "cloversec_ctf_delivery_package",
+        "description": "Normalize an existing work/output folder into the human-facing Chinese final delivery package. Use this before reporting any final path; archive, reports, manifests, _cache, README.md, Hub提交材料, and 验证证据 are not final delivery.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workdir": {"type": "string"},
+                "outputs_dir": {"type": "string"},
+                "output_dir": {"type": "string"},
+                "zip_output": {"type": "string"},
+                "copy_image_tars": {"type": "boolean"},
+                "include_process_evidence": {"type": "boolean"},
             },
             "required": ["workdir"],
         },
@@ -499,6 +516,24 @@ def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             allow_download_accept=bool(arguments.get("allow_download_accept", False)),
             execute_docker=bool(arguments.get("execute_docker", False)),
         )
+    if name == "cloversec_ctf_delivery_package":
+        manifest = delivery.create_delivery_package(
+            workdir=str(arguments.get("workdir") or ""),
+            outputs_dir=str(arguments.get("outputs_dir") or "") or None,
+            output_dir=str(arguments.get("output_dir") or "") or None,
+            copy_image_tars=bool(arguments.get("copy_image_tars", True)),
+            include_process_evidence=bool(arguments.get("include_process_evidence", False)),
+        )
+        if arguments.get("zip_output"):
+            manifest["zip"] = delivery.create_delivery_zip(manifest["paths"]["delivery_dir"], str(arguments.get("zip_output") or ""))
+        return {
+            "schema_version": manifest.get("schema_version", ""),
+            "delivery_dir": manifest.get("paths", {}).get("delivery_dir", ""),
+            "readme": manifest.get("paths", {}).get("readme", ""),
+            "summary": manifest.get("summary", {}),
+            "package_issues": manifest.get("package_issues", []),
+            "zip": manifest.get("zip", {}),
+        }
     if name == "cloversec_ctf_search_strategy":
         return {
             "queries": workflow.build_search_queries(

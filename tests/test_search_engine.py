@@ -61,6 +61,16 @@ class SearchEngineTests(unittest.TestCase):
         self.assertGreater(second["summary"]["total_results"], 0)
         self.assertTrue(any(item.get("cache_hit") for item in second["results"]))
 
+    def test_fetch_url_cli_accepts_url_option_alias(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "fetch.json"
+            with mock.patch.object(search, "fetch_url", return_value={"url": "https://example.com/demo", "status": 200}) as fetch:
+                rc = search.main(["fetch-url", "--url", "https://example.com/demo", "--output", output.as_posix()])
+
+            self.assertEqual(rc, 0)
+            fetch.assert_called_once()
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["url"], "https://example.com/demo")
+
     def test_shared_http_get_retries_transient_url_errors(self):
         response = FakeHttpResponse(status=200, body=b"ok")
         with mock.patch.object(http, "urlopen", side_effect=[URLError("timed out"), response]):
@@ -709,12 +719,12 @@ class SearchEngineTests(unittest.TestCase):
     def test_github_release_assets_extracts_download_urls(self):
         payload = [
             {
-                "tag_name": "v1.0.12",
+                "tag_name": "v1.0.13",
                 "name": "Release v1",
                 "assets": [
                     {
                         "name": "challenge.zip",
-                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.0.12/challenge.zip",
+                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.0.13/challenge.zip",
                         "size": 123,
                         "content_type": "application/zip",
                         "download_count": 7,
@@ -728,7 +738,7 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(results[0]["provider"], "github-release")
         self.assertEqual(results[0]["metadata"]["asset_name"], "challenge.zip")
-        self.assertEqual(results[0]["metadata"]["tag"], "v1.0.12")
+        self.assertEqual(results[0]["metadata"]["tag"], "v1.0.13")
 
     def test_github_release_assets_cli_writes_structured_provider_error(self):
         with tempfile.TemporaryDirectory() as tmp:

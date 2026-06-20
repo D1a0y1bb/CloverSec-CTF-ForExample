@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/1.0.12 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/1.0.13 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -2803,7 +2803,8 @@ def main(argv: list[str] | None = None) -> int:
     events_parser.add_argument("--output", required=True)
 
     fetch_parser = subparsers.add_parser("fetch-url", help="fetch one URL and write metadata/text JSON")
-    fetch_parser.add_argument("url")
+    fetch_parser.add_argument("url", nargs="?")
+    fetch_parser.add_argument("--url", dest="url_option", default="")
     fetch_parser.add_argument("--max-bytes", type=int, default=2 * 1024 * 1024)
     fetch_parser.add_argument("--output", required=True)
 
@@ -2890,7 +2891,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "fetch-url":
-        write_json(args.output, fetch_url(args.url, max_bytes=args.max_bytes))
+        url = args.url or args.url_option
+        if not url:
+            parser.error("fetch-url requires a URL as positional argument or --url")
+        write_json(args.output, fetch_url(url, max_bytes=args.max_bytes))
         print(f"wrote {args.output}")
         return 0
 

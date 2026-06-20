@@ -124,6 +124,39 @@ class McpServerProtocolTests(unittest.TestCase):
         self.assertIn("final_report", description)
         self.assertIn("Chinese final delivery folder", description)
 
+    def test_workflow_mcp_delivery_package_normalizes_raw_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            raw_output = tmp_path / "raw-output"
+            archive_dir = raw_output / "archive" / "Pwn-JSFS"
+            (archive_dir / "题目源码").mkdir(parents=True)
+            (archive_dir / "题目镜像").mkdir()
+            (archive_dir / "题目手册" / "Hub提交材料").mkdir(parents=True)
+            (archive_dir / "题目源码" / "Dockerfile").write_text("FROM busybox\n", encoding="utf-8")
+            (archive_dir / "题目镜像" / "jsfs.tar").write_bytes(b"tar")
+            (archive_dir / "题目手册" / "PWN-JSFS.md").write_text("# JSFS\n", encoding="utf-8")
+            (archive_dir / "题目手册" / "Hub提交材料" / "hub_fields.json").write_text("{}", encoding="utf-8")
+            (raw_output / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (raw_output / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+
+            delivery_dir = tmp_path / "最终交付"
+            responses = call_mcp_server(
+                SCRIPTS / "cloversec_ctf_workflow_mcp.py",
+                "cloversec_ctf_delivery_package",
+                {
+                    "workdir": raw_output.as_posix(),
+                    "outputs_dir": raw_output.as_posix(),
+                    "output_dir": delivery_dir.as_posix(),
+                },
+                runtime_dir=tmp_path / "mcp-runtime",
+            )
+            payload = json.loads(responses[2]["result"]["content"][0]["text"])
+
+            self.assertEqual(payload["package_issues"], [])
+            self.assertTrue((delivery_dir / "交付说明.md").exists())
+            self.assertTrue((delivery_dir / "Pwn-JSFS" / "题目手册" / "题目解题手册.md").exists())
+            self.assertFalse((delivery_dir / "Pwn-JSFS" / "题目手册" / "Hub提交材料").exists())
+
 
 def call_mcp_server(script: Path, tool_name: str, arguments: dict, *, runtime_dir: Path) -> list[dict]:
     requests = [

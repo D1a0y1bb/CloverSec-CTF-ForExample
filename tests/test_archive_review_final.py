@@ -882,6 +882,45 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertFalse((delivery_dir / "Web-Demo" / "题目手册" / "Hub提交材料").exists())
             self.assertEqual(manifest["summary"]["package_issues"], 0)
 
+    def test_delivery_scan_rejects_process_dirs_inside_manual_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            delivery_dir = Path(tmp) / "outputs"
+            challenge = delivery_dir / "Web-zoo-feedback-form"
+            (challenge / "题目源码").mkdir(parents=True)
+            (challenge / "题目镜像").mkdir()
+            (challenge / "题目手册" / "Hub提交材料").mkdir(parents=True)
+            (challenge / "题目手册" / "验证证据").mkdir()
+            (challenge / "题目源码" / "Dockerfile").write_text("FROM python:3.11\n", encoding="utf-8")
+            (challenge / "题目镜像" / "zoo-feedback-form-amd64.tar").write_bytes(b"tar")
+            (challenge / "题目手册" / "题目解题手册.md").write_text("# 手册\n", encoding="utf-8")
+            (challenge / "题目手册" / "Hub提交材料" / "hub_fields.json").write_text("{}", encoding="utf-8")
+            for filename in ["交付说明.md", "语雀粘贴表.md", "待处理问题.md", "质量检查报告.md"]:
+                (delivery_dir / filename).write_text("# ok\n", encoding="utf-8")
+            (delivery_dir / "最终归档表.xlsx").write_bytes(b"xlsx")
+
+            issues = delivery.scan_delivery_package(delivery_dir)
+
+            paths = {item["path"] for item in issues}
+            self.assertIn("Web-zoo-feedback-form/题目手册/Hub提交材料", paths)
+            self.assertIn("Web-zoo-feedback-form/题目手册/验证证据", paths)
+
+    def test_delivery_zip_refuses_dirty_human_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            delivery_dir = Path(tmp) / "outputs"
+            challenge = delivery_dir / "Web-zoo-feedback-form"
+            (challenge / "题目源码").mkdir(parents=True)
+            (challenge / "题目镜像").mkdir()
+            (challenge / "题目手册" / "验证证据").mkdir(parents=True)
+            (challenge / "题目源码" / "Dockerfile").write_text("FROM python:3.11\n", encoding="utf-8")
+            (challenge / "题目镜像" / "zoo-feedback-form-amd64.tar").write_bytes(b"tar")
+            (challenge / "题目手册" / "题目解题手册.md").write_text("# 手册\n", encoding="utf-8")
+            for filename in ["交付说明.md", "语雀粘贴表.md", "待处理问题.md", "质量检查报告.md"]:
+                (delivery_dir / filename).write_text("# ok\n", encoding="utf-8")
+            (delivery_dir / "最终归档表.xlsx").write_bytes(b"xlsx")
+
+            with self.assertRaises(ValueError):
+                delivery.create_delivery_zip(delivery_dir, Path(tmp) / "outputs.zip")
+
     def test_delivery_package_same_outputs_dir_does_not_write_cache_to_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -930,6 +969,8 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             (source / "verification" / "image.inspect.json").write_text("{}\n", encoding="utf-8")
             (workdir / "题目镜像").mkdir()
             (workdir / "题目镜像" / "irisctf-2025-password-manager.tar").write_bytes(b"tar")
+            (workdir / "题目镜像" / "image.inspect.json").write_text("{}\n", encoding="utf-8")
+            (workdir / "题目镜像" / "docker_artifacts.validated.json").write_text("{}\n", encoding="utf-8")
             (workdir / "手册").mkdir()
             (workdir / "手册" / "manual_filled_draft.md").write_text("# draft\n", encoding="utf-8")
             (workdir / "手册" / "题目解题手册.md").write_text("# 题目解题手册\n", encoding="utf-8")
@@ -944,6 +985,8 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                 "ctfbuild": (challenge_dir / "题目源码" / ".ctfbuild").exists(),
                 "verification": (challenge_dir / "题目源码" / "verification").exists(),
                 "image_tar": (challenge_dir / "题目镜像" / "irisctf-2025-password-manager.tar").exists(),
+                "image_inspect": (challenge_dir / "题目镜像" / "image.inspect.json").exists(),
+                "image_artifacts": (challenge_dir / "题目镜像" / "docker_artifacts.validated.json").exists(),
                 "manual": (challenge_dir / "题目手册" / "题目解题手册.md").exists(),
                 "draft_manual": (challenge_dir / "题目手册" / "manual_filled_draft.md").exists(),
             }
@@ -954,6 +997,8 @@ class ArchiveReviewFinalTests(unittest.TestCase):
         self.assertFalse(checks["ctfbuild"])
         self.assertFalse(checks["verification"])
         self.assertTrue(checks["image_tar"])
+        self.assertFalse(checks["image_inspect"])
+        self.assertFalse(checks["image_artifacts"])
         self.assertTrue(checks["manual"])
         self.assertFalse(checks["draft_manual"])
         self.assertEqual(manifest["summary"]["challenge_count"], 1)
@@ -1190,7 +1235,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.12")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.13")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)
