@@ -63,6 +63,7 @@ def create_final_outputs(
     data.write_rows_xlsx(rows, xlsx_path)
     shutil.copyfile(xlsx_path, legacy_xlsx_path)
     read_back = data.read_xlsx(xlsx_path)
+    xlsx_validation_errors = validate_final_xlsx_readback(rows, read_back)
 
     entries = [_final_entry(case, row, path_base) for case, row in zip(cases, rows)]
     remaining_actions = []
@@ -70,6 +71,8 @@ def create_final_outputs(
         remaining_actions.extend(entry["remaining_actions"])
     if validation_errors:
         remaining_actions.extend(validation_errors)
+    if xlsx_validation_errors:
+        remaining_actions.extend(xlsx_validation_errors)
 
     summary = {
         "total": len(cases),
@@ -93,6 +96,7 @@ def create_final_outputs(
             "最终报告": report_path.as_posix(),
         },
         "xlsx_readback_rows": len(read_back),
+        "xlsx_validation_errors": len(xlsx_validation_errors),
         "remaining_actions": len(remaining_actions),
     }
     payload = {
@@ -132,6 +136,7 @@ def render_final_report(payload: dict[str, Any]) -> str:
         f"- 语雀粘贴表：{summary.get('yuque_table_path', '')}",
         f"- 最终报告：{summary.get('report_path', '')}",
         f"- xlsx 回读行数：{summary.get('xlsx_readback_rows', 0)}",
+        f"- xlsx 内容问题：{summary.get('xlsx_validation_errors', 0)}",
         f"- 待处理事项：{summary.get('remaining_actions', 0)}",
         "",
         "## 对人交付文件",
@@ -281,7 +286,26 @@ def row_missing_issues(row: dict[str, str], base_dir: Path | None = None) -> lis
             for path in _split_paths(resource_path):
                 if not _resource_exists(path, archive_dir, base_dir):
                     issues.append(f"{name} 资源路径不存在：{path}")
+            if row.get("题目类型", "").strip() == "环境型" and not any(path.lower().endswith((".tar", ".tar.gz", ".tgz")) for path in _split_paths(resource_path)):
+                issues.append(f"{name} 环境型题目缺少镜像 tar 路径")
     return issues
+
+
+def validate_final_xlsx_readback(expected_rows: list[dict[str, str]], actual_rows: list[dict[str, str]]) -> list[str]:
+    errors: list[str] = []
+    if len(actual_rows) != len(expected_rows):
+        errors.append(f"xlsx 回读行数不一致：期望 {len(expected_rows)}，实际 {len(actual_rows)}")
+    key_fields = ["名称", "赛事来源", "题目来源", "分类", "题目类型", "Flag", "验证状态", "归档目录", "环境包/附件包路径"]
+    for index, expected in enumerate(expected_rows, start=1):
+        if index > len(actual_rows):
+            break
+        actual = actual_rows[index - 1]
+        for field in key_fields:
+            expected_value = str(expected.get(field) or "").strip()
+            actual_value = str(actual.get(field) or "").strip()
+            if expected_value != actual_value:
+                errors.append(f"xlsx 第 {index} 行字段 {field} 回读不一致")
+    return errors
 
 
 def _split_paths(value: str) -> list[str]:

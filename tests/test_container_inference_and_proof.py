@@ -54,6 +54,26 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertEqual(payload["dockerfile"]["base_images"], ["python:3.12-alpine"])
         self.assertIn("http://127.0.0.1:18080/", payload["runtime"]["probe_urls"])
 
+    def test_readme_error_port_is_not_treated_as_runtime_port(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Dockerfile").write_text("FROM python:3.12-alpine\nEXPOSE 8080\n", encoding="utf-8")
+            (root / "README.md").write_text(
+                "\n".join(
+                    [
+                        "docker run -p 18080:8080 demo",
+                        "error: port 5000 address already in use",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = container.infer_container_project(root)
+
+        self.assertIn("18080:8080", payload["summary"]["ports"])
+        self.assertIn("8080:8080", payload["summary"]["ports"])
+        self.assertNotIn("5000:5000", payload["summary"]["ports"])
+
     def test_infers_compose_service_and_ports(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -104,6 +124,20 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertEqual(docker_runner.operations_for_validation_level("inspect_only", tar_path="image.tar"), ["load", "inspect"])
         self.assertEqual(docker_runner.operations_for_validation_level("build_only"), ["build", "inspect"])
         self.assertEqual(docker_runner.operations_for_validation_level("run_probe"), ["build", "inspect", "run", "logs", "stop"])
+
+    def test_docker_plan_rewrites_unavailable_host_port_before_run(self):
+        plan = {
+            "operations": ["run"],
+            "ports": ["18080:80"],
+            "commands": {"run": ["docker", "run", "-d", "--name", "demo", "-p", "18080:80", "image:local"]},
+        }
+        with mock.patch.object(docker_runner, "is_host_port_available", return_value=False), mock.patch.object(docker_runner, "find_available_port", return_value="49152"):
+            docker_runner.rewrite_ports_to_available(plan)
+
+        self.assertEqual(plan["ports"], ["49152:80"])
+        self.assertEqual(plan["port_rewrites"][0]["from"], "18080:80")
+        self.assertIn("49152:80", plan["commands"]["run"])
+        self.assertNotIn("18080:80", plan["commands"]["run"])
 
     def test_static_only_execute_writes_skip_without_subprocess(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -259,7 +293,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.0")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.1")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

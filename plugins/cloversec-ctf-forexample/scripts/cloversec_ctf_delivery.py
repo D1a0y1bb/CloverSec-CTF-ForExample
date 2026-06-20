@@ -14,12 +14,23 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
 CHALLENGE_SUBDIRS = ["题目源码", "题目镜像", "题目手册", "题目附件"]
 IMAGE_SUFFIXES = {".tar", ".gz", ".tgz"}
+BLOCKED_PATH_PARTS = {".ctfbuild", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+BLOCKED_PROCESS_FILENAMES = {
+    "docker_artifacts.json",
+    "docker_artifacts.validated.json",
+    "docker_artifacts.executed.json",
+    "validate-summary.json",
+    "image.inspect.json",
+    "session.json",
+    "proposal.json",
+    "proposal.yaml",
+}
 
 
 def utc_now() -> str:
@@ -201,6 +212,8 @@ def copy_challenge_archives(
                 subdirs.append(subdir)
                 target_subdir = target_case_dir / subdir
                 for source in sorted(path for path in source_subdir.rglob("*") if path.is_file()):
+                    if not challenge_file_allowed(source, source_subdir, subdir):
+                        continue
                     relative = source.relative_to(source_subdir)
                     is_image_tar = subdir == "题目镜像" and source.suffix.lower() in IMAGE_SUFFIXES
                     effective_copy_limit = source.stat().st_size if is_image_tar and copy_image_tars else copy_limit
@@ -377,22 +390,20 @@ def copy_legacy_dir(
 
 
 def legacy_source_allowed(path: Path, root: Path) -> bool:
+    return challenge_file_allowed(path, root, "题目源码")
+
+
+def challenge_file_allowed(path: Path, root: Path, subdir: str) -> bool:
     rel_parts = path.relative_to(root).parts
-    if any(part in {".ctfbuild", "verification", "__pycache__"} for part in rel_parts):
+    if any(part in BLOCKED_PATH_PARTS or part == "verification" for part in rel_parts):
         return False
-    blocked_names = {
-        "docker_artifacts.json",
-        "docker_artifacts.validated.json",
-        "docker_artifacts.executed.json",
-        "validate-summary.json",
-        "image.inspect.json",
-        "session.json",
-        "proposal.json",
-        "proposal.yaml",
-    }
-    if path.name in blocked_names:
+    if path.name in BLOCKED_PROCESS_FILENAMES:
         return False
     if path.suffix in {".pyc", ".pyo"} or path.name == ".DS_Store":
+        return False
+    if subdir == "题目手册" and manual_name_blocked(path.name):
+        return False
+    if subdir in {"题目手册", "题目镜像"} and path.suffix.lower() in {".json", ".jsonl"}:
         return False
     return True
 
@@ -643,6 +654,12 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
         parts = relative.split("/")
         if path.name == ".DS_Store":
             issues.append({"path": relative, "issue": "禁止 .DS_Store"})
+            continue
+        if any(part in BLOCKED_PATH_PARTS for part in parts):
+            issues.append({"path": relative, "issue": "禁止过程目录进入交付包"})
+            continue
+        if path.is_file() and path.name in BLOCKED_PROCESS_FILENAMES:
+            issues.append({"path": relative, "issue": "禁止过程文件进入交付包"})
             continue
         if len(parts) >= 2 and parts[1] not in CHALLENGE_SUBDIRS:
             continue

@@ -314,7 +314,7 @@ def create_hub_draft(
     fill_plan = create_chrome_assist_plan(manifest, classify_options=classify_options)
     draft = {
         "schema_version": "cloversec.ctf.hub_draft.v1",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -372,7 +372,7 @@ def create_hub_review_state(
         status_notes.append("已发现疑似 Hub 编号，但还没有用户确认，不能用于 retag 或 xlsx。")
     state = {
         "schema_version": "cloversec.ctf.hub_review_state.v1",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -432,7 +432,7 @@ def create_hub_session_state(
     resolved_hub_id = ids["hub_challenge_id"]
     state = {
         "schema_version": "cloversec.ctf.hub_session_state.v1",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or draft.get("case_id") or manifest.get("case_id") or ""),
         "case_title": case_title(case) or str(draft.get("case_title") or ""),
@@ -487,6 +487,21 @@ def create_hub_session_state(
     write_json(root / "hub_session_state.json", state)
     write_text(root / "hub_session_state.md", render_hub_session_state(state))
     return state
+
+
+def load_json_arg(value: str) -> dict[str, Any]:
+    text = _string(value).strip()
+    if not text:
+        return {}
+    path = Path(text)
+    if path.is_file():
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"expected JSON object or JSON file path: {text}") from exc
+    return payload if isinstance(payload, dict) else {}
 
 
 def pending_upload_roles(manifest: dict[str, Any], upload_results: list[dict[str, Any]]) -> list[str]:
@@ -1068,7 +1083,7 @@ def create_hub_diff(
         )
     return {
         "schema_version": "cloversec.ctf.hub_diff.v1",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "case_id": str(case.get("case_id") or ""),
         "comparisons": comparisons,
         "validation": validation,
@@ -1394,7 +1409,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "review-state":
         case = json.loads(Path(args.case_json).read_text(encoding="utf-8"))
-        visible_page = json.loads(Path(args.visible_page).read_text(encoding="utf-8")) if args.visible_page else {}
+        visible_page = load_json_arg(args.visible_page) if args.visible_page else {}
         create_hub_review_state(
             case,
             args.output_dir,
@@ -1412,7 +1427,7 @@ def main(argv: list[str] | None = None) -> int:
         case = json.loads(Path(args.case_json).read_text(encoding="utf-8")) if args.case_json else {}
         draft = json.loads(Path(args.draft).read_text(encoding="utf-8")) if args.draft else {}
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8")) if args.manifest else {}
-        visible_page = json.loads(Path(args.visible_page).read_text(encoding="utf-8")) if args.visible_page else {}
+        visible_page = load_json_arg(args.visible_page) if args.visible_page else {}
         upload_results = json.loads(Path(args.upload_results).read_text(encoding="utf-8")) if args.upload_results else []
         create_hub_session_state(
             args.output_dir,

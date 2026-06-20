@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import shlex
+import socket
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -20,7 +21,7 @@ import cloversec_ctf_i18n as i18n
 
 TARGET_PLATFORM = "linux/amd64"
 DEFAULT_OPERATIONS = ["build", "load", "inspect", "run", "logs", "stop", "save"]
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 VALIDATION_LEVELS = ["static_only", "inspect_only", "build_only", "run_probe", "solve_verify"]
 OPERATION_AUTH_ACTIONS = {
     "build": "docker_build",
@@ -200,6 +201,8 @@ def execute_docker_workflow(
         validation_level=validation_level,
         container_inference=container_inference,
     )
+    if "run" in set(plan.get("operations", [])):
+        rewrite_ports_to_available(plan)
     evidence: dict[str, Any] = {
         "schema_version": "cloversec.ctf.docker_evidence.v1",
         "case_id": plan["case_id"],
@@ -487,6 +490,102 @@ def normalize_ports(value: Any) -> list[str]:
         if text:
             output.append(text)
     return output
+
+
+def rewrite_ports_to_available(plan: dict[str, Any]) -> None:
+    ports = [str(item) for item in plan.get("ports", []) if str(item).strip()]
+    rewritten = []
+    rewrites = []
+    for mapping in ports:
+        host_port, container_port = split_port_mapping(mapping)
+        if not container_port:
+            rewritten.append(mapping)
+            continue
+        selected_host = host_port
+        if not selected_host or not is_host_port_available(selected_host):
+            selected_host = find_available_port()
+            if selected_host:
+                rewrites.append({"from": mapping, "to": f"{selected_host}:{container_port}", "reason": "host_port_unavailable"})
+        rewritten.append(f"{selected_host}:{container_port}" if selected_host else mapping)
+    if not rewrites:
+        return
+    plan["ports"] = rewritten
+    plan["port_rewrites"] = rewrites
+    commands = plan.get("commands") if isinstance(plan.get("commands"), dict) else {}
+    run_args = commands.get("run")
+    if isinstance(run_args, list):
+        commands["run"] = rewrite_run_command_ports(run_args, rewritten)
+
+
+def rewrite_run_command_ports(args: list[str], ports: list[str]) -> list[str]:
+    output: list[str] = []
+    index = 0
+    while index < len(args):
+        if args[index] == "-p" and index + 1 < len(args):
+            index += 2
+            continue
+        output.append(args[index])
+        index += 1
+    insert_at = docker_run_image_index(output)
+    port_args: list[str] = []
+    for mapping in ports:
+        port_args.extend(["-p", mapping])
+    return output[:insert_at] + port_args + output[insert_at:]
+
+
+def docker_run_image_index(args: list[str]) -> int:
+    option_value_flags = {"--name", "-e", "--env", "-v", "--volume", "-w", "--workdir", "--network", "--hostname", "--user", "-u"}
+    index = 2 if args[:2] == ["docker", "run"] else 0
+    while index < len(args):
+        value = args[index]
+        if value == "--":
+            return min(index + 1, len(args))
+        if value in option_value_flags:
+            index += 2
+            continue
+        if value.startswith("--") and "=" in value:
+            index += 1
+            continue
+        if value.startswith("-"):
+            index += 1
+            continue
+        return index
+    return len(args)
+
+
+def split_port_mapping(mapping: str) -> tuple[str, str]:
+    value = str(mapping or "").strip()
+    if not value:
+        return "", ""
+    clean = value.split("/", 1)[0]
+    if ":" not in clean:
+        return "", clean if clean.isdigit() else ""
+    host, container = clean.rsplit(":", 1)
+    if ":" in host:
+        host = host.rsplit(":", 1)[1]
+    return (host if host.isdigit() else "", container if container.isdigit() else "")
+
+
+def is_host_port_available(port: str) -> bool:
+    try:
+        port_int = int(port)
+    except ValueError:
+        return False
+    if port_int <= 0 or port_int > 65535:
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port_int))
+        except OSError:
+            return False
+    return True
+
+
+def find_available_port() -> str:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return str(sock.getsockname()[1])
 
 
 def probe_urls_from_ports(ports: list[str]) -> list[str]:

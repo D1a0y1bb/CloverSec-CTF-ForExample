@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.0"
+WORKFLOW_VERSION = "1.0.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -1374,6 +1374,7 @@ def render_current_status(payload: dict[str, Any]) -> str:
     recommended_stage = str(payload.get("recommended_next_stage") or "").strip()
     recommended_stage_text = STAGE_DISPLAY.get(recommended_stage, recommended_stage)
     recent_timing = payload.get("recent_timing") if isinstance(payload.get("recent_timing"), dict) else {}
+    pending_issue_count = int(payload.get("pending_issue_count", 0) or 0)
     next_steps = []
     if recommended_stage_text:
         next_steps.append(f"推荐处理阶段：{recommended_stage_text}。")
@@ -1408,6 +1409,7 @@ def render_current_status(payload: dict[str, Any]) -> str:
             f"- 失败：{failed} 题",
             f"- 最近阶段：{STAGE_DISPLAY.get(str(recent_timing.get('stage') or ''), recent_timing.get('stage', '')) or '暂无'}",
             f"- 最近耗时：{format_duration_ms(recent_timing.get('duration_ms'))}",
+            f"- 待处理问题：{pending_issue_count} 项",
             "",
             "## 下一步",
             "",
@@ -1418,6 +1420,7 @@ def render_current_status(payload: dict[str, Any]) -> str:
             f"- 题目清单：`{Path(payload.get('output', '')) / 'ctf_cases.jsonl' if payload.get('output') else ''}`",
             f"- 工作流状态：`{Path(payload.get('output', '')) / 'workflow_state.json' if payload.get('output') else ''}`",
             f"- 过程日志：`{Path(payload.get('output', '')) / 'logs' if payload.get('output') else ''}`",
+            f"- 待处理问题：`{Path(payload.get('output', '')) / '待处理问题.md' if payload.get('output') else ''}`",
             "",
         ]
     )
@@ -1959,6 +1962,7 @@ def write_current_status_from_state(base: Path) -> None:
     counts = user_status_counts(cases)
     recommended_stage = first_pending_stage(state)
     recent_timing = latest_stage_timing(base)
+    pending = collect_pending_issues(base, cases, state)
     (base / "当前状态.md").write_text(
         render_current_status(
             {
@@ -1974,10 +1978,107 @@ def write_current_status_from_state(base: Path) -> None:
                 "output": base.as_posix(),
                 "recommended_next_stage": recommended_stage,
                 "recent_timing": recent_timing,
+                "pending_issue_count": len(pending),
             }
         ),
         encoding="utf-8",
     )
+    write_pending_issues(base, pending)
+
+
+def collect_pending_issues(base: Path, cases: list[dict[str, Any]], state: dict[str, Any]) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    stages = state.get("stages", {}) if isinstance(state.get("stages"), dict) else {}
+    for stage, stage_state in stages.items():
+        if not isinstance(stage_state, dict):
+            continue
+        status = str(stage_state.get("status") or "")
+        if status not in {"blocked", "failed", "incomplete", "pending_user", "partial"}:
+            continue
+        errors = stage_state.get("errors") if isinstance(stage_state.get("errors"), list) else []
+        if not errors:
+            issues.append({"stage": STAGE_DISPLAY.get(stage, stage), "case_id": "", "status": status, "message": "阶段未完成。"})
+            continue
+        for error in errors:
+            if not isinstance(error, dict):
+                continue
+            issues.append(
+                {
+                    "stage": STAGE_DISPLAY.get(stage, stage),
+                    "case_id": str(error.get("case_id") or ""),
+                    "status": str(error.get("status") or status),
+                    "message": str(error.get("message") or error.get("error") or ""),
+                }
+            )
+    for case in cases:
+        row = data.case_to_xlsx_row(case)
+        name = row.get("名称") or str(case.get("case_id") or "未命名题目")
+        for field in ["名称", "分类", "题目类型", "Flag", "验证状态"]:
+            if not row.get(field, "").strip():
+                issues.append({"stage": "题目字段", "case_id": str(case.get("case_id") or ""), "status": "missing", "message": f"{name} 缺少 {field}"})
+        issue_text = row.get("问题", "").strip()
+        if issue_text:
+            for item in [part.strip() for part in re.split(r"[;；]\s*", issue_text) if part.strip()]:
+                issues.append({"stage": "最终归档表", "case_id": str(case.get("case_id") or ""), "status": "pending", "message": item})
+    for report in sorted(base.rglob("manual_quality.json")):
+        try:
+            payload = read_json(report)
+        except Exception:  # noqa: BLE001
+            continue
+        for item in payload.get("checks", []) if isinstance(payload.get("checks"), list) else []:
+            if not isinstance(item, dict) or item.get("status") not in {"fail", "warn"}:
+                continue
+            issues.append(
+                {
+                    "stage": "手册质量",
+                    "case_id": str(payload.get("case_id") or ""),
+                    "status": str(item.get("status") or ""),
+                    "message": f"{item.get('name', '')}: {item.get('message', '')} ({report.as_posix()})",
+                }
+            )
+    screenshot_logs = sorted(set(base.rglob("*screenshot*failed*.log")) | set(base.rglob("playwright_screenshot_failed.log")))
+    for log_path in screenshot_logs:
+        issues.append({"stage": "截图", "case_id": "", "status": "failed", "message": f"截图未完成：{log_path.as_posix()}"})
+    return dedupe_issue_records(issues)
+
+
+def dedupe_issue_records(issues: list[dict[str, str]]) -> list[dict[str, str]]:
+    output: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for item in issues:
+        key = (item.get("stage", ""), item.get("case_id", ""), item.get("status", ""), item.get("message", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(item)
+    return output
+
+
+def write_pending_issues(base: Path, issues: list[dict[str, str]]) -> None:
+    lines = ["# 待处理问题", ""]
+    if not issues:
+        lines.append("- 暂无待处理问题。")
+    else:
+        lines.extend(["| 阶段 | 题目ID | 状态 | 问题 |", "|---|---|---|---|"])
+        for item in issues:
+            lines.append(
+                "| "
+                + " | ".join(
+                    escape_table(value)
+                    for value in [
+                        item.get("stage", ""),
+                        item.get("case_id", ""),
+                        item.get("status", ""),
+                        item.get("message", ""),
+                    ]
+                )
+                + " |"
+            )
+    (base / "待处理问题.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def escape_table(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
 
 
 def first_pending_stage(state: dict[str, Any]) -> str:

@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}
@@ -285,9 +285,10 @@ def collect_readme_hints(root: Path, *, max_text_bytes: int) -> dict[str, Any]:
             if "docker build" in lower or "docker run" in lower or "docker compose" in lower:
                 commands.append(stripped[:300])
                 hints.append(f"{path.relative_to(root).as_posix()}: {stripped[:160]}")
-            ports.extend(extract_port_mappings(stripped))
-            for item in re.findall(r"(?:port|端口)\D{0,12}(\d{2,5})", stripped, flags=re.IGNORECASE):
-                ports.append(f"{item}:{item}")
+            if not is_negative_port_evidence(stripped):
+                ports.extend(extract_port_mappings(stripped))
+                for item in re.findall(r"(?:port|端口)\D{0,12}(\d{2,5})", stripped, flags=re.IGNORECASE):
+                    ports.append(f"{item}:{item}")
             if not container_command and ("cmd:" in lower or "command:" in lower):
                 container_command = value_after_colon(stripped)
     return {
@@ -322,6 +323,27 @@ def extract_manifest_ports(text: str) -> list[str]:
     for item in re.findall(r"\b(?:port|ports|开放端口)\s*[:=]\s*(\d{2,5})\b", text, flags=re.IGNORECASE):
         ports.append(f"{item}:{item}")
     return dedupe(ports)
+
+
+def is_negative_port_evidence(line: str) -> bool:
+    lower = line.lower()
+    negative_tokens = [
+        "error",
+        "failed",
+        "failure",
+        "traceback",
+        "exception",
+        "warning",
+        "address already in use",
+        "connection refused",
+        "cannot connect",
+        "报错",
+        "错误",
+        "失败",
+        "异常",
+        "端口冲突",
+    ]
+    return any(token in lower for token in negative_tokens)
 
 
 def infer_project_type(

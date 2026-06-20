@@ -282,6 +282,24 @@ class V033AuditManualHubTests(unittest.TestCase):
 
         self.assertEqual(payload["xlsx_fields_patch"]["Flag类型"], "动态Flag")
         self.assertEqual(flag_type_checks[0]["status"], "pass")
+
+    def test_manual_quality_accepts_event_prefixed_flags(self):
+        manual = sample_manual().replace("flag{v033-full-flag}", "DUCTF{emU_say$_he!!0_h0!@_ci@0}")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case["flag"]["value"] = "DUCTF{emU_say$_he!!0_h0!@_ci@0}"
+            hub_fields = sample_hub_fields()
+            hub_fields["题目Flag"] = "DUCTF{emU_say$_he!!0_h0!@_ci@0}"
+            payload = manual_quality.check_manual_quality(
+                case=case,
+                manual_markdown=manual,
+                hub_fields=hub_fields,
+                output_dir=tmp_path / "quality",
+            )
+
+        consistency = [item for item in payload["checks"] if item["id"] == "manual-flag-consistency"]
+        self.assertEqual(consistency[0]["status"], "pass")
         self.assertFalse(any("case=dynamic" in item["message"] for item in payload["checks"]))
 
     def test_manual_quality_fails_when_screenshot_is_missing(self):
@@ -527,7 +545,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.0")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.1")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

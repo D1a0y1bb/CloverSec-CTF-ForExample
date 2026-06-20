@@ -285,6 +285,16 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             )
             self.assertTrue(any("缺少 HUB编号" in item for item in payload["remaining_actions"]))
 
+    def test_final_outputs_report_xlsx_readback_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            expected = [{"名称": "Demo", "Flag": "flag{demo}", "验证状态": "通过"}]
+            actual = [{"名称": "Demo", "Flag": "flag{changed}", "验证状态": "通过"}]
+            errors = final.validate_final_xlsx_readback(expected, actual)
+
+        self.assertTrue(errors)
+        self.assertIn("Flag", errors[0])
+
     def test_final_outputs_resolves_relative_archive_paths_from_base_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -553,9 +563,11 @@ class ArchiveReviewFinalTests(unittest.TestCase):
 
             manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
 
+        delivery_dir = Path(manifest["paths"]["delivery_dir"])
         issues = {item["path"]: item["issue"] for item in manifest["package_issues"]}
         self.assertNotIn("Web-PasswordManager/题目源码/package.json", issues)
-        self.assertIn("Web-PasswordManager/题目手册/manual_filled_draft.md", issues)
+        self.assertFalse((delivery_dir / "Web-PasswordManager" / "题目手册" / "manual_filled_draft.md").exists())
+        self.assertNotIn("Web-PasswordManager/题目手册/manual_filled_draft.md", issues)
 
     def test_delivery_package_reorganizes_legacy_single_challenge_output(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -784,7 +796,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.0")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.1")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

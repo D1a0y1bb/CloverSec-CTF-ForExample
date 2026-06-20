@@ -120,6 +120,7 @@ class WorkflowToolTests(unittest.TestCase):
                 "output": "/tmp/demo",
                 "recommended_next_stage": "archive",
                 "recent_timing": {"stage": "quality", "duration_ms": 90500},
+                "pending_issue_count": 2,
             }
         )
 
@@ -129,8 +130,39 @@ class WorkflowToolTests(unittest.TestCase):
         self.assertIn("推荐处理阶段：生成题目归档", text)
         self.assertIn("最近阶段：质量检查", text)
         self.assertIn("最近耗时：1.5 分钟", text)
+        self.assertIn("待处理问题：2 项", text)
         self.assertIn("失败：1 题", text)
         self.assertIn("缺材料的题目需要继续搜索", text)
+
+    def test_write_current_status_also_writes_pending_issues_markdown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state = workflow.initial_workflow_state("demo", "DemoCTF", [2026], ["web"], 1, root)
+            state["stages"]["quality"] = {
+                "status": "failed",
+                "errors": [{"case_id": "case-1", "status": "failed", "message": "截图缺失"}],
+            }
+            (root / "workflow_state.json").write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+            (root / "ctf_cases.jsonl").write_text(
+                json.dumps(
+                    {
+                        "case_id": "case-1",
+                        "metadata": {"名称": "Demo", "分类": "Web", "题目类型": "环境型", "Flag类型": "动态Flag", "验证状态": "部分通过", "问题": "截图未完成"},
+                        "flag": {"value": "flag{demo}", "type": "dynamic", "sensitive": True},
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            workflow.write_current_status_from_state(root)
+            status_text = (root / "当前状态.md").read_text(encoding="utf-8")
+            issues_text = (root / "待处理问题.md").read_text(encoding="utf-8")
+
+        self.assertIn("待处理问题：", status_text)
+        self.assertIn("截图缺失", issues_text)
+        self.assertIn("截图未完成", issues_text)
 
     def test_stage_timing_is_recorded_for_engine_events(self):
         with tempfile.TemporaryDirectory() as tmp:

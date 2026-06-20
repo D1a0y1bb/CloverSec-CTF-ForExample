@@ -228,6 +228,19 @@ class WriteupAndHubTests(unittest.TestCase):
         self.assertIn("Allow access to file URLs", contract["file_upload_requirement"])
         self.assertTrue(any(step["id"] == "pre-submit-review" for step in plan["steps"]))
 
+    def test_hub_visible_page_argument_accepts_json_string_and_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            payload = {"url": "https://hub.yunyansec.com/#/resource/ctf", "title": "云演资源中心"}
+            page_path = tmp_path / "visible_page.json"
+            page_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            from_string = hub.load_json_arg(json.dumps(payload, ensure_ascii=False))
+            from_file = hub.load_json_arg(page_path.as_posix())
+
+        self.assertEqual(from_string["title"], "云演资源中心")
+        self.assertEqual(from_file["url"], payload["url"])
+
     def test_hub_session_state_tracks_login_upload_and_manual_submit_stop(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

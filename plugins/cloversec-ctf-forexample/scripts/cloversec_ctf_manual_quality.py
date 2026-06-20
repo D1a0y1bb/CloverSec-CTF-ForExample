@@ -14,7 +14,7 @@ from typing import Any
 import cloversec_ctf_data as data
 
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 SCHEMA_VERSION = "cloversec.ctf.manual_quality.v1"
 REQUIRED_METADATA_FIELDS = ["名称", "分类", "题目类型", "Flag类型"]
 REQUIRED_HUB_FIELDS = ["题目标题", "题目内容", "题目来源", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级", "添加关键字"]
@@ -396,8 +396,11 @@ def is_attachment_case(case: dict[str, Any]) -> bool:
     return "附件" in question_type
 
 
+FLAG_PATTERN = re.compile(r"\b(?:flag|[A-Za-z0-9_]*CTF)\{[^}\n]+\}", flags=re.I)
+
+
 def manual_flag_consistency(manual: str) -> dict[str, Any]:
-    flags = re.findall(r"flag\{[^}\n]+\}", manual, flags=re.I)
+    flags = FLAG_PATTERN.findall(manual)
     unique = sorted({item for item in flags})
     return {
         "flag_count": len(flags),
