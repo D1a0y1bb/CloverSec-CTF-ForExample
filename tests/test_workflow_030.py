@@ -532,6 +532,130 @@ class Workflow030Tests(unittest.TestCase):
             self.assertEqual(cases[0]["research"]["gate"], "needs_human_download")
             self.assertNotEqual(cases[0]["metadata"]["材料状态"], "公开 WP 线索")
 
+    def test_execute_search_tasks_marks_writeup_only_as_not_continuable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = root / "run"
+            workflow.init_workflow(event="IrisCTF", years=[2025], categories=["web"], limit=1, out_dir=run)
+
+            def fake_search_plus(*args, **kwargs):  # noqa: ARG001
+                return {
+                    "results": [
+                        {
+                            "provider": "duckduckgo",
+                            "kind": "writeup",
+                            "title": "IrisCTF 2025 Web Writeups",
+                            "url": "https://example.com/irisctf-2025-web-writeups",
+                            "summary": "Public writeup collection without official handout.",
+                            "source_type": "public_web",
+                            "confidence": "medium",
+                            "metadata": {},
+                        }
+                    ],
+                    "errors": [],
+                    "summary": {"total_results": 1},
+                    "decision_required": [],
+                }
+
+            with mock.patch.object(workflow.search_plus, "search_plus", side_effect=fake_search_plus):
+                payload = workflow.execute_search_tasks(workdir=run, max_tasks=1, fetch_snapshots=False)
+
+            self.assertEqual(payload["summary"]["continuable_cases"], 0)
+            self.assertEqual(payload["summary"]["material_candidate_results"], 0)
+            state = json.loads((run / "workflow_state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["stages"]["research"]["status"], "pending_user")
+            self.assertIn("没有形成可交付题目", (run / "当前状态.md").read_text(encoding="utf-8"))
+
+    def test_workflow_engine_stops_after_writeup_only_research(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = root / "run"
+            workflow.init_workflow(event="IrisCTF", years=[2025], categories=["web"], limit=1, out_dir=run)
+
+            def fake_search_plus(*args, **kwargs):  # noqa: ARG001
+                return {
+                    "results": [
+                        {
+                            "provider": "github",
+                            "kind": "raw_file",
+                            "title": "IrisCTF 2025 web writeup README",
+                            "url": "https://raw.githubusercontent.com/example/writeups/main/README.md",
+                            "summary": "README with writeup only.",
+                            "source_type": "github",
+                            "confidence": "medium",
+                            "metadata": {"repository": "example/writeups", "path": "README.md"},
+                        }
+                    ],
+                    "errors": [],
+                    "summary": {"total_results": 1},
+                    "decision_required": [],
+                }
+
+            with mock.patch.object(workflow.search_plus, "search_plus", side_effect=fake_search_plus):
+                payload = workflow.run_workflow_engine(workdir=run, max_search_tasks=1)
+
+            self.assertEqual(payload["status"], "pending_user")
+            self.assertEqual([item["stage"] for item in payload["stages"]], ["research"])
+            self.assertFalse((run / "auto_collect_and_route.json").exists())
+            self.assertFalse(any(path.is_file() for path in (run / "downloads_accepted").rglob("*")))
+
+    def test_download_accept_blocks_writeup_only_case_even_with_safe_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            sandbox = out / "downloads_sandbox"
+            sandbox.mkdir(parents=True)
+            downloaded = sandbox / "0001-README.md"
+            downloaded.write_text("# writeup only\n", encoding="utf-8")
+            workflow.write_jsonl(
+                out / "ctf_cases.jsonl",
+                [
+                    {
+                        "case_id": "wp-only",
+                        "metadata": {"名称": "WP Only", "分类": "Web"},
+                        "research": {"gate": "cannot_continue", "blocking_rule": "writeup_without_attachment"},
+                        "evidence": [{"source_url": "https://example.com/wp", "title": "writeup"}],
+                    }
+                ],
+            )
+            workflow.write_json(
+                out / "download_preview.json",
+                {
+                    "records": [{"safety_status": "safe", "local_path": downloaded.as_posix()}],
+                    "summary": {"total": 1, "safe": 1, "needs_review": 0, "blocked": 0, "accepted": 0},
+                },
+            )
+
+            result = workflow.execute_stage_download_accept(out, allow_download_accept=True)
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertFalse((out / "downloads_accepted" / "0001-README.md").exists())
+
+    def test_collect_materials_skips_writeup_repo_readme(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = {
+                "results": [
+                    {
+                        "provider": "github",
+                        "kind": "raw_file",
+                        "title": "DemoCTF writeup README",
+                        "url": "https://raw.githubusercontent.com/example/writeups/main/README.md",
+                        "summary": "writeup only",
+                        "layer": "writeup_candidate",
+                        "metadata": {"repository": "example/writeups", "path": "README.md"},
+                    }
+                ]
+            }
+            manifest_path = root / "search_results.json"
+            workflow.write_json(manifest_path, manifest)
+
+            payload = workflow.collect_materials(manifest_path=manifest_path, output_dir=root)
+
+            self.assertEqual(payload["summary"]["material_candidate_results"], 0)
+            self.assertEqual(payload["summary"]["direct_asset_urls"], 0)
+            self.assertEqual(payload["summary"]["github_repositories"], 0)
+            self.assertFalse((root / "download_preview.json").exists())
+
     def test_collect_materials_downloads_direct_assets_and_previews_github(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -793,6 +917,7 @@ class Workflow030Tests(unittest.TestCase):
             self.assertEqual(payload["dockerizer_handoff"]["required_skill"], "cloversec-ctf-build-dockerizer")
             self.assertEqual(payload["dockerizer_handoff"]["auto_action"], "auto-render")
             self.assertIn("auto-render", payload["dockerizer_handoff"]["recommended_command"])
+            self.assertIn((root / "challenge_source").as_posix(), payload["dockerizer_handoff"]["recommended_command"])
             self.assertIn("challenge_source/Dockerfile", payload["dockerizer_handoff"]["existing_dockerfiles"])
             self.assertIn("41236", ",".join(payload["dockerizer_handoff"]["port_hints"]))
             self.assertEqual(docker_rows[0]["入口目录"], (root / "challenge_source").as_posix())

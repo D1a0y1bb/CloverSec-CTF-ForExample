@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.13"
+WORKFLOW_VERSION = "1.0.14"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -407,6 +407,8 @@ def execute_search_tasks(
             "provider_counts": search.provider_counts(ranked),
             "layer_counts": search.layer_counts(ranked),
             "gate_counts": gate_counts(cases),
+            "continuable_cases": continuable_case_count(cases),
+            "material_candidate_results": len(material_candidate_results(ranked)),
         },
         "next_files": {
             "cases": (base / "ctf_cases.jsonl").as_posix(),
@@ -468,13 +470,15 @@ def execute_search_tasks(
     update_workflow_collect_state(
         base,
         stage="research",
-        status="completed" if cases else "pending_user",
+        status="completed" if cases and continuable_case_count(cases) else "pending_user",
         summary={
             "search_tasks": len(query_outputs),
             "results": len(ranked),
             "cases": len(cases),
+            "continuable_cases": continuable_case_count(cases),
             "evidence_records": evidence.get("summary", {}).get("records", 0),
             "download_preview_records": download_payload.get("summary", {}).get("total", 0) if download_payload else 0,
+            "note": "" if continuable_case_count(cases) else "只有 WP、solver、平台页或搜索线索，不能继续交付；需要换题或补源码/附件入口。",
         },
         errors=all_errors,
     )
@@ -486,7 +490,7 @@ def execute_search_tasks(
                 "event": str(request.get("event") or ""),
                 "years": request.get("years", []),
                 "categories": request.get("categories", []),
-                "status": "已完成搜索，等待材料识别" if cases else "没有形成可处理题目，等待人工入口",
+                "status": "已完成搜索，等待材料识别" if continuable_case_count(cases) else "没有形成可交付题目，等待换题或人工入口",
                 "cases": len(cases),
                 "missing_material": status_counts["missing_material"],
                 "pending_user": status_counts["pending_user"],
@@ -524,7 +528,8 @@ def collect_materials(
 ) -> dict[str, Any]:
     """Turn search links into local previews/download candidates."""
     manifest = read_json(manifest_path)
-    results = [item for item in manifest.get("results", []) if isinstance(item, dict)] if isinstance(manifest, dict) else []
+    all_results = [item for item in manifest.get("results", []) if isinstance(item, dict)] if isinstance(manifest, dict) else []
+    results = material_candidate_results(all_results)
     base = Path(output_dir)
     base.mkdir(parents=True, exist_ok=True)
     candidate_dir = base / "materials"
@@ -613,6 +618,9 @@ def collect_materials(
         "resource_candidates": build_material_resource_candidates(direct_urls, repo_previews),
         "errors": repo_errors,
         "summary": {
+            "input_results": len(all_results),
+            "material_candidate_results": len(results),
+            "skipped_non_material_results": max(len(all_results) - len(results), 0),
             "direct_asset_urls": len(direct_urls),
             "github_repositories": len(repo_refs),
             "downloaded_or_previewed": download_payload.get("summary", {}).get("total", 0) if download_payload else 0,
@@ -826,7 +834,7 @@ def update_workflow_collect_state(
 def direct_asset_urls_from_results(results: list[dict[str, Any]]) -> list[str]:
     urls: list[str] = []
     seen: set[str] = set()
-    for result in results:
+    for result in material_candidate_results(results):
         metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
         candidates = [
             str(metadata.get("raw_url") or ""),
@@ -841,6 +849,39 @@ def direct_asset_urls_from_results(results: list[dict[str, Any]]) -> list[str]:
             seen.add(clean)
             urls.append(clean)
     return urls
+
+
+def material_candidate_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return results that can plausibly lead to a handout/source package."""
+    output: list[dict[str, Any]] = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        if result_can_produce_material(result):
+            output.append(result)
+    return output
+
+
+def result_can_produce_material(result: dict[str, Any]) -> bool:
+    layer = str(result.get("layer") or "")
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    repo = str(metadata.get("repository") or "").strip()
+    if repo and not search.result_has_writeup_signal(result, layer):
+        return True
+    profile = search.material_profile_for_result(
+        result,
+        layer=layer,
+        missing_reason=str(result.get("missing_reason") or ""),
+    )
+    gate = search.continuation_gate(result, layer=layer, material_profile=profile)
+    if gate.get("gate") == "cannot_continue":
+        return False
+    if search.result_has_asset_signal(result, layer) or search.result_has_official_signal(result):
+        return True
+    url = str(result.get("url") or result.get("source_url") or "")
+    if search.is_github_tree_url(url) and search.looks_source_or_challenge_path(url, result):
+        return True
+    return False
 
 
 def select_case_results(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1485,6 +1526,19 @@ def gate_counts(cases: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def continuable_case_count(cases: list[dict[str, Any]]) -> int:
+    counts = gate_counts(cases)
+    return counts["can_continue"] + counts["needs_human_download"]
+
+
+def cases_allow_material_progress(cases: list[dict[str, Any]]) -> bool:
+    if not cases:
+        return False
+    if continuable_case_count(cases) > 0:
+        return True
+    return any(case_has_archive_input(case) for case in cases)
+
+
 def user_status_counts(cases: list[dict[str, Any]]) -> dict[str, Any]:
     missing_material = 0
     pending_user = 0
@@ -1615,13 +1669,14 @@ def dockerizer_handoff_details(
     if missing_start_evidence:
         missing_items.append("启动方式")
     questions = [f"请确认{item}" for item in missing_items]
+    source_subdir = str(runtime.get("source_subdir") or root.as_posix())
     return {
         "challenge_dir": root.as_posix(),
         "existing_dockerfiles": existing_dockerfiles,
         "existing_compose_files": existing_compose_files,
         "port_hints": port_hints,
         "service_protocol": runtime.get("service_protocol", ""),
-        "source_subdir": runtime.get("source_subdir", root.as_posix()),
+        "source_subdir": source_subdir,
         "start_command_hints": start_commands,
         "flag_paths": flag_paths,
         "flag_runtime_policy": flag_runtime_policy,
@@ -1629,7 +1684,7 @@ def dockerizer_handoff_details(
         "user_questions": questions,
         "can_auto_render": not missing_start_evidence,
         "auto_action": "auto-render",
-        "recommended_command": f"python3 scripts/workflow.py auto-render --project-dir {root.as_posix()}",
+        "recommended_command": f"python3 scripts/workflow.py auto-render --project-dir {source_subdir}",
     }
 
 
@@ -1797,7 +1852,9 @@ def run_workflow_engine(
             events.append(event)
             append_engine_event(base, event)
             append_stage_timing(base, event)
-            if stop_on_blocked and event.get("status") in {"blocked", "pending_user", "incomplete", "failed"}:
+            if event.get("status") in {"blocked", "pending_user", "incomplete", "failed"}:
+                break
+            if stop_on_blocked and event.get("status") not in {"completed", "skipped"}:
                 break
         payload = {
             "schema_version": f"{SCHEMA_PREFIX}.engine_run.v1",
@@ -1884,9 +1941,29 @@ def execute_stage_research(base: Path, *, max_search_tasks: int, search_limit: i
             download_preview=False,
             fetch_snapshots=False,
         )
-        return {"status": "ok", "evidence_path": result.get("search_results_path", ""), "summary": result.get("summary", {})}
+        summary = result.get("summary", {}) if isinstance(result.get("summary"), dict) else {}
+        if int(summary.get("continuable_cases") or 0) <= 0:
+            return {
+                "status": "pending_user",
+                "evidence_path": result.get("ctf_cases_path", "") or result.get("search_results_path", ""),
+                "summary": summary,
+                "errors": [
+                    {
+                        "message": "搜索只得到 WP、solver、平台页或其他线索，没有源码、附件、官方题包或可下载材料；不能继续生成最终交付。",
+                    }
+                ],
+            }
+        return {"status": "ok", "evidence_path": result.get("search_results_path", ""), "summary": summary}
     if cases.exists() and cases_file_has_rows(cases):
-        return {"status": "ok", "evidence_path": cases.as_posix(), "summary": {"reason": "existing ctf_cases.jsonl"}}
+        loaded = data.load_cases(cases)
+        if not cases_allow_material_progress(loaded):
+            return {
+                "status": "pending_user",
+                "evidence_path": cases.as_posix(),
+                "summary": {"reason": "existing ctf_cases.jsonl", "cases": len(loaded), "continuable_cases": 0},
+                "errors": [{"message": "已有 ctf_cases.jsonl 只有不可交付线索，需要换题或补源码/附件入口。"}],
+            }
+        return {"status": "ok", "evidence_path": cases.as_posix(), "summary": {"reason": "existing ctf_cases.jsonl", "cases": len(loaded), "continuable_cases": continuable_case_count(loaded)}}
     search_results = base / "search_results.json"
     if search_results.exists():
         manifest = read_json(search_results)
@@ -1904,9 +1981,25 @@ def execute_stage_research(base: Path, *, max_search_tasks: int, search_limit: i
 
 
 def execute_stage_collect(base: Path) -> dict[str, Any]:
+    cases_path = base / "ctf_cases.jsonl"
+    if cases_path.exists():
+        cases = data.load_cases(cases_path)
+        if not cases_allow_material_progress(cases):
+            return {
+                "status": "pending_user",
+                "evidence_path": cases_path.as_posix(),
+                "errors": [{"message": "当前题目清单只有 WP、solver、平台页或搜索线索，没有可收集材料；应换题或补材料入口。"}],
+            }
     manifest = base / "search_results.json"
     if manifest.exists():
         result = auto_collect_and_route(manifest_path=manifest, output_dir=base, accept_safe_downloads=True)
+        if int(result.get("summary", {}).get("routes", 0) or 0) <= 0 and int(result.get("summary", {}).get("accepted_downloads", 0) or 0) <= 0:
+            return {
+                "status": "pending_user",
+                "evidence_path": (base / "auto_collect_and_route.json").as_posix(),
+                "summary": result.get("summary", {}),
+                "errors": [{"message": "没有可下载或可预览的源码、附件、GitHub 单题目录。"}],
+            }
         return {"status": "ok", "evidence_path": (base / "auto_collect_and_route.json").as_posix(), "summary": result.get("summary", {})}
     if (base / "material_candidates.json").exists() or (base / "resource_route.json").exists():
         return {"status": "ok", "evidence_path": first_existing(base, ["material_candidates.json", "resource_route.json"]).as_posix()}
@@ -1923,6 +2016,15 @@ def execute_stage_dedupe(base: Path) -> dict[str, Any]:
 
 
 def execute_stage_download_preview(base: Path) -> dict[str, Any]:
+    cases_path = base / "ctf_cases.jsonl"
+    if cases_path.exists():
+        cases = data.load_cases(cases_path)
+        if not cases_allow_material_progress(cases):
+            return {
+                "status": "pending_user",
+                "evidence_path": cases_path.as_posix(),
+                "errors": [{"message": "当前题目清单不可交付，下载预览不会处理 WP/README 线索。"}],
+            }
     manifest = base / "search_results.json"
     if manifest.exists():
         result = download_sandbox_from_manifest(manifest_path=manifest, output_dir=base, accept=False)
@@ -1944,6 +2046,15 @@ def execute_stage_download_preview(base: Path) -> dict[str, Any]:
 
 
 def execute_stage_download_accept(base: Path, *, allow_download_accept: bool) -> dict[str, Any]:
+    cases_path = base / "ctf_cases.jsonl"
+    if cases_path.exists():
+        cases = data.load_cases(cases_path)
+        if not cases_allow_material_progress(cases):
+            return {
+                "status": "blocked",
+                "evidence_path": cases_path.as_posix(),
+                "errors": [{"message": "当前题目清单没有可交付材料，不能把 WP/README 下载结果接受为题目材料。"}],
+            }
     accepted_dir = base / "downloads_accepted"
     if accepted_dir.exists() and any(path.is_file() for path in accepted_dir.rglob("*")):
         return {"status": "ok", "evidence_path": accepted_dir.as_posix(), "summary": {"reason": "existing accepted downloads"}}
@@ -2017,6 +2128,12 @@ def execute_stage_final_report(base: Path) -> dict[str, Any]:
     if not cases_path.exists():
         return {"status": "blocked", "errors": [{"message": "缺少 cases 文件，无法生成最终报告。"}]}
     cases = data.load_cases(cases_path)
+    if not any(case_has_final_delivery_input(case) for case in cases):
+        return {
+            "status": "blocked",
+            "evidence_path": cases_path.as_posix(),
+            "errors": [{"message": "没有题目源码、附件、镜像、正式手册或归档 manifest，不能生成最终交付目录。"}],
+        }
     internal_output = base / "_cache" / "final_report"
     result = final_reporter.create_final_outputs(cases, internal_output, base_dir=base)
     delivery = delivery_packager.create_delivery_package(
@@ -2543,6 +2660,9 @@ def check_download_preview_completion(workdir: Path, case_id: str) -> dict[str, 
 
 
 def check_download_accept_completion(workdir: Path, case: dict[str, Any], case_id: str) -> dict[str, Any]:
+    research = case.get("research") if isinstance(case.get("research"), dict) else {}
+    if str(research.get("gate") or "") == "cannot_continue" and not case_has_archive_input(case):
+        return completion_error("download_accept", case_id, "只有 WP、solver、平台页或搜索线索，不能算下载材料完成。", status="blocked")
     accepted_dir = workdir / "downloads_accepted"
     if accepted_dir.exists() and any(path.is_file() for path in accepted_dir.rglob("*")):
         return completion_ok("download_accept", accepted_dir)
@@ -2661,6 +2781,16 @@ def case_has_archive_input(case: dict[str, Any]) -> bool:
     manual_path = str(writeup.get("formal_manual_path") or writeup.get("manual_path") or "").strip()
     has_manual = bool(manual_path and Path(manual_path).exists())
     return has_manual and (has_existing_local or has_existing_docker_artifact)
+
+
+def case_has_final_delivery_input(case: dict[str, Any]) -> bool:
+    if case_has_archive_input(case):
+        return True
+    archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
+    manifest = str(archive_info.get("manifest_path") or "").strip()
+    if manifest and Path(manifest).exists():
+        return True
+    return False
 
 
 def json_file_mentions_case(path: Path, case_id: str) -> bool:
@@ -3198,7 +3328,8 @@ def download_sandbox_from_manifest(
 ) -> dict[str, Any]:
     manifest = read_json(manifest_path)
     urls = []
-    for item in manifest.get("results", []) if isinstance(manifest, dict) else []:
+    results = manifest.get("results", []) if isinstance(manifest, dict) else []
+    for item in material_candidate_results([item for item in results if isinstance(item, dict)]):
         if not isinstance(item, dict):
             continue
         url = str(item.get("source_url") or item.get("url") or "")
