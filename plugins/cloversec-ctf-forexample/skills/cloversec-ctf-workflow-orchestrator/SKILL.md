@@ -75,6 +75,9 @@ research, collect, dedupe, download_preview, download_accept, archive, quality, 
 
 自然提示词验收要求：
 
+- 用户只说“帮我完整收集一道 CTF 题目”时，第一选择是 `cloversec_ctf_workflow_run`，不是手写 `ctf_case.json`、手动复制文件、手动打 zip。
+- 如果当前工具列表里没有 `cloversec_ctf_workflow_run`，先用工具搜索加载 CloverSec workflow MCP；仍不可用时，才使用脚本 fallback。
+- fallback 也必须运行 `cloversec_ctf_delivery.py`，不能自己把 `Web-题目名/` 当最终交付根目录。
 - 用户只说“帮我完整收集一道 CTF 题目”时，最终回复不能只给 `download_preview.json`、`archive/`、`reports/`、`manifests/` 或 `_cache`。
 - 如果已经有安全下载预览或用户已经确认 safe，必须继续运行到 `final_report`，并用 `cloversec_ctf_delivery.py` 生成中文最终交付目录。
 - 最终只把 `outputs/` 或 `最终交付包/` 报给用户；如果当前只生成了 `archive/` 中间目录，必须先整理成最终交付包再汇报。

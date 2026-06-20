@@ -715,6 +715,20 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertFalse((challenge_dir / ".DS_Store").exists())
             self.assertFalse(any(item["path"].endswith(".DS_Store") for item in issues))
 
+    def test_delivery_scan_blocks_quality_and_metadata_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            delivery_dir = Path(tmp) / "outputs"
+            delivery_dir.mkdir()
+            for name in ["_quality", "元数据"]:
+                (delivery_dir / name).mkdir()
+                (delivery_dir / name / "report.json").write_text("{}", encoding="utf-8")
+
+            issues = delivery.scan_delivery_package(delivery_dir)
+
+            issue_paths = {item["path"] for item in issues}
+            self.assertIn("_quality", issue_paths)
+            self.assertIn("元数据", issue_paths)
+
     def test_delivery_package_same_outputs_dir_does_not_write_cache_to_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1023,7 +1037,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.7")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.8")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

@@ -16,7 +16,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.7"
+VERSION = "1.0.8"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -950,7 +950,7 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     allowed_root_files = set(ALL_ROOT_FILES)
     allowed_subdirs = set(CHALLENGE_SUBDIRS)
-    blocked_root_names = {"_cache", "机器数据", "reports", "logs", "evidence", "snapshots", "Hub准备", "质量检查", "archive", "归档"}
+    blocked_root_names = {"_cache", "_quality", "机器数据", "元数据", "reports", "logs", "evidence", "snapshots", "Hub准备", "质量检查", "archive", "归档"}
     blocked_manual_tokens = ("draft", "草稿", "template", "manual_filled_draft", "manual_template")
 
     for child in sorted(delivery.iterdir()) if delivery.exists() else []:

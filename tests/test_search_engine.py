@@ -695,12 +695,12 @@ class SearchEngineTests(unittest.TestCase):
     def test_github_release_assets_extracts_download_urls(self):
         payload = [
             {
-                "tag_name": "v1.0.7",
+                "tag_name": "v1.0.8",
                 "name": "Release v1",
                 "assets": [
                     {
                         "name": "challenge.zip",
-                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.0.7/challenge.zip",
+                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.0.8/challenge.zip",
                         "size": 123,
                         "content_type": "application/zip",
                         "download_count": 7,
@@ -714,7 +714,7 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(results[0]["provider"], "github-release")
         self.assertEqual(results[0]["metadata"]["asset_name"], "challenge.zip")
-        self.assertEqual(results[0]["metadata"]["tag"], "v1.0.7")
+        self.assertEqual(results[0]["metadata"]["tag"], "v1.0.8")
 
     def test_github_release_assets_cli_writes_structured_provider_error(self):
         with tempfile.TemporaryDirectory() as tmp:

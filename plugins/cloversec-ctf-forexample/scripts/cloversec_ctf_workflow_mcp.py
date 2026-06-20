@@ -18,7 +18,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "1.0.7"
+SERVER_VERSION = "1.0.8"
 SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {
@@ -182,7 +182,7 @@ TOOLS = [
     },
     {
         "name": "cloversec_ctf_workflow_run",
-        "description": "Execute deterministic workflow stages with persisted evidence-backed state, resume, lock, progress, and pending-user gates.",
+        "description": "Main one-shot workflow executor for natural requests like 'complete one CTF challenge collection': run safe stages through final_report, create the Chinese final delivery folder, and avoid hand-written archive/report directories.",
         "inputSchema": {
             "type": "object",
             "properties": {

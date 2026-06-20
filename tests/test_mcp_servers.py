@@ -108,6 +108,22 @@ class McpServerProtocolTests(unittest.TestCase):
         self.assertEqual(rows[0]["case_id"], "case-demo-0001")
         self.assertEqual(rows[0]["xlsx_fields"]["名称"], "baby sql")
 
+    def test_workflow_run_tool_description_points_to_natural_complete_delivery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            responses = call_mcp_server(
+                SCRIPTS / "cloversec_ctf_workflow_mcp.py",
+                "cloversec_ctf_platform_contract",
+                {},
+                runtime_dir=Path(tmp) / "mcp-runtime",
+            )
+            tools = responses[1]["result"]["tools"]
+            workflow_run = next(tool for tool in tools if tool["name"] == "cloversec_ctf_workflow_run")
+
+        description = workflow_run["description"]
+        self.assertIn("complete one CTF challenge collection", description)
+        self.assertIn("final_report", description)
+        self.assertIn("Chinese final delivery folder", description)
+
 
 def call_mcp_server(script: Path, tool_name: str, arguments: dict, *, runtime_dir: Path) -> list[dict]:
     requests = [
