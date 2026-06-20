@@ -270,6 +270,20 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(cases[0]["research"]["gate"], "needs_human_download")
         self.assertEqual(cases[0]["asset_collection"]["blocking_rule"], "github_dir_unverified")
 
+    def test_github_tree_url_is_official_asset_signal(self):
+        result = {
+            "provider": "github",
+            "kind": "repository",
+            "title": "IrisCTF 2025 bad todo",
+            "url": "https://github.com/IrisSec/IrisCTF-2025-Challenges/tree/main/bad-todo",
+            "summary": "Official challenge directory",
+            "metadata": {},
+        }
+
+        self.assertTrue(search.is_github_tree_url(result["url"]))
+        self.assertTrue(search.result_has_asset_signal(result, "writeup_candidate"))
+        self.assertTrue(search.result_has_official_signal(result))
+
     def test_fetch_and_download_url_against_local_server(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -695,12 +709,12 @@ class SearchEngineTests(unittest.TestCase):
     def test_github_release_assets_extracts_download_urls(self):
         payload = [
             {
-                "tag_name": "v1.0.8",
+                "tag_name": "v1.0.9",
                 "name": "Release v1",
                 "assets": [
                     {
                         "name": "challenge.zip",
-                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.0.8/challenge.zip",
+                        "browser_download_url": "https://github.com/example/repo/releases/download/v1.0.9/challenge.zip",
                         "size": 123,
                         "content_type": "application/zip",
                         "download_count": 7,
@@ -714,7 +728,7 @@ class SearchEngineTests(unittest.TestCase):
 
         self.assertEqual(results[0]["provider"], "github-release")
         self.assertEqual(results[0]["metadata"]["asset_name"], "challenge.zip")
-        self.assertEqual(results[0]["metadata"]["tag"], "v1.0.8")
+        self.assertEqual(results[0]["metadata"]["tag"], "v1.0.9")
 
     def test_github_release_assets_cli_writes_structured_provider_error(self):
         with tempfile.TemporaryDirectory() as tmp:

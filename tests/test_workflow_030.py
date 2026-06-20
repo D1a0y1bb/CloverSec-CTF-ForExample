@@ -412,6 +412,50 @@ class Workflow030Tests(unittest.TestCase):
             cases = [json.loads(line) for line in (run / "ctf_cases.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
             self.assertEqual(cases[0]["metadata"]["分类"], "Web")
 
+    def test_execute_search_tasks_prefers_github_tree_over_writeup_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = root / "run"
+            workflow.init_workflow(event="IrisCTF", years=[2025], categories=["web"], limit=1, out_dir=run)
+
+            def fake_search_plus(*args, **kwargs):  # noqa: ARG001
+                return {
+                    "results": [
+                        {
+                            "provider": "duckduckgo",
+                            "kind": "writeup",
+                            "title": "IrisCTF 2025 bad todo writeup",
+                            "url": "https://example.com/irisctf-2025-bad-todo-writeup",
+                            "summary": "A public writeup with no official handout.",
+                            "source_type": "public_web",
+                            "confidence": "medium",
+                            "metadata": {},
+                        },
+                        {
+                            "provider": "github",
+                            "kind": "repository",
+                            "title": "IrisCTF 2025 bad-todo official challenge directory",
+                            "url": "https://github.com/IrisSec/IrisCTF-2025-Challenges/tree/main/bad-todo",
+                            "summary": "Official source directory for the bad-todo web challenge.",
+                            "source_type": "github",
+                            "confidence": "high",
+                            "metadata": {},
+                        },
+                    ],
+                    "errors": [],
+                    "summary": {"total_results": 2},
+                    "decision_required": [],
+                }
+
+            with mock.patch.object(workflow.search_plus, "search_plus", side_effect=fake_search_plus):
+                payload = workflow.execute_search_tasks(workdir=run, max_tasks=1, fetch_snapshots=False)
+
+            self.assertEqual(payload["summary"]["cases"], 1)
+            cases = [json.loads(line) for line in (run / "ctf_cases.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(cases[0]["evidence"][0]["source_url"], "https://github.com/IrisSec/IrisCTF-2025-Challenges/tree/main/bad-todo")
+            self.assertEqual(cases[0]["research"]["gate"], "needs_human_download")
+            self.assertNotEqual(cases[0]["metadata"]["材料状态"], "公开 WP 线索")
+
     def test_collect_materials_downloads_direct_assets_and_previews_github(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -444,6 +488,54 @@ class Workflow030Tests(unittest.TestCase):
             self.assertTrue((root / "out" / "download_preview.json").exists())
             self.assertIn("Dockerfile", payload["repo_previews"][0]["summary"]["docker_hints"])
             self.assertEqual(payload["resource_candidates"][0]["next_skill"], "cloversec-ctf-attachment-packager")
+
+    def test_auto_collect_routes_github_tree_preview_to_dockerizer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = {
+                "results": [
+                    {
+                        "title": "IrisCTF 2025 bad-todo official challenge directory",
+                        "url": "https://github.com/IrisSec/IrisCTF-2025-Challenges/tree/main/bad-todo",
+                        "metadata": {},
+                    }
+                ]
+            }
+            manifest_path = root / "search_results.json"
+            workflow.write_json(manifest_path, manifest)
+
+            def fake_download_tree(repo, output_dir, **kwargs):  # noqa: ARG001
+                target = Path(output_dir)
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "Dockerfile").write_text("FROM node:20\n", encoding="utf-8")
+                (target / "app.js").write_text("console.log('demo')\n", encoding="utf-8")
+                return {
+                    "repository": repo,
+                    "ref": kwargs.get("ref", "main"),
+                    "path_prefix": kwargs.get("path_prefix", ""),
+                    "output_dir": target.as_posix(),
+                    "downloads": [{"path": (target / "Dockerfile").as_posix()}],
+                    "issues": [],
+                    "summary": {"downloaded": 2, "issues": 0},
+                }
+
+            with mock.patch.object(workflow.search, "github_release_assets", return_value=[]):
+                with mock.patch.object(
+                    workflow.search,
+                    "github_tree_files",
+                    return_value=[
+                        {"title": "Dockerfile", "metadata": {"path": "bad-todo/Dockerfile"}},
+                        {"title": "app.js", "metadata": {"path": "bad-todo/app.js"}},
+                    ],
+                ):
+                    with mock.patch.object(workflow.search, "download_github_tree", side_effect=fake_download_tree):
+                        payload = workflow.auto_collect_and_route(manifest_path=manifest_path, output_dir=root / "out")
+
+            self.assertEqual(payload["summary"]["github_repositories"], 1)
+            self.assertEqual(payload["summary"]["routes"], 1)
+            route = payload["routes"][0]
+            self.assertEqual(route["recommended_next"]["skill"], "cloversec-ctf-build-dockerizer")
+            self.assertEqual(route["gate"]["blocking_rule"], "github_tree_preview")
 
     def test_direct_asset_urls_convert_github_blob_to_raw_before_download(self):
         results = [

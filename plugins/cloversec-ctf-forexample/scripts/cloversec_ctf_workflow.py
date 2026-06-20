@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.8"
+WORKFLOW_VERSION = "1.0.9"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -379,7 +379,7 @@ def execute_search_tasks(
     aggregate_years = [int(item) for item in request.get("years", []) if str(item).isdigit()]
     ranked = search.rank_results(search.enrich_results(search.dedupe_results(all_results), query=aggregate_query, years=aggregate_years))
     case_limit = int(request.get("limit") or 0)
-    case_results = [item for item in ranked if case_candidate_result(item)]
+    case_results = select_case_results(ranked)
     if not case_results:
         case_results = ranked
     cases = search.results_to_cases({"query": aggregate_query, "years": aggregate_years, "results": case_results})
@@ -531,25 +531,31 @@ def collect_materials(
     candidate_dir.mkdir(parents=True, exist_ok=True)
 
     direct_urls = direct_asset_urls_from_results(results)[: max(max_direct_downloads, 0)]
-    repos = github_repos_from_results(results)[: max(max_repo_previews, 0)]
+    repo_refs = github_repo_refs_from_results(results)[: max(max_repo_previews, 0)]
     download_payload: dict[str, Any] = {}
     if download_direct and direct_urls:
         download_payload = download_sandbox(urls=direct_urls, output_dir=base, accept=accept_safe_downloads)
 
     repo_previews = []
     repo_errors = []
-    for repo in repos:
+    for repo_ref in repo_refs:
+        repo = str(repo_ref.get("repo") or "")
+        if not repo:
+            continue
+        path_prefix = str(repo_ref.get("path_prefix") or "").strip("/")
+        requested_ref = str(repo_ref.get("ref") or github_ref)
         release_assets = []
         tree_files = []
-        github_ref_used = github_ref
+        tree_download: dict[str, Any] = {}
+        github_ref_used = requested_ref
         try:
             release_assets = search.github_release_assets(repo, limit=30)
         except Exception as exc:  # noqa: BLE001
             repo_errors.append({"repo": repo, "provider": "github-release", "error": str(exc)})
         tree_error = ""
-        for ref in dict.fromkeys([github_ref, "master"]):
+        for ref in dict.fromkeys([requested_ref, github_ref, "master"]):
             try:
-                tree_files = search.github_tree_files(repo, ref=ref, limit=max_repo_files)
+                tree_files = search.github_tree_files(repo, ref=ref, path_prefix=path_prefix, limit=max_repo_files)
                 if tree_files:
                     github_ref_used = ref
                     break
@@ -558,16 +564,34 @@ def collect_materials(
                 github_ref_used = ref
         if tree_error and not tree_files:
             repo_errors.append({"repo": repo, "provider": "github-tree", "error": tree_error})
+        if path_prefix and tree_files:
+            download_dir = candidate_dir / "github_tree" / safe_slug(f"{repo}-{github_ref_used}-{path_prefix}")
+            try:
+                tree_download = search.download_github_tree(
+                    repo,
+                    download_dir,
+                    ref=github_ref_used,
+                    path_prefix=path_prefix,
+                    max_files=min(max(max_repo_files, 1), 120),
+                    asset_only=False,
+                )
+            except Exception as exc:  # noqa: BLE001
+                repo_errors.append({"repo": repo, "provider": "github-tree-download", "path_prefix": path_prefix, "error": str(exc)})
         repo_previews.append(
             {
                 "repo": repo,
-                "ref": github_ref_used if tree_files else github_ref,
+                "ref": github_ref_used if tree_files else requested_ref,
+                "path_prefix": path_prefix,
+                "source_url": repo_ref.get("source_url", ""),
+                "challenge_hint": repo_ref.get("challenge_hint", ""),
                 "release_assets": release_assets,
                 "tree_files": tree_files,
                 "resource_split": github_tree_resource_split(tree_files, release_assets),
+                "tree_download": tree_download,
                 "summary": {
                     "release_assets": len(release_assets),
                     "tree_files": len(tree_files),
+                    "downloaded_tree_files": tree_download.get("summary", {}).get("downloaded", 0) if tree_download else 0,
                     "docker_hints": github_tree_docker_hints(tree_files),
                     "attachment_hints": github_tree_attachment_hints(tree_files),
                 },
@@ -581,7 +605,8 @@ def collect_materials(
         "manifest_path": Path(manifest_path).as_posix(),
         "output_dir": base.as_posix(),
         "direct_asset_urls": direct_urls,
-        "github_repositories": repos,
+        "github_repositories": [item.get("repo", "") for item in repo_refs],
+        "github_tree_refs": repo_refs,
         "download_preview_path": (base / "download_preview.json").as_posix() if download_payload else "",
         "download_preview_summary": download_payload.get("summary", {}) if download_payload else {},
         "repo_previews": repo_previews,
@@ -589,12 +614,12 @@ def collect_materials(
         "errors": repo_errors,
         "summary": {
             "direct_asset_urls": len(direct_urls),
-            "github_repositories": len(repos),
+            "github_repositories": len(repo_refs),
             "downloaded_or_previewed": download_payload.get("summary", {}).get("total", 0) if download_payload else 0,
             "accepted_downloads": download_payload.get("summary", {}).get("accepted", 0) if download_payload else 0,
             "repo_errors": len(repo_errors),
         },
-        "next_action": "下载成功或仓库预览可用后，把材料目录交给 route-resource 自动分流。",
+        "next_action": "下载成功、GitHub 单题目录预览可用后，把材料目录交给 route-resource 自动分流；不要为了一道题整仓 clone。",
     }
     write_json(base / "material_candidates.json", payload)
     write_text(base / "material_collection_report.md", render_material_collection_report(payload))
@@ -652,6 +677,28 @@ def auto_collect_and_route(
                 },
             )
         )
+    if not routes:
+        for index, preview in enumerate(material_payload.get("repo_previews", []), start=1):
+            if not isinstance(preview, dict):
+                continue
+            tree_download = preview.get("tree_download") if isinstance(preview.get("tree_download"), dict) else {}
+            download_dir = Path(str(tree_download.get("output_dir") or ""))
+            downloaded = int(tree_download.get("summary", {}).get("downloaded") or 0) if isinstance(tree_download.get("summary"), dict) else 0
+            if downloaded <= 0 or not download_dir.exists() or not any(path.is_file() for path in download_dir.rglob("*")):
+                continue
+            routes.append(
+                route_resource(
+                    root=download_dir,
+                    output_dir=base / "resource_routes" / f"github_tree_{index:02d}",
+                    gate={
+                        "gate": "needs_human_download",
+                        "gate_reason": "已用 GitHub API 下载单题目录预览，尚未经过用户确认和 Dockerizer 改造。",
+                        "blocking_rule": "github_tree_preview",
+                        "next_action": "把该目录交给 cloversec-ctf-build-dockerizer 或附件检查；不要整仓 clone。",
+                    },
+                )
+            )
+            break
     payload = {
         "schema_version": f"{SCHEMA_PREFIX}.auto_collect_route.v1",
         "workflow_version": WORKFLOW_VERSION,
@@ -683,7 +730,7 @@ def auto_collect_next_action(routes: list[dict[str, Any]]) -> str:
         if skill and skill not in skills:
             skills.append(skill)
     if not skills:
-        return "没有可继续处理的本地材料，继续搜索源码、附件或官方题包。"
+        return "没有可继续处理的本地材料，继续搜索源码、附件或官方题包；如果发现 GitHub tree，用 download-github-tree 获取单题目录，不要整仓 clone。"
     if any(skill == "cloversec-ctf-build-dockerizer" for skill in skills):
         return "查看 resource_routes 下的 Dockerizer 交接表，把源码、Dockerfile、compose 或镜像 tar 交给 cloversec-ctf-build-dockerizer。"
     if any(skill == "cloversec-ctf-attachment-packager" for skill in skills):
@@ -734,6 +781,7 @@ def route_resource(
         "container_inference_path": container_path.as_posix() if container_payload else "",
         "resource_route_path": route_path.as_posix(),
         "handoff": handoff_payload,
+        "gate": route.get("gate", {}),
         "recommended_next": route.get("recommended_next", {}),
         "dockerizer_handoff": route.get("dockerizer_handoff", {}),
         "summary": route.get("summary", {}),
@@ -793,6 +841,35 @@ def direct_asset_urls_from_results(results: list[dict[str, Any]]) -> list[str]:
             seen.add(clean)
             urls.append(clean)
     return urls
+
+
+def select_case_results(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates = [item for item in ranked if case_candidate_result(item)]
+    if not candidates:
+        return ranked
+    usable_or_official = [
+        item
+        for item in candidates
+        if usable_case_result(item) or search.result_has_asset_signal(item, str(item.get("layer") or "")) or search.result_has_official_signal(item)
+    ]
+    selected = usable_or_official or candidates
+    return sorted(selected, key=case_result_priority)
+
+
+def case_result_priority(result: dict[str, Any]) -> tuple[int, int, int, int, int, str]:
+    layer = str(result.get("layer") or "")
+    profile = search.material_profile_for_result(
+        result,
+        layer=layer,
+        missing_reason=str(result.get("missing_reason") or ""),
+    )
+    gate = search.continuation_gate(result, layer=layer, material_profile=profile)
+    gate_rank = {"can_continue": 0, "needs_human_download": 1}.get(str(gate.get("gate") or ""), 9)
+    official_rank = 0 if search.result_has_official_signal(result) else 1
+    asset_rank = 0 if search.result_has_asset_signal(result, layer) else 1
+    tree_rank = 0 if search.is_github_tree_url(str(result.get("url") or "")) else 1
+    score_rank = -int(result.get("score") or 0)
+    return (gate_rank, official_rank, asset_rank, tree_rank, score_rank, str(result.get("title") or "").lower())
 
 
 def usable_case_result(result: dict[str, Any]) -> bool:
@@ -960,6 +1037,58 @@ def github_repos_from_results(results: list[dict[str, Any]]) -> list[str]:
                 seen.add(repo)
                 repos.append(repo)
     return repos
+
+
+def github_repo_refs_from_results(results: list[dict[str, Any]]) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for result in results:
+        direct_ref = github_tree_ref_from_result(result)
+        if direct_ref:
+            key = (direct_ref["repo"], direct_ref.get("ref", ""), direct_ref.get("path_prefix", ""))
+            if key not in seen:
+                seen.add(key)
+                refs.append(direct_ref)
+            continue
+        for repo in github_repos_from_results([result]):
+            key = (repo, "", "")
+            if key in seen:
+                continue
+            seen.add(key)
+            refs.append({"repo": repo, "ref": "", "path_prefix": "", "source_url": str(result.get("url") or ""), "challenge_hint": ""})
+    return refs
+
+
+def github_tree_ref_from_result(result: dict[str, Any]) -> dict[str, str]:
+    url = str(result.get("url") or result.get("source_url") or "")
+    parsed = urlparse(url)
+    if parsed.netloc.lower() in {"github.com", "www.github.com"}:
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 5 and parts[2].lower() == "tree":
+            repo = f"{parts[0]}/{parts[1].removesuffix('.git')}"
+            return {
+                "repo": repo,
+                "ref": parts[3],
+                "path_prefix": "/".join(parts[4:]).strip("/"),
+                "source_url": url,
+                "challenge_hint": search.infer_case_title(result),
+            }
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    repo = str(metadata.get("repository") or "")
+    ref = str(metadata.get("ref") or "")
+    path = str(metadata.get("path") or "").strip("/")
+    if repo and path:
+        path_prefix = path
+        if "." in Path(path).name:
+            path_prefix = str(Path(path).parent).strip(".")
+        return {
+            "repo": repo,
+            "ref": ref,
+            "path_prefix": path_prefix.strip("/"),
+            "source_url": url,
+            "challenge_hint": search.infer_case_title(result),
+        }
+    return {}
 
 
 def github_repo_from_value(value: str) -> str:

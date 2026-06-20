@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/1.0.8 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/1.0.9 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -377,6 +377,14 @@ def parse_github_repo(value: str) -> tuple[str, str]:
     if len(parts) < 2:
         raise ValueError("GitHub URL must include owner and repo")
     return parts[0], parts[1].removesuffix(".git")
+
+
+def is_github_tree_url(value: str) -> bool:
+    parsed = urlparse(str(value or ""))
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        return False
+    parts = [part for part in parsed.path.split("/") if part]
+    return len(parts) >= 5 and parts[2].lower() == "tree" and bool(parts[4:])
 
 
 def github_blob_to_raw_url(url: str) -> str:
@@ -1563,6 +1571,8 @@ def result_has_asset_signal(result: dict[str, Any], layer: str = "") -> bool:
     files = metadata.get("files") if isinstance(metadata.get("files"), list) else []
     if files or metadata_attachment_candidates(result):
         return True
+    if is_github_tree_url(url) and looks_source_or_challenge_path(url, result):
+        return True
     if layer == "attachment_candidate" or looks_attachment_candidate_url(url):
         return True
     if kind in {"release_asset", "raw_file", "github_tree"} and looks_source_or_challenge_path(url, result):
@@ -1573,7 +1583,10 @@ def result_has_asset_signal(result: dict[str, Any], layer: str = "") -> bool:
 def result_has_official_signal(result: dict[str, Any]) -> bool:
     provider = str(result.get("provider") or "")
     kind = str(result.get("kind") or "")
+    url = str(result.get("url") or "")
     if challenge_metadata_for_result(result):
+        return True
+    if is_github_tree_url(url) and looks_source_or_challenge_path(url, result):
         return True
     return provider in {"github", "github-tree", "github-release", "direct-url"} and kind in {"challenge_metadata", "release_asset", "raw_file"}
 
@@ -1623,10 +1636,7 @@ def is_ctftime_task_only(result: dict[str, Any]) -> bool:
 
 def github_directory_needs_download(result: dict[str, Any]) -> bool:
     url = str(result.get("url") or "")
-    parsed = urlparse(url)
-    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
-        return False
-    return "/tree/" in parsed.path.lower() and not metadata_attachment_candidates(result)
+    return is_github_tree_url(url) and not metadata_attachment_candidates(result)
 
 
 def resource_classification_has_local_material(resource_classification: dict[str, Any] | None) -> bool:

@@ -16,7 +16,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.8"
+VERSION = "1.0.9"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -86,6 +86,7 @@ def create_delivery_package(
     output_dir: str | Path | None = None,
     copy_limit: int = DEFAULT_COPY_LIMIT,
     copy_image_tars: bool = True,
+    include_process_evidence: bool = False,
 ) -> dict[str, Any]:
     work = Path(workdir)
     if not work.exists():
@@ -141,7 +142,11 @@ def create_delivery_package(
         files,
         missing,
     )
-    process_records = copy_process_machine_data(work, outputs, delivery, copy_limit=copy_limit)
+    process_records = (
+        copy_process_machine_data(work, outputs, delivery, copy_limit=copy_limit)
+        if include_process_evidence
+        else {"files": [], "missing": [], "summary": {"machine_files": 0, "dir": ""}}
+    )
     files.extend(process_records["files"])
     missing.extend(process_records["missing"])
 
@@ -1171,6 +1176,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--copy-limit", type=int, default=DEFAULT_COPY_LIMIT)
     parser.add_argument("--copy-image-tars", dest="copy_image_tars", action="store_true", default=True)
     parser.add_argument("--no-copy-image-tars", dest="copy_image_tars", action="store_false")
+    parser.add_argument("--include-process-evidence", action="store_true", help="把机器过程数据复制到 过程证据/机器数据；默认不放进人接手的交付根。")
     parser.add_argument("--zip-output", default="")
     args = parser.parse_args(argv)
     manifest = create_delivery_package(
@@ -1179,6 +1185,7 @@ def main(argv: list[str] | None = None) -> int:
         output_dir=args.output_dir or None,
         copy_limit=args.copy_limit,
         copy_image_tars=args.copy_image_tars,
+        include_process_evidence=args.include_process_evidence,
     )
     if args.zip_output:
         zip_manifest = create_delivery_zip(manifest["paths"]["delivery_dir"], args.zip_output)

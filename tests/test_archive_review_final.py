@@ -693,6 +693,46 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((delivery_dir / "交付说明.md").exists())
             self.assertFalse((outputs / f"交付包-{workdir.name}").exists())
 
+    def test_delivery_package_does_not_include_process_evidence_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            (workdir / "workflow_state.json").write_text("{}", encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertFalse((delivery_dir / "过程证据").exists())
+            self.assertEqual(manifest["process_evidence"]["machine_files"], 0)
+            self.assertEqual(manifest["summary"]["package_issues"], 0)
+
+    def test_delivery_package_can_include_process_evidence_when_explicit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            (workdir / "workflow_state.json").write_text("{}", encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(
+                workdir=workdir,
+                outputs_dir=outputs,
+                output_dir=tmp_path / "交付包",
+                include_process_evidence=True,
+            )
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertTrue((delivery_dir / "过程证据" / "机器数据" / "workdir" / "workflow_state.json").exists())
+            self.assertEqual(manifest["summary"]["package_issues"], 0)
+
     def test_delivery_scan_removes_macos_metadata_before_reporting(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1037,7 +1077,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.8")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.9")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

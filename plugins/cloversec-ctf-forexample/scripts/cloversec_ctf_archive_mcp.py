@@ -13,7 +13,7 @@ import cloversec_ctf_audit as audit
 import cloversec_ctf_mcp_runtime as mcp_runtime
 
 
-SERVER_VERSION = "1.0.8"
+SERVER_VERSION = "1.0.9"
 SERVER_NAME = "cloversec-ctf-archive"
 
 TOOLS = [
