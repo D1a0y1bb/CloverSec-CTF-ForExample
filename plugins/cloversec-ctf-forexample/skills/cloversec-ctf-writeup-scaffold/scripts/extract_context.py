@@ -111,7 +111,16 @@ def list_rule(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
-CATEGORY_RULES = dict_rule(rule_value("categories", "categories", default={}))
+DEFAULT_CATEGORY_RULES = {
+    "Web": {"aliases": ["web", "web题", "php", "node", "flask", "django", "fastapi", "spring", "apache", "nginx"]},
+    "Pwn": {"aliases": ["pwn", "heap", "rop", "fmt", "uaf", "ret2libc", "xinetd", "socat"]},
+    "Crypto": {"aliases": ["crypto", "rsa", "aes", "ecc", "hash", "lattice", "padding", "签名"]},
+    "Misc": {"aliases": ["misc", "stego", "forensics", "traffic", "pcap", "ai", "osint"]},
+    "Reverse": {"aliases": ["reverse", "rev", "ida", "ghidra", "apk", "逆向"]},
+    "Mobile": {"aliases": ["mobile", "android", "ios", "apk", "ipa", "frida", "xposed"]},
+    "IoT": {"aliases": ["iot", "firmware", "mips", "arm", "路由器", "固件"]},
+}
+CATEGORY_RULES = dict_rule(rule_value("categories", "categories", default={})) or DEFAULT_CATEGORY_RULES
 DIFFICULTY_ALIASES = dict_rule(rule_value("difficulty", "difficulty", "aliases", default={}))
 DIFFICULTY_KEYWORDS = dict_rule(rule_value("difficulty", "difficulty", "keywords", default={}))
 STARS_MAP = dict_rule(rule_value("difficulty", "difficulty", "stars", default={}))
