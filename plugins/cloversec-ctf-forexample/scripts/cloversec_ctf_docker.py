@@ -21,7 +21,7 @@ import cloversec_ctf_i18n as i18n
 
 TARGET_PLATFORM = "linux/amd64"
 DEFAULT_OPERATIONS = ["build", "load", "inspect", "run", "logs", "stop", "save"]
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 VALIDATION_LEVELS = ["static_only", "inspect_only", "build_only", "run_probe", "solve_verify"]
 OPERATION_AUTH_ACTIONS = {
     "build": "docker_build",
@@ -69,6 +69,12 @@ def create_docker_plan(
     if selected_project_dir and not selected_dockerfile.is_absolute():
         dockerfile_for_command = selected_project_dir / selected_dockerfile
     selected_command = str(container_command or environment.get("start_command") or inferred_runtime.get("container_command") or "").strip()
+    selected_protocol = normalize_probe_protocol(
+        inferred_runtime.get("probe_protocol")
+        or inferred_runtime.get("service_protocol")
+        or inferred_runtime.get("protocol")
+        or ""
+    )
     raw_operations = operations if operations is not None else operations_for_validation_level(selected_level, tar_path=selected_tar)
     selected_operations = [] if selected_level == "static_only" and raw_operations == [] else normalize_operations(raw_operations)
     container_name = f"cloversec-docker-{safe_token(str(case.get('case_id') or 'case'))}-{int(time.time())}"
@@ -127,6 +133,9 @@ def create_docker_plan(
         "project_dir": selected_project_dir.as_posix() if selected_project_dir else "",
         "dockerfile": dockerfile_for_command.as_posix(),
         "ports": selected_ports,
+        "probe_protocol": selected_protocol,
+        "probe_urls": [] if selected_protocol == "tcp" else probe_urls_from_ports(selected_ports),
+        "tcp_probes": tcp_probes_from_ports(selected_ports) if selected_protocol == "tcp" else [],
         "operations": selected_operations,
         "container_name": container_name,
         "commands": commands,
@@ -225,6 +234,7 @@ def execute_docker_workflow(
     issues = list(plan.get("issues", []))
     commands = plan.get("commands", {})
     container_started = False
+    run_attempted = False
     container_name = str(plan.get("container_name") or "")
     selected_operations = set(plan.get("operations", []))
     auth_errors = authorization_errors(
@@ -260,6 +270,7 @@ def execute_docker_workflow(
                 if platform:
                     evidence["summary"]["platform"] = platform
             if operation == "run":
+                run_attempted = True
                 container_started = step.get("status") == "pass"
 
         if container_started:
@@ -273,8 +284,13 @@ def execute_docker_workflow(
             evidence["summary"]["logs_path"] = logs_path.as_posix()
             evidence["steps"].append(logs_step)
 
-        for url in list(probe_urls or []) + probe_urls_from_ports(plan.get("ports", [])):
-            evidence["probes"].append(probe_url(url, timeout=probe_timeout))
+        planned_http_urls = list(probe_urls or []) + [str(item) for item in plan.get("probe_urls", []) if str(item).strip()]
+        if planned_http_urls:
+            for url in planned_http_urls:
+                evidence["probes"].append(probe_url(url, timeout=probe_timeout))
+        for probe in plan.get("tcp_probes", []) if isinstance(plan.get("tcp_probes"), list) else []:
+            if isinstance(probe, dict):
+                evidence["probes"].append(probe_tcp(probe.get("host", "127.0.0.1"), probe.get("port", ""), timeout=probe_timeout))
 
         if "save" in selected_operations and "save" in commands:
             tar_path_obj = Path(str(plan.get("tar_path") or ""))
@@ -295,6 +311,8 @@ def execute_docker_workflow(
         if "stop" in selected_operations and container_started:
             evidence["steps"].append(run_command(commands.get("stop", ["docker", "stop", container_name]), timeout=command_timeout))
             evidence["steps"].append(run_command(commands.get("rm", ["docker", "rm", container_name]), timeout=command_timeout))
+        elif "stop" in selected_operations and run_attempted and container_name:
+            evidence["steps"].append(run_command(["docker", "rm", "-f", container_name], timeout=command_timeout))
 
     if not evidence["summary"]["platform"]:
         for step in evidence["steps"]:
@@ -310,7 +328,8 @@ def execute_docker_workflow(
             issues.append(f"{step.get('id')}: exit_code={step.get('exit_code')}")
     for probe in evidence["probes"]:
         if probe.get("status") == "fail":
-            issues.append(f"probe failed: {probe.get('url')}")
+            target = probe.get("url") or probe.get("target") or ""
+            issues.append(f"probe failed: {target}")
 
     run_requested = "run" in selected_operations
     run_ok = not run_requested or any(step.get("id") == "docker-run" and step.get("status") == "pass" for step in evidence["steps"])
@@ -492,6 +511,15 @@ def normalize_ports(value: Any) -> list[str]:
     return output
 
 
+def normalize_probe_protocol(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"tcp", "socket", "nc", "netcat"}:
+        return "tcp"
+    if text in {"http", "https", "web"}:
+        return "http"
+    return "http"
+
+
 def rewrite_ports_to_available(plan: dict[str, Any]) -> None:
     ports = [str(item) for item in plan.get("ports", []) if str(item).strip()]
     rewritten = []
@@ -511,6 +539,11 @@ def rewrite_ports_to_available(plan: dict[str, Any]) -> None:
         return
     plan["ports"] = rewritten
     plan["port_rewrites"] = rewrites
+    if plan.get("probe_protocol") == "tcp":
+        plan["tcp_probes"] = tcp_probes_from_ports(rewritten)
+        plan["probe_urls"] = []
+    else:
+        plan["probe_urls"] = probe_urls_from_ports(rewritten)
     commands = plan.get("commands") if isinstance(plan.get("commands"), dict) else {}
     run_args = commands.get("run")
     if isinstance(run_args, list):
@@ -597,6 +630,15 @@ def probe_urls_from_ports(ports: list[str]) -> list[str]:
     return urls
 
 
+def tcp_probes_from_ports(ports: list[str]) -> list[dict[str, Any]]:
+    probes = []
+    for mapping in ports:
+        host_port = host_port_from_mapping(mapping)
+        if host_port:
+            probes.append({"protocol": "tcp", "host": "127.0.0.1", "port": host_port, "target": f"tcp://127.0.0.1:{host_port}"})
+    return probes
+
+
 def host_port_from_mapping(mapping: str) -> str:
     value = mapping.strip()
     if not value or ":" not in value:
@@ -622,6 +664,19 @@ def probe_url(url: str, *, timeout: float) -> dict[str, Any]:
         }
     except Exception as exc:  # noqa: BLE001
         return {"url": url, "status": "fail", "message": str(exc)}
+
+
+def probe_tcp(host: Any, port: Any, *, timeout: float) -> dict[str, Any]:
+    host_text = str(host or "127.0.0.1").strip() or "127.0.0.1"
+    port_text = str(port or "").strip()
+    target = f"tcp://{host_text}:{port_text}"
+    if not port_text.isdigit():
+        return {"protocol": "tcp", "target": target, "status": "skip", "message": "empty tcp port"}
+    try:
+        with socket.create_connection((host_text, int(port_text)), timeout=max(float(timeout), 0.1)):
+            return {"protocol": "tcp", "target": target, "status": "pass", "message": "tcp connect ok"}
+    except Exception as exc:  # noqa: BLE001
+        return {"protocol": "tcp", "target": target, "status": "fail", "message": str(exc)}
 
 
 def authorization_errors(

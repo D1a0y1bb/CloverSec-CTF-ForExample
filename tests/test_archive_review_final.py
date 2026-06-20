@@ -122,7 +122,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((archive_dir / "题目源码" / "src.py").exists())
             self.assertTrue((archive_dir / "题目源码" / "challenge.zip").exists())
             self.assertTrue((archive_dir / "题目镜像" / "web.tar").exists())
-            self.assertTrue((archive_dir / "题目手册" / "WEB-Web1.md").exists())
+            self.assertTrue((archive_dir / "题目手册" / "题目解题手册.md").exists())
             self.assertFalse((archive_dir / "题目手册" / "截图").exists())
             self.assertFalse((archive_dir / "过程证据").exists())
             self.assertTrue(Path(manifest["manifest_path"]).exists())
@@ -164,7 +164,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
 
             manifest = archive.create_archive_package(case, tmp_path / "archive")
 
-        manual_files = [item for item in manifest["files"] if item["role"] == "writeup" and item["relative_path"].endswith("WEB-Web1.md")]
+        manual_files = [item for item in manifest["files"] if item["role"] == "writeup" and item["relative_path"].endswith("题目解题手册.md")]
         self.assertEqual(len(manual_files), 1)
 
     def test_archive_package_does_not_mark_unverified_case_archived(self):
@@ -272,9 +272,9 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertEqual(payload["summary"]["xlsx_readback_rows"], 1)
             self.assertEqual(payload["summary"]["human_handoff_paths"]["最终归档表"], (tmp_path / "final" / "最终归档表.xlsx").as_posix())
             self.assertEqual(payload["summary"]["human_handoff_paths"]["语雀粘贴表"], (tmp_path / "final" / "语雀粘贴表.md").as_posix())
-            self.assertTrue((tmp_path / "final" / "archive.xlsx").exists())
-            self.assertTrue((tmp_path / "final" / "yuque_table.md").exists())
-            self.assertTrue((tmp_path / "final" / "final_report.md").exists())
+            self.assertFalse((tmp_path / "final" / "archive.xlsx").exists())
+            self.assertFalse((tmp_path / "final" / "yuque_table.md").exists())
+            self.assertFalse((tmp_path / "final" / "final_report.md").exists())
             self.assertEqual(rows[0]["Flag"], "flag{stage-six-full-flag}")
             self.assertIn("flag{stage-six-full-flag}", yuque)
             self.assertIn("## 对人交付文件", report)
@@ -452,7 +452,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((tmp_path / "archive" / "_cache" / "batch_archive_report.md").exists())
             self.assertTrue((tmp_path / "ctf_cases.archived.jsonl").exists())
             self.assertTrue((tmp_path / "final" / "最终归档表.xlsx").exists())
-            self.assertTrue((tmp_path / "final" / "archive.xlsx").exists())
+            self.assertFalse((tmp_path / "final" / "archive.xlsx").exists())
 
     def test_archive_runner_writes_resource_index_missing_report_and_final_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -533,12 +533,12 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue((delivery_dir / "语雀粘贴表.md").exists())
             self.assertEqual((delivery_dir / "最终归档表.xlsx").read_bytes(), b"completed-xlsx")
             self.assertTrue((delivery_dir / "Web-EZSmuggler" / "题目源码" / "Dockerfile").exists())
-            self.assertTrue((delivery_dir / "Web-EZSmuggler" / "题目手册" / "WEB-EZsmuggler.md").exists())
+            self.assertTrue((delivery_dir / "Web-EZSmuggler" / "题目手册" / "题目解题手册.md").exists())
             self.assertEqual(manifest["summary"]["package_issues"], 0)
             self.assertTrue((delivery_dir / "Web-EZSmuggler" / "题目镜像" / "l7-smuggler_latest.tar").exists())
             self.assertFalse(any(path.name == ".DS_Store" for path in delivery_dir.rglob("*")))
             self.assertFalse(any(path.suffix in {".json", ".jsonl"} for path in delivery_dir.rglob("*") if path.is_file()))
-            self.assertEqual({path.name for path in delivery_dir.iterdir() if path.is_file()}, {"最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"})
+            self.assertEqual({path.name for path in delivery_dir.iterdir() if path.is_file()}, {"最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md", "待处理问题.md", "质量检查报告.md"})
             self.assertFalse(any(path.name.startswith(("01-", "02-", "03-", "04-", "05-", "06-", "07-", "99-")) for path in delivery_dir.iterdir()))
             self.assertTrue(any(item["status"] == "copied" and item.get("subdir") == "题目镜像" for item in manifest["files"]))
 
@@ -568,6 +568,51 @@ class ArchiveReviewFinalTests(unittest.TestCase):
         self.assertNotIn("Web-PasswordManager/题目源码/package.json", issues)
         self.assertFalse((delivery_dir / "Web-PasswordManager" / "题目手册" / "manual_filled_draft.md").exists())
         self.assertNotIn("Web-PasswordManager/题目手册/manual_filled_draft.md", issues)
+
+    def test_delivery_package_flattens_raw_archive_and_renames_manual_for_humans(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            raw_output = tmp_path / "jsfs-cratectf-2024-platform"
+            raw_output.mkdir()
+            (raw_output / ".DS_Store").write_bytes(b"mac")
+            archive_dir = raw_output / "archive" / "Pwn-JSFS"
+            (archive_dir / "题目源码").mkdir(parents=True)
+            (archive_dir / "题目镜像").mkdir()
+            (archive_dir / "题目手册").mkdir()
+            (archive_dir / "题目源码" / "Dockerfile").write_text("FROM oven/bun:latest\n", encoding="utf-8")
+            (archive_dir / "题目镜像" / "jsfs.tar").write_bytes(b"tar")
+            (archive_dir / "题目手册" / "PWN-JSFS.md").write_text("# JSFS\n", encoding="utf-8")
+            (archive_dir / ".DS_Store").write_bytes(b"mac")
+            (raw_output / "archive" / "_cache" / "Pwn-JSFS").mkdir(parents=True)
+            (raw_output / "archive" / "_cache" / "Pwn-JSFS" / "archive_manifest.json").write_text("{}", encoding="utf-8")
+            archived_case = sample_case(tmp_path)
+            archived_case["case_id"] = "jsfs"
+            archived_case["metadata"]["名称"] = "JSFS"
+            archived_case["metadata"]["分类"] = "Pwn"
+            archived_case["metadata"]["归档目录"] = archive_dir.as_posix()
+            archived_case["metadata"]["验证状态"] = "通过"
+            archived_case["metadata"]["是否通过"] = "是"
+            archived_case["metadata"]["是否归档"] = "是"
+            archived_case["metadata"]["环境包/附件包路径"] = "题目镜像/jsfs.tar"
+            (raw_output / "jsfs_ctf_case.archived.json").write_text(json.dumps(archived_case, ensure_ascii=False), encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=raw_output, outputs_dir=raw_output, output_dir=tmp_path / "最终交付")
+            zip_manifest = delivery.create_delivery_zip(manifest["paths"]["delivery_dir"], tmp_path / "最终交付.zip")
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertTrue((delivery_dir / "最终归档表.xlsx").exists())
+            self.assertTrue((delivery_dir / "语雀粘贴表.md").exists())
+            self.assertTrue((delivery_dir / "Pwn-JSFS" / "题目源码" / "Dockerfile").exists())
+            self.assertTrue((delivery_dir / "Pwn-JSFS" / "题目镜像" / "jsfs.tar").exists())
+            self.assertTrue((delivery_dir / "Pwn-JSFS" / "题目手册" / "题目解题手册.md").exists())
+            self.assertFalse((delivery_dir / "archive").exists())
+            self.assertFalse((delivery_dir / "_cache").exists())
+            self.assertFalse(any(path.name == ".DS_Store" for path in delivery_dir.rglob("*")))
+            self.assertEqual(manifest["summary"]["package_issues"], 0)
+            with zipfile.ZipFile(zip_manifest["zip_path"]) as archive_file:
+                names = archive_file.namelist()
+            self.assertIn("Pwn-JSFS/题目手册/题目解题手册.md", names)
+            self.assertFalse(any(name.startswith("__MACOSX/") or name.endswith(".DS_Store") or "/_cache/" in name for name in names))
 
     def test_delivery_package_reorganizes_legacy_single_challenge_output(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -767,6 +812,37 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertTrue(Path(evidence["evidence_path"]).exists())
             self.assertTrue(Path(evidence["report_path"]).exists())
 
+    def test_docker_runner_uses_tcp_probe_for_tcp_challenge_and_cleans_failed_created_container(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            calls: list[list[str]] = []
+
+            def fake_run(args, **kwargs):
+                calls.append(args)
+                if args[:3] == ["docker", "image", "inspect"]:
+                    return subprocess.CompletedProcess(args, 0, stdout='[{"Os":"linux","Architecture":"amd64"}]', stderr="")
+                if args[:2] == ["docker", "run"]:
+                    return subprocess.CompletedProcess(args, 1, stdout="", stderr="created then failed")
+                return subprocess.CompletedProcess(args, 0, stdout="ok\n", stderr="")
+
+            with mock.patch.object(docker_runner.subprocess, "run", side_effect=fake_run):
+                with mock.patch.object(docker_runner, "authorization_errors", return_value=[]):
+                    evidence = docker_runner.execute_docker_workflow(
+                        case={"case_id": "tcp-001"},
+                        output_dir=tmp_path / "docker",
+                        image_name="demo/tcp:local",
+                        ports=["19999:9999"],
+                        operations=["inspect", "run", "logs", "stop"],
+                        container_inference={"runtime": {"service_protocol": "tcp"}},
+                        startup_wait=0,
+                    )
+
+        self.assertEqual(evidence["summary"]["status"], "fail")
+        self.assertTrue(any(args[:3] == ["docker", "rm", "-f"] for args in calls))
+        self.assertTrue(evidence["plan"]["tcp_probes"])
+        self.assertEqual(evidence["plan"]["probe_urls"], [])
+        self.assertFalse(any(str(probe.get("url", "")).startswith("http://") for probe in evidence["probes"]))
+
     def test_new_mcp_servers_list_expected_tools(self):
         servers = [
             (
@@ -796,7 +872,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.1")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.2")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

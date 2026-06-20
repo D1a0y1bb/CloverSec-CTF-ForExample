@@ -22,7 +22,7 @@ ROLE_DIRS = {
     "image_tar": "题目镜像",
     "writeup": "题目手册",
 }
-GENERIC_MANUAL_NAMES = {"manual.md", "writeup.md", "题目解题手册.md"}
+FORMAL_MANUAL_NAME = "题目解题手册.md"
 
 
 def create_archive_package(
@@ -70,9 +70,7 @@ def create_archive_package(
         if normalized in seen_manual_paths:
             continue
         seen_manual_paths.add(normalized)
-        manual_name = Path(manual_path).name or naming.manual_filename(manual_fields(case))
-        if manual_name in GENERIC_MANUAL_NAMES:
-            manual_name = naming.manual_filename(manual_fields(case))
+        manual_name = FORMAL_MANUAL_NAME
         manual_inputs.append({"path": manual_path, "name": manual_name})
     if manual_inputs:
         for item in manual_inputs:

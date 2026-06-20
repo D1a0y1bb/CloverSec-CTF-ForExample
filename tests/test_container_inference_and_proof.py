@@ -74,6 +74,31 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertIn("8080:8080", payload["summary"]["ports"])
         self.assertNotIn("5000:5000", payload["summary"]["ports"])
 
+    def test_infers_tcp_service_from_nc_readme_and_flag_runtime_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Dockerfile").write_text(
+                "\n".join(
+                    [
+                        "FROM oven/bun:latest",
+                        "EXPOSE 9999",
+                        'CMD ["bun", "server.js"]',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "server.js").write_text("console.log(Bun.env.FLAG)\n", encoding="utf-8")
+            (root / "README.md").write_text("connect with: nc chall.example 9999\n", encoding="utf-8")
+
+            payload = container.infer_container_project(root)
+
+        self.assertEqual(payload["runtime"]["service_protocol"], "tcp")
+        self.assertEqual(payload["runtime"]["probe_urls"], [])
+        self.assertEqual(payload["runtime"]["tcp_probes"][0]["target"], "tcp://127.0.0.1:9999")
+        self.assertTrue(payload["flag_runtime_policy"]["requires_platform_flag_file"])
+        self.assertTrue(any("/flag" in warning for warning in payload["warnings"]))
+
     def test_infers_compose_service_and_ports(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -293,7 +318,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.1")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.2")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

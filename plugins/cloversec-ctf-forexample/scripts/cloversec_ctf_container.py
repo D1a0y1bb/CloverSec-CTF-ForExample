@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}
@@ -42,6 +42,8 @@ def infer_container_project(
     dockerfile_payload = parse_dockerfile(dockerfiles[0], root, max_text_bytes=max_text_bytes) if dockerfiles else {}
     compose_payload = parse_compose_files(compose_files, root, max_text_bytes=max_text_bytes)
     classification_summary = summarize_classification(classification)
+    service_protocol = infer_service_protocol(readme_hints, challenge_manifest, dockerfile_payload, compose_payload)
+    flag_runtime_policy = infer_flag_runtime_policy(root, max_text_bytes=max_text_bytes)
 
     ports = merge_ports(
         dockerfile_payload.get("exposed_ports", []),
@@ -57,6 +59,7 @@ def infer_container_project(
         challenge_manifest=challenge_manifest,
     )
     warnings = build_warnings(project_type, dockerfile_payload, compose_payload, classification_summary)
+    warnings.extend(flag_runtime_policy.get("warnings", []))
     validation_level = recommend_validation_level(
         project_type=project_type,
         has_dockerfile=bool(dockerfiles),
@@ -75,8 +78,12 @@ def infer_container_project(
         "container_command": readme_hints.get("container_command", ""),
         "dockerfile_cmd": dockerfile_payload.get("cmd", ""),
         "dockerfile_entrypoint": dockerfile_payload.get("entrypoint", ""),
-        "probe_urls": probe_urls_from_ports(ports),
+        "service_protocol": service_protocol,
+        "probe_protocol": service_protocol,
+        "probe_urls": [] if service_protocol == "tcp" else probe_urls_from_ports(ports),
+        "tcp_probes": tcp_probes_from_ports(ports) if service_protocol == "tcp" else [],
         "validation_level": validation_level,
+        "source_subdir": infer_source_subdir(root, dockerfiles, compose_files),
     }
     payload = {
         "schema_version": SCHEMA_VERSION,
@@ -107,6 +114,7 @@ def infer_container_project(
         "readme_hints": readme_hints,
         "challenge_manifest": challenge_manifest,
         "resource_classification": classification_summary,
+        "flag_runtime_policy": flag_runtime_policy,
         "evidence": evidence,
         "warnings": warnings,
         "next_actions": build_next_actions(validation_level, project_type, warnings),
@@ -276,6 +284,7 @@ def collect_readme_hints(root: Path, *, max_text_bytes: int) -> dict[str, Any]:
     hints: list[str] = []
     ports: list[str] = []
     commands: list[str] = []
+    protocols: list[str] = []
     container_command = ""
     for path in sorted(item for item in root.rglob("*") if item.is_file() and item.name.lower() in README_NAMES):
         text = read_text(path, max_text_bytes=max_text_bytes)
@@ -284,6 +293,11 @@ def collect_readme_hints(root: Path, *, max_text_bytes: int) -> dict[str, Any]:
             lower = stripped.lower()
             if "docker build" in lower or "docker run" in lower or "docker compose" in lower:
                 commands.append(stripped[:300])
+                hints.append(f"{path.relative_to(root).as_posix()}: {stripped[:160]}")
+            nc_match = re.search(r"\bnc\s+\S+\s+(\d{2,5})\b", stripped, flags=re.IGNORECASE)
+            if nc_match:
+                protocols.append("tcp")
+                ports.append(f"{nc_match.group(1)}:{nc_match.group(1)}")
                 hints.append(f"{path.relative_to(root).as_posix()}: {stripped[:160]}")
             if not is_negative_port_evidence(stripped):
                 ports.extend(extract_port_mappings(stripped))
@@ -294,6 +308,7 @@ def collect_readme_hints(root: Path, *, max_text_bytes: int) -> dict[str, Any]:
     return {
         "commands": dedupe(commands),
         "ports": dedupe(ports),
+        "protocols": dedupe(protocols),
         "container_command": container_command,
         "evidence": dedupe(hints),
     }
@@ -316,6 +331,87 @@ def parse_simple_manifest(text: str) -> dict[str, Any]:
         if match:
             output[key] = match.group(1).strip().strip("'\"")
     return output
+
+
+def infer_service_protocol(
+    readme_hints: dict[str, Any],
+    challenge_manifest: dict[str, Any],
+    dockerfile_payload: dict[str, Any],
+    compose_payload: dict[str, Any],
+) -> str:
+    protocols = readme_hints.get("protocols") if isinstance(readme_hints.get("protocols"), list) else []
+    if "tcp" in protocols:
+        return "tcp"
+    connection_info = str(challenge_manifest.get("connection_info") or "").strip().lower()
+    if re.search(r"\bnc\s+\S+\s+\d{2,5}\b", connection_info):
+        return "tcp"
+    command_text = " ".join(
+        str(item or "")
+        for item in [
+            dockerfile_payload.get("cmd", ""),
+            dockerfile_payload.get("entrypoint", ""),
+            *(service.get("command", "") for service in compose_payload.get("services", []) if isinstance(service, dict)),
+        ]
+    ).lower()
+    if any(token in command_text for token in ["socat", "xinetd", "nc -l", "netcat"]):
+        return "tcp"
+    return "http"
+
+
+def infer_source_subdir(root: Path, dockerfiles: list[Path], compose_files: list[Path]) -> str:
+    anchors = dockerfiles or compose_files
+    if not anchors:
+        return root.as_posix()
+    parents = [path.parent for path in anchors]
+    try:
+        common_parts = list(parents[0].relative_to(root).parts)
+    except ValueError:
+        return root.as_posix()
+    for parent in parents[1:]:
+        try:
+            rel_parts = parent.relative_to(root).parts
+        except ValueError:
+            return root.as_posix()
+        shared = []
+        for left, right in zip(common_parts, rel_parts):
+            if left != right:
+                break
+            shared.append(left)
+        common_parts = shared
+    common = root.joinpath(*common_parts) if common_parts else root
+    return common.as_posix()
+
+
+def infer_flag_runtime_policy(root: Path, *, max_text_bytes: int) -> dict[str, Any]:
+    env_refs: list[str] = []
+    file_refs: list[str] = []
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        if skip_text_scan(path):
+            continue
+        text = read_text(path, max_text_bytes=max_text_bytes)
+        lower = text.lower()
+        rel = path.relative_to(root).as_posix()
+        if any(token in text for token in ["process.env.FLAG", "Bun.env.FLAG", "os.environ", "getenv(\"FLAG", "getenv('FLAG"]):
+            env_refs.append(rel)
+        if "/flag" in lower or "readfile(\"flag" in lower or "readfile('flag" in lower:
+            file_refs.append(rel)
+    warnings = []
+    if env_refs and not file_refs:
+        warnings.append("Flag runtime reads environment variables but no /flag file read was found; Dockerizer must adapt dynamic Flag to platform /flag.")
+    return {
+        "env_flag_refs": dedupe(env_refs),
+        "file_flag_refs": dedupe(file_refs),
+        "requires_platform_flag_file": bool(env_refs and not file_refs),
+        "warnings": warnings,
+    }
+
+
+def skip_text_scan(path: Path) -> bool:
+    if path.name == ".DS_Store":
+        return True
+    if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".zip", ".tar", ".gz", ".tgz", ".7z", ".rar", ".pyc", ".so", ".bin"}:
+        return True
+    return path.stat().st_size > TEXT_LIMIT
 
 
 def extract_manifest_ports(text: str) -> list[str]:
@@ -506,6 +602,17 @@ def probe_urls_from_ports(ports: list[str]) -> list[str]:
         if host.isdigit():
             urls.append(f"http://127.0.0.1:{host}/")
     return dedupe(urls)
+
+
+def tcp_probes_from_ports(ports: list[str]) -> list[dict[str, Any]]:
+    probes = []
+    for mapping in ports:
+        host = mapping.rsplit(":", 1)[0]
+        if ":" in host:
+            host = host.rsplit(":", 1)[1]
+        if host.isdigit():
+            probes.append({"protocol": "tcp", "host": "127.0.0.1", "port": host, "target": f"tcp://127.0.0.1:{host}"})
+    return probes
 
 
 def parse_env(value: str) -> dict[str, str]:

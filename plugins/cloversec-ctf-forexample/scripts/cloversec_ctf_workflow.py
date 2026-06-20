@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.1"
+WORKFLOW_VERSION = "1.0.2"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -61,7 +61,7 @@ STAGE_DEPENDENCIES = {
     "archive": ["download_accept"],
     "quality": ["archive"],
     "hub_prepare": ["quality"],
-    "final_report": ["hub_prepare"],
+    "final_report": ["quality"],
 }
 
 WORKFLOW_DIRS = [
@@ -1264,8 +1264,11 @@ def render_resource_route_report(route: dict[str, Any]) -> str:
                 f"- 容器推断：`{handoff.get('container_inference_path', '')}`",
                 f"- 已有 Dockerfile：{', '.join(handoff.get('existing_dockerfiles', [])) or '无'}",
                 f"- 已有 compose：{', '.join(handoff.get('existing_compose_files', [])) or '无'}",
+                f"- 源码目录：`{handoff.get('source_subdir', '')}`",
+                f"- 服务协议：{handoff.get('service_protocol', '') or '待确认'}",
                 f"- 端口线索：{', '.join(str(item) for item in handoff.get('port_hints', [])) or '待确认'}",
                 f"- Flag 路径：{', '.join(handoff.get('flag_paths', [])) or '待确认'}",
+                f"- Flag 运行时：{format_flag_runtime_policy(handoff.get('flag_runtime_policy', {}))}",
                 f"- 自动生成：{'可以执行' if handoff.get('can_auto_render') else '需要先人工补启动证据'}",
                 f"- 推荐命令：`{handoff.get('recommended_command', '')}`",
                 "",
@@ -1274,6 +1277,18 @@ def render_resource_route_report(route: dict[str, Any]) -> str:
             ]
         )
     return "\n".join(lines) + "\n"
+
+
+def format_flag_runtime_policy(value: Any) -> str:
+    if not isinstance(value, dict):
+        return "待确认"
+    if value.get("requires_platform_flag_file"):
+        return "需要 Dockerizer 适配平台 /flag"
+    if value.get("file_flag_refs"):
+        return "已发现 /flag 读取"
+    if value.get("env_flag_refs"):
+        return "只发现环境变量 Flag 读取"
+    return "未发现 Flag 读取线索"
 
 
 def initial_workflow_state(
@@ -1449,6 +1464,7 @@ def dockerizer_handoff_details(
     )
     runtime = container_payload.get("runtime") if isinstance(container_payload.get("runtime"), dict) else {}
     readme_hints = container_payload.get("readme_hints") if isinstance(container_payload.get("readme_hints"), dict) else {}
+    flag_runtime_policy = container_payload.get("flag_runtime_policy") if isinstance(container_payload.get("flag_runtime_policy"), dict) else {}
     port_hints = runtime.get("ports") if isinstance(runtime.get("ports"), list) else []
     start_commands = [
         str(item)
@@ -1474,8 +1490,11 @@ def dockerizer_handoff_details(
         "existing_dockerfiles": existing_dockerfiles,
         "existing_compose_files": existing_compose_files,
         "port_hints": port_hints,
+        "service_protocol": runtime.get("service_protocol", ""),
+        "source_subdir": runtime.get("source_subdir", root.as_posix()),
         "start_command_hints": start_commands,
         "flag_paths": flag_paths,
+        "flag_runtime_policy": flag_runtime_policy,
         "missing_items": missing_items,
         "user_questions": questions,
         "can_auto_render": not missing_start_evidence,
@@ -2330,12 +2349,12 @@ def check_hub_prepare_completion(workdir: Path, case: dict[str, Any], case_id: s
 
 
 def check_final_report_completion(workdir: Path, case_id: str) -> dict[str, Any]:
-    required = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
+    required = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md", "待处理问题.md", "质量检查报告.md"]
     delivery_dir = workdir / "最终交付"
     paths = [delivery_dir / name for name in required]
     if delivery_dir.exists() and all(path.is_file() for path in paths):
         return completion_ok("final_report", delivery_dir)
-    return completion_error("final_report", case_id, "缺少最终归档表.xlsx、语雀粘贴表.md 或 交付说明.md。")
+    return completion_error("final_report", case_id, "缺少最终归档表.xlsx、语雀粘贴表.md、交付说明.md、待处理问题.md 或 质量检查报告.md。")
 
 
 def case_has_source_evidence(case: dict[str, Any]) -> bool:

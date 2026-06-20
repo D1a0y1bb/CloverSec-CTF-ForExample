@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -51,17 +50,12 @@ def create_final_outputs(
     yuque_path = output / "语雀粘贴表.md"
     report_path = output / "最终报告.md"
     json_path = output / "最终报告.json"
-    legacy_xlsx_path = output / "archive.xlsx"
-    legacy_yuque_path = output / "yuque_table.md"
-    legacy_report_path = output / "final_report.md"
-    legacy_json_path = output / "final_report.json"
 
     rows = [finalized_xlsx_row(case, path_base) for case in cases]
     validation_errors = []
     for index, case in enumerate(cases, start=1):
         validation_errors.extend(f"case {index}: {error}" for error in data.validate_case(case))
     data.write_rows_xlsx(rows, xlsx_path)
-    shutil.copyfile(xlsx_path, legacy_xlsx_path)
     read_back = data.read_xlsx(xlsx_path)
     xlsx_validation_errors = validate_final_xlsx_readback(rows, read_back)
 
@@ -80,16 +74,6 @@ def create_final_outputs(
         "yuque_table_path": yuque_path.as_posix(),
         "report_path": report_path.as_posix(),
         "json_path": json_path.as_posix(),
-        "legacy_xlsx_path": legacy_xlsx_path.as_posix(),
-        "legacy_yuque_table_path": legacy_yuque_path.as_posix(),
-        "legacy_report_path": legacy_report_path.as_posix(),
-        "legacy_json_path": legacy_json_path.as_posix(),
-        "legacy_paths": {
-            "archive_xlsx": legacy_xlsx_path.as_posix(),
-            "yuque_table": legacy_yuque_path.as_posix(),
-            "final_report_md": legacy_report_path.as_posix(),
-            "final_report_json": legacy_json_path.as_posix(),
-        },
         "human_handoff_paths": {
             "最终归档表": xlsx_path.as_posix(),
             "语雀粘贴表": yuque_path.as_posix(),
@@ -110,9 +94,6 @@ def create_final_outputs(
     yuque_path.write_text(yuque_content, encoding="utf-8")
     report_path.write_text(report_content, encoding="utf-8")
     json_path.write_text(json_content, encoding="utf-8")
-    legacy_yuque_path.write_text(yuque_content, encoding="utf-8")
-    legacy_report_path.write_text(report_content, encoding="utf-8")
-    legacy_json_path.write_text(json_content, encoding="utf-8")
     return payload
 
 

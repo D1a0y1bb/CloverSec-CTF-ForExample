@@ -139,6 +139,8 @@ class Workflow030Tests(unittest.TestCase):
             (final_dir / "最终归档表.xlsx").write_bytes(b"xlsx")
             (final_dir / "语雀粘贴表.md").write_text("| 名称 |\n|---|\n", encoding="utf-8")
             (final_dir / "交付说明.md").write_text("# 交付说明\n", encoding="utf-8")
+            (final_dir / "待处理问题.md").write_text("# 待处理问题\n", encoding="utf-8")
+            (final_dir / "质量检查报告.md").write_text("# 质量检查报告\n", encoding="utf-8")
 
             result = workflow.batch_orchestrate(workdir=out, stage="final_report", mode="apply", force=True)
 

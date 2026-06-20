@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,10 +15,12 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
+OPTIONAL_ROOT_FILES = ["待处理问题.md", "质量检查报告.md"]
+ALL_ROOT_FILES = ROOT_FILES + OPTIONAL_ROOT_FILES
 CHALLENGE_SUBDIRS = ["题目源码", "题目镜像", "题目手册", "题目附件"]
 IMAGE_SUFFIXES = {".tar", ".gz", ".tgz"}
 BLOCKED_PATH_PARTS = {".ctfbuild", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
@@ -55,6 +58,7 @@ def create_delivery_package(
     prepare_clean_delivery_dir(delivery)
 
     selected = select_delivery_sources(work, outputs)
+    ensure_final_sources(work, outputs, selected)
     files: list[dict[str, Any]] = []
     missing: list[dict[str, str]] = []
 
@@ -77,6 +81,26 @@ def create_delivery_package(
     )
     files.extend(legacy_records["files"])
     missing.extend(legacy_records["missing"])
+    add_record(
+        copy_or_write_text(
+            selected.get("pending_issues"),
+            delivery / "待处理问题.md",
+            key="pending_issues",
+            default_text=render_pending_issues_default(missing),
+        ),
+        files,
+        missing,
+    )
+    add_record(
+        copy_or_write_text(
+            selected.get("quality_report"),
+            delivery / "质量检查报告.md",
+            key="quality_report",
+            default_text=render_quality_report_default(selected),
+        ),
+        files,
+        missing,
+    )
 
     cleanup_ds_store(delivery)
     summary = build_summary(work, outputs, delivery, files, missing, selected)
@@ -140,11 +164,81 @@ def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Any]:
     selected["yuque_table"] = first_existing(outputs_dir, ["*语雀粘贴表.md", "*completed_yuque_table.md", "*after_docker_yuque_table.md", "*yuque_table.md"])
     selected["archive_roots"] = find_archive_roots(workdir, outputs_dir)
     selected["legacy_challenges"] = [] if selected["archive_roots"] else find_legacy_single_challenges(workdir)
+    selected["pending_issues"] = first_available(
+        first_existing(outputs_dir, ["*待处理问题.md", "*missing_report.md"]),
+        first_existing_recursive(workdir, ["待处理问题.md", "missing_report.md"]),
+    )
+    selected["quality_report"] = first_available(
+        first_existing(outputs_dir, ["*质量检查报告.md", "*quality_summary.md", "*quality_review_report.md"]),
+        first_existing_recursive(workdir, ["质量检查报告.md", "quality_summary.md", "quality_review_report.md"]),
+    )
     return {
         key: value
         for key, value in selected.items()
         if (is_real_path(value) if isinstance(value, Path) else bool(value))
     }
+
+
+def ensure_final_sources(workdir: Path, outputs_dir: Path, selected: dict[str, Any]) -> None:
+    if selected.get("final_xlsx") and selected.get("yuque_table"):
+        return
+    cases = load_delivery_cases(workdir, outputs_dir)
+    if not cases:
+        return
+    import cloversec_ctf_final as final
+
+    generated = outputs_dir / "_cache" / "delivery_final"
+    payload = final.create_final_outputs(cases, generated, base_dir=outputs_dir)
+    summary = payload.get("summary", {}) if isinstance(payload.get("summary"), dict) else {}
+    final_xlsx = Path(str(summary.get("xlsx_path") or ""))
+    yuque_table = Path(str(summary.get("yuque_table_path") or ""))
+    if final_xlsx.is_file():
+        selected["final_xlsx"] = final_xlsx
+    if yuque_table.is_file():
+        selected["yuque_table"] = yuque_table
+
+
+def load_delivery_cases(*roots: Path) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    for root in roots:
+        if not root.exists():
+            continue
+        candidates = [
+            *sorted(root.glob("*.archived.json")),
+            *sorted(root.glob("ctf_case*.json")),
+            *sorted(root.glob("ctf_cases*.jsonl")),
+            *sorted(root.rglob("ctf_cases.archived.jsonl")),
+        ]
+        for path in candidates:
+            key = path.resolve().as_posix()
+            if key in seen:
+                continue
+            seen.add(key)
+            cases = read_case_file(path)
+            if cases:
+                return cases
+    return []
+
+
+def read_case_file(path: Path) -> list[dict[str, Any]]:
+    try:
+        if path.suffix.lower() == ".jsonl":
+            cases = []
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                payload = json.loads(line)
+                if isinstance(payload, dict):
+                    cases.append(payload)
+            return cases
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        return [payload]
+    return []
 
 
 def find_archive_roots(workdir: Path, outputs_dir: Path) -> list[Path]:
@@ -215,6 +309,8 @@ def copy_challenge_archives(
                     if not challenge_file_allowed(source, source_subdir, subdir):
                         continue
                     relative = source.relative_to(source_subdir)
+                    if subdir == "题目手册" and source.suffix.lower() == ".md":
+                        relative = Path("题目解题手册.md")
                     is_image_tar = subdir == "题目镜像" and source.suffix.lower() in IMAGE_SUFFIXES
                     effective_copy_limit = source.stat().st_size if is_image_tar and copy_image_tars else copy_limit
                     target = target_subdir / relative
@@ -514,6 +610,34 @@ def copy_or_reference(
     }
 
 
+def copy_or_write_text(
+    source: Path | None,
+    target: Path,
+    *,
+    key: str,
+    default_text: str,
+) -> dict[str, Any]:
+    if source is not None and source.as_posix() and source.is_file():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        return {
+            "key": key,
+            "status": "copied",
+            "source": source.as_posix(),
+            "target": target.as_posix(),
+            "size": target.stat().st_size,
+        }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(default_text, encoding="utf-8")
+    return {
+        "key": key,
+        "status": "generated",
+        "source": "",
+        "target": target.as_posix(),
+        "size": target.stat().st_size,
+    }
+
+
 def add_record(record: dict[str, Any], files: list[dict[str, Any]], missing: list[dict[str, str]]) -> None:
     if record.get("status") == "missing":
         missing.append({"key": str(record.get("key") or ""), "target": str(record.get("target") or "")})
@@ -609,7 +733,7 @@ def build_summary(
 
 def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
-    allowed_root_files = set(ROOT_FILES)
+    allowed_root_files = set(ALL_ROOT_FILES)
     allowed_subdirs = set(CHALLENGE_SUBDIRS)
     blocked_root_names = {"_cache", "过程证据", "机器数据", "reports", "logs", "evidence", "snapshots", "Hub准备", "质量检查"}
     blocked_manual_tokens = ("draft", "草稿", "template", "manual_filled_draft", "manual_template")
@@ -620,7 +744,7 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
             continue
         if child.is_file():
             if child.name not in allowed_root_files:
-                issues.append({"path": child.name, "issue": "交付根目录只能有最终归档表、语雀粘贴表和交付说明"})
+                issues.append({"path": child.name, "issue": "交付根目录只能有最终归档表、语雀粘贴表、交付说明、待处理问题和质量检查报告"})
             if child.suffix.lower() in {".json", ".jsonl"}:
                 issues.append({"path": child.name, "issue": "交付根目录禁止机器 JSON"})
             continue
@@ -675,13 +799,15 @@ def render_delivery_readme(manifest: dict[str, Any]) -> str:
     lines = [
         "# CloverSec CTF 交付说明",
         "",
-        "这个目录是给人接手查看的最终交付包。根目录只保留总表、语雀表和这份说明；每道题都放在自己的 `分类-题目名/` 目录里。",
+        "这个目录是给人接手查看的最终交付包。根目录只保留中文总表、语雀表、交付说明、待处理问题和质量检查报告；每道题都放在自己的 `分类-题目名/` 目录里。",
         "",
         "## 根目录文件",
         "",
         "- `最终归档表.xlsx`：最终归档表，内部要求保留完整 Flag。",
         "- `语雀粘贴表.md`：可以粘贴到语雀的表格。",
         "- `交付说明.md`：当前文件，说明目录结构、缺失项和镜像 tar 引用。",
+        "- `待处理问题.md`：还需要人工确认或后续处理的事项。",
+        "- `质量检查报告.md`：质量检查摘要；没有找到检查报告时会写明未发现。",
         "",
         "## 交付状态",
         "",
@@ -732,6 +858,33 @@ def render_delivery_readme(manifest: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_pending_issues_default(missing: list[dict[str, str]]) -> str:
+    lines = ["# 待处理问题", ""]
+    if not missing:
+        lines.append("- 暂无待处理问题。")
+    else:
+        lines.extend(["| 类型 | 目标位置 |", "|---|---|"])
+        for item in missing:
+            lines.append("| " + " | ".join(escape_table(value) for value in [item.get("key", ""), item.get("target", "")]) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def render_quality_report_default(selected: dict[str, Any]) -> str:
+    archive_roots = selected.get("archive_roots", []) if isinstance(selected.get("archive_roots"), list) else []
+    legacy = selected.get("legacy_challenges", []) if isinstance(selected.get("legacy_challenges"), list) else []
+    return "\n".join(
+        [
+            "# 质量检查报告",
+            "",
+            "- 未发现独立质量检查报告，当前文件由最终交付打包工具生成。",
+            f"- 归档来源数量：{len(archive_roots)}",
+            f"- 旧式单题来源数量：{len(legacy)}",
+            "- 真实验证结论以题目目录中的手册、镜像、证据和最终归档表为准。",
+            "",
+        ]
+    )
+
+
 def cleanup_ds_store(root: Path) -> None:
     for path in root.rglob(".DS_Store"):
         try:
@@ -749,6 +902,35 @@ def escape_table(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def create_delivery_zip(delivery_dir: str | Path, zip_path: str | Path | None = None) -> dict[str, Any]:
+    delivery = Path(delivery_dir)
+    if not delivery.is_dir():
+        raise NotADirectoryError(delivery)
+    cleanup_ds_store(delivery)
+    output = Path(zip_path) if zip_path else delivery.with_suffix(".zip")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    files: list[str] = []
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(item for item in delivery.rglob("*") if item.is_file()):
+            relative = path.relative_to(delivery)
+            if not zip_member_allowed(relative):
+                continue
+            archive.write(path, relative.as_posix())
+            files.append(relative.as_posix())
+    return {"zip_path": output.as_posix(), "file_count": len(files), "files": files}
+
+
+def zip_member_allowed(relative: Path) -> bool:
+    parts = relative.parts
+    if not parts:
+        return False
+    if any(part in {"__MACOSX", ".DS_Store", "_cache"} for part in parts):
+        return False
+    if any(part.startswith("._") for part in parts):
+        return False
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Create a human-readable CloverSec CTF delivery folder")
     parser.add_argument("--workdir", required=True)
@@ -757,6 +939,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--copy-limit", type=int, default=DEFAULT_COPY_LIMIT)
     parser.add_argument("--copy-image-tars", dest="copy_image_tars", action="store_true", default=True)
     parser.add_argument("--no-copy-image-tars", dest="copy_image_tars", action="store_false")
+    parser.add_argument("--zip-output", default="")
     args = parser.parse_args(argv)
     manifest = create_delivery_package(
         workdir=args.workdir,
@@ -765,6 +948,9 @@ def main(argv: list[str] | None = None) -> int:
         copy_limit=args.copy_limit,
         copy_image_tars=args.copy_image_tars,
     )
+    if args.zip_output:
+        zip_manifest = create_delivery_zip(manifest["paths"]["delivery_dir"], args.zip_output)
+        print(f"wrote {zip_manifest['zip_path']}")
     print(f"wrote {manifest['paths']['readme']}")
     return 0
 

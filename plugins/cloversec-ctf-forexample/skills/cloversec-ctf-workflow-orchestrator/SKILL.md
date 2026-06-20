@@ -48,7 +48,7 @@ reports/
 用户要求“完整处理”“全流程”“一路做完”时，按下列阶段推进，并在需要确认的地方停止等待：
 
 ```text
-任务创建 -> 执行采集 -> 材料收集 -> 资源识别 -> Dockerizer 或附件检查 -> 手册字段 -> 中文交付包 -> 质量检查 -> Hub 草稿 -> Hub 浏览器辅助 -> Hub 审核状态/retag -> 最终报告
+任务创建 -> 执行采集 -> 材料收集 -> 资源识别 -> Dockerizer 或附件检查 -> 手册字段 -> 质量检查 -> 中文最终交付包 -> Hub 草稿 -> Hub 浏览器辅助 -> Hub 审核状态/retag
 ```
 
 默认直接执行能安全读取、搜索、下载预览和识别的阶段。下列动作必须等用户确认：
@@ -69,7 +69,7 @@ reports/
 research, collect, dedupe, download_preview, archive, quality, final_report
 ```
 
-`download_accept`、真实 Docker、Hub 最终提交、retag 执行仍然需要用户确认。Hub 草稿可以准备，最终提交不自动点击。
+`download_accept`、真实 Docker、Hub 最终提交、retag 执行仍然需要用户确认。Hub 草稿可以准备，最终提交不自动点击。中文最终交付包不依赖 Hub 已提交；缺 Hub 编号时写入 `待处理问题.md`。
 
 ## 资源分流规则
 
@@ -100,6 +100,21 @@ research, collect, dedupe, download_preview, archive, quality, final_report
 Dockerizer handoff 必须写清题目目录、已有 Dockerfile/compose、端口线索、启动命令、Flag 路径和缺失项，并直接交给 `cloversec-ctf-build-dockerizer`。不要让 Agent 自己根据上游 Dockerfile 直接启动后归档。
 
 批量状态给用户看时优先读 `当前状态.md`，里面只放处理题数、缺材料题数、待确认题数和最终文件位置。
+
+用户问“东西在哪”或“最终交付在哪”时，优先给 `最终交付/` 目录，不要把 `归档/`、`_cache/`、`reports/`、`manifests/` 当作人接手的最终目录。人看的最终目录必须是：
+
+```text
+最终交付/
+  交付说明.md
+  最终归档表.xlsx
+  语雀粘贴表.md
+  待处理问题.md
+  质量检查报告.md
+  分类-题目名/
+    题目源码/ 或 题目附件/
+    题目镜像/
+    题目手册/题目解题手册.md
+```
 
 ## 容器题平台契约摘要
 
