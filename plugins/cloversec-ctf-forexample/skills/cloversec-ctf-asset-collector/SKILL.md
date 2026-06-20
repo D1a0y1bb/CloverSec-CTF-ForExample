@@ -14,6 +14,10 @@ description: CloverSec CTF 题目附件、源码、WP、复现资料收集 skill
 
 ## Default Behavior
 
+用户只说“完整收集一道 CTF 题目”“帮我完整收集一道题”时，本 skill 只能做材料收集阶段，不能把 `downloads/`、`archive/`、`reports/`、`manifests/` 或 `_cache/` 当最终交付。拿到真实材料后必须交给 `cloversec-ctf-workflow-orchestrator` 继续做资源识别、Dockerizer/附件分流、手册、质量检查和中文最终交付目录。
+
+如果用户没有明确说“原创题”“新建题目”“出题”，不要生成原创题；默认找公开真实 CTF 比赛题目和官方材料。
+
 1. 按题目建立材料目录，区分 repo、Release asset、raw/blob、writeup、公开归档和直接附件 URL。
 2. 只自动下载直接文件 URL；登录页、网盘、动态页面只记录来源。
 3. 下载和本地文件都记录 SHA256、size、content-type、source URL 和失败原因。

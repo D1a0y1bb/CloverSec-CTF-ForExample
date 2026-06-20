@@ -1,4 +1,4 @@
 interface:
   display_name: "CloverSec CTF Asset Collector"
   short_description: "下载和整理 CTF 源码、附件、WP、截图与来源证据"
-  default_prompt: "使用 $cloversec-ctf-asset-collector 根据赛题清单或搜索结果下载和整理源码、附件、WP、截图与证据。"
+  default_prompt: "使用 $cloversec-ctf-asset-collector 根据赛题清单或搜索结果下载和整理源码、附件、WP、截图与证据。用户说完整收集一道题时，本 skill 只是材料阶段：不要生成原创题，不要把 downloads、archive、reports、manifests 或 _cache 当最终交付；拿到真实材料后转 cloversec-ctf-workflow-orchestrator 继续到资源识别、Dockerizer/附件分流、手册、质量检查和中文最终交付目录。"

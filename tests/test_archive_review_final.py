@@ -759,7 +759,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             delivery_dir = Path(tmp) / "outputs"
             delivery_dir.mkdir()
-            for name in ["_quality", "元数据"]:
+            for name in ["_quality", "元数据", "manifests"]:
                 (delivery_dir / name).mkdir()
                 (delivery_dir / name / "report.json").write_text("{}", encoding="utf-8")
 
@@ -768,6 +768,54 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             issue_paths = {item["path"] for item in issues}
             self.assertIn("_quality", issue_paths)
             self.assertIn("元数据", issue_paths)
+            self.assertIn("manifests", issue_paths)
+
+    def test_delivery_scan_allows_container_challenge_with_attachment_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            delivery_dir = Path(tmp) / "outputs"
+            challenge = delivery_dir / "Pwn-JSFS"
+            (challenge / "题目源码").mkdir(parents=True)
+            (challenge / "题目镜像").mkdir()
+            (challenge / "题目手册").mkdir()
+            (challenge / "题目附件").mkdir()
+            (challenge / "题目源码" / "Dockerfile").write_text("FROM busybox\n", encoding="utf-8")
+            (challenge / "题目镜像" / "jsfs.tar").write_bytes(b"tar")
+            (challenge / "题目手册" / "题目解题手册.md").write_text("# 手册\n", encoding="utf-8")
+            (challenge / "题目附件" / "handout.zip").write_bytes(b"zip")
+            for filename in ["交付说明.md", "语雀粘贴表.md", "待处理问题.md", "质量检查报告.md"]:
+                (delivery_dir / filename).write_text("# ok\n", encoding="utf-8")
+            (delivery_dir / "最终归档表.xlsx").write_bytes(b"xlsx")
+
+            issues = delivery.scan_delivery_package(delivery_dir)
+
+            self.assertEqual(issues, [])
+
+    def test_delivery_package_only_keeps_formal_manual_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "work"
+            outputs = tmp_path / "outputs"
+            workdir.mkdir()
+            outputs.mkdir()
+            (outputs / "最终归档表.xlsx").write_bytes(b"xlsx")
+            (outputs / "语雀粘贴表.md").write_text("| 题目 |\n", encoding="utf-8")
+            archive_dir = workdir / "archive" / "Web-Demo"
+            (archive_dir / "题目源码").mkdir(parents=True)
+            (archive_dir / "题目镜像").mkdir()
+            manual_dir = archive_dir / "题目手册"
+            (manual_dir / "Hub提交材料").mkdir(parents=True)
+            (archive_dir / "题目源码" / "Dockerfile").write_text("FROM busybox\n", encoding="utf-8")
+            (archive_dir / "题目镜像" / "demo.tar").write_bytes(b"tar")
+            (manual_dir / "题目解题手册.md").write_text("# 正式手册\n", encoding="utf-8")
+            (manual_dir / "Hub提交材料" / "hub_fields.json").write_text("{}", encoding="utf-8")
+            (manual_dir / "Hub提交材料" / "browser_assist_plan.md").write_text("# 过程材料\n", encoding="utf-8")
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=tmp_path / "交付包")
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertTrue((delivery_dir / "Web-Demo" / "题目手册" / "题目解题手册.md").exists())
+            self.assertFalse((delivery_dir / "Web-Demo" / "题目手册" / "Hub提交材料").exists())
+            self.assertEqual(manifest["summary"]["package_issues"], 0)
 
     def test_delivery_package_same_outputs_dir_does_not_write_cache_to_root(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1077,7 +1125,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.9")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.10")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.9"
+WORKFLOW_VERSION = "1.0.10"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -2568,6 +2568,10 @@ def check_final_report_completion(workdir: Path, case_id: str) -> dict[str, Any]
     for delivery_dir in [delivery_output_dir_for_workdir(workdir), workdir / "最终交付"]:
         paths = [delivery_dir / name for name in required]
         if delivery_dir.exists() and all(path.is_file() for path in paths):
+            issues = delivery_packager.scan_delivery_package(delivery_dir)
+            if issues:
+                details = "; ".join(f"{item.get('path', '')}: {item.get('issue', '')}" for item in issues[:5])
+                return completion_error("final_report", case_id, f"最终交付目录结构不合格：{details}")
             return completion_ok("final_report", delivery_dir)
     return completion_error("final_report", case_id, "缺少最终归档表.xlsx、语雀粘贴表.md、交付说明.md、待处理问题.md 或 质量检查报告.md。")
 

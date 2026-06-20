@@ -300,10 +300,36 @@ def extract_first_paragraph(text: str) -> str:
 def search_flag_literal(text: str) -> str:
     patterns = [r"\b[A-Za-z0-9_]*(?:flag|ctf)\{[^\n\r\t}]{1,200}\}"]
     for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(0)
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            value = match.group(0)
+            if not is_placeholder_flag(value):
+                return value
     return ""
+
+
+def is_placeholder_flag(value: str) -> bool:
+    text = str(value or "").strip()
+    match = re.match(r"^[A-Za-z0-9_]*(?:flag|ctf)\{(.+)\}$", text, re.IGNORECASE)
+    if not match:
+        return False
+    body = match.group(1).strip().lower()
+    normalized = re.sub(r"[^a-z0-9]+", "", body)
+    placeholder_values = {
+        "demo",
+        "test",
+        "example",
+        "placeholder",
+        "dummy",
+        "fake",
+        "flag",
+        "changeme",
+        "yourflag",
+        "thisisatestflag",
+        "pleasechangeme",
+    }
+    if normalized in placeholder_values:
+        return True
+    return normalized.startswith(("demo", "test", "example", "placeholder", "dummy", "fake"))
 
 
 def extract_ports_from_text(text: str) -> list[str]:

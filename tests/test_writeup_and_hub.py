@@ -109,6 +109,8 @@ class WriteupAndHubTests(unittest.TestCase):
 
         self.assertEqual(module.search_flag_literal("Flag: irisctf{webhook_hooked}"), "irisctf{webhook_hooked}")
         self.assertEqual(module.search_flag_literal("DUCTF{xxe_payload_wins}"), "DUCTF{xxe_payload_wins}")
+        self.assertEqual(module.search_flag_literal("default flag{demo}; real flag is irisctf{webhook_hooked}"), "irisctf{webhook_hooked}")
+        self.assertEqual(module.search_flag_literal("placeholder flag{test}"), "")
 
     def test_screenshot_plan_uses_stable_names(self):
         plan = hub.default_screenshot_plan()

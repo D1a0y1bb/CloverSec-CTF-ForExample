@@ -16,7 +16,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.9"
+VERSION = "1.0.10"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -177,12 +177,6 @@ def create_delivery_package(
     }
     readme_path = delivery / "交付说明.md"
     manifest["paths"]["readme"] = readme_path.as_posix()
-    readme_path.write_text(render_delivery_readme(manifest), encoding="utf-8")
-    cleanup_ds_store(delivery)
-    package_issues = scan_delivery_package(delivery)
-    manifest["package_issues"] = package_issues
-    manifest["summary"]["package_issues"] = len(package_issues)
-    readme_path.write_text(render_delivery_readme(manifest), encoding="utf-8")
     cleanup_ds_store(delivery)
     package_issues = scan_delivery_package(delivery)
     manifest["package_issues"] = package_issues
@@ -368,7 +362,7 @@ def copy_challenge_archives(
                 subdirs.append(subdir)
                 target_subdir = target_case_dir / subdir
                 target_subdir.mkdir(parents=True, exist_ok=True)
-                for source in sorted(path for path in source_subdir.rglob("*") if path.is_file()):
+                for source in iter_challenge_subdir_files(source_subdir, subdir):
                     if not challenge_file_allowed(source, source_subdir, subdir):
                         continue
                     relative = source.relative_to(source_subdir)
@@ -399,6 +393,23 @@ def copy_challenge_archives(
                         )
             challenges.append({"name": case_dir.name, "source": case_dir.as_posix(), "subdirs": subdirs})
     return {"files": files, "missing": missing, "challenges": challenges, "image_tars": image_tars}
+
+
+def iter_challenge_subdir_files(source_subdir: Path, subdir: str) -> list[Path]:
+    """Return files that should appear in the human-facing challenge subdir."""
+    if subdir != "题目手册":
+        return sorted(path for path in source_subdir.rglob("*") if path.is_file())
+    source = select_formal_manual(source_subdir)
+    return [source] if source else []
+
+
+def select_formal_manual(source_dir: Path) -> Path | None:
+    candidates = [source_dir / "题目解题手册.md"]
+    candidates.extend(path for path in sorted(source_dir.glob("*.md")) if not manual_name_blocked(path.name))
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
 
 
 def find_legacy_single_challenges(workdir: Path) -> list[dict[str, Any]]:
@@ -955,7 +966,7 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     allowed_root_files = set(ALL_ROOT_FILES)
     allowed_subdirs = set(CHALLENGE_SUBDIRS)
-    blocked_root_names = {"_cache", "_quality", "机器数据", "元数据", "reports", "logs", "evidence", "snapshots", "Hub准备", "质量检查", "archive", "归档"}
+    blocked_root_names = {"_cache", "_quality", "机器数据", "元数据", "reports", "manifests", "logs", "evidence", "snapshots", "Hub准备", "质量检查", "archive", "归档"}
     blocked_manual_tokens = ("draft", "草稿", "template", "manual_filled_draft", "manual_template")
 
     for child in sorted(delivery.iterdir()) if delivery.exists() else []:
@@ -988,10 +999,8 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
             issues.append({"path": child.name, "issue": "题目目录下只能放 题目源码/题目镜像/题目手册/题目附件 子目录"})
         for name in unknown_subdirs:
             issues.append({"path": f"{child.name}/{name}", "issue": "题目目录下只能有 题目源码/题目镜像/题目手册/题目附件"})
-        if "题目附件" in present_subdirs:
-            for forbidden in ["题目源码", "题目镜像"]:
-                if forbidden in present_subdirs:
-                    issues.append({"path": f"{child.name}/{forbidden}", "issue": "附件题交付目录不应包含源码或镜像目录"})
+        is_container_delivery = bool({"题目源码", "题目镜像"} & present_subdirs)
+        if "题目附件" in present_subdirs and not is_container_delivery:
             if "题目手册" not in present_subdirs:
                 issues.append({"path": child.name, "issue": "附件题缺少题目手册目录"})
         elif present_subdirs:

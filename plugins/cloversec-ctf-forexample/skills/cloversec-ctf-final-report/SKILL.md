@@ -78,6 +78,8 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_delivery.py \
   --output-dir outputs
 ```
 
+最终回复前必须让 `cloversec_ctf_delivery.py` 生成或扫描交付目录。扫描还有问题时，只能报告“交付目录待整理”，不能把 `archive/`、`_cache/`、`reports/`、`manifests/` 或手写目录当最终结果。
+
 默认目录：
 
 ```text
