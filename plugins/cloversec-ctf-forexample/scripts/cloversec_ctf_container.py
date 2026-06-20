@@ -12,7 +12,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.container_inference.v1"
-VERSION = "1.0.10"
+VERSION = "1.0.11"
 TEXT_LIMIT = 65536
 COMPOSE_FILES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 HELPER_FILES = {"start.sh", "changeflag.sh", "check.sh"}
@@ -85,7 +85,7 @@ def infer_container_project(
         "probe_urls": [] if service_protocol == "tcp" else probe_urls_from_ports(ports),
         "tcp_probes": tcp_probes_from_ports(ports) if service_protocol == "tcp" else [],
         "validation_level": validation_level,
-        "source_subdir": infer_source_subdir(root, dockerfiles, compose_files),
+        "source_subdir": infer_source_subdir(root, dockerfiles, compose_files, compose_payload),
     }
     payload = {
         "schema_version": SCHEMA_VERSION,
@@ -222,6 +222,8 @@ def parse_compose_text(text: str) -> dict[str, Any]:
     current_indent = 0
     in_ports = False
     in_environment = False
+    in_build = False
+    build_indent = 0
     for raw in text.splitlines():
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
@@ -241,6 +243,8 @@ def parse_compose_text(text: str) -> dict[str, Any]:
             services.append(current)
             in_ports = False
             in_environment = False
+            in_build = False
+            build_indent = 0
             continue
         if current is None:
             continue
@@ -248,21 +252,32 @@ def parse_compose_text(text: str) -> dict[str, Any]:
             current = None
             in_ports = False
             in_environment = False
+            in_build = False
             continue
+        if in_build and indent <= build_indent:
+            in_build = False
         if stripped.startswith("ports:"):
             in_ports = True
             in_environment = False
+            in_build = False
             continue
         if stripped.startswith("environment:"):
             in_environment = True
             in_ports = False
+            in_build = False
             continue
         if stripped.startswith("build:"):
             current["build"] = value_after_colon(stripped)
+            in_build = current["build"] == ""
+            build_indent = indent
         elif stripped.startswith("image:"):
             current["image"] = value_after_colon(stripped)
+            in_build = False
         elif stripped.startswith("command:"):
             current["command"] = value_after_colon(stripped)
+            in_build = False
+        elif in_build and stripped.startswith("context:"):
+            current["build"] = value_after_colon(stripped)
         elif in_ports:
             found = extract_port_mappings(stripped)
             current["ports"].extend(found)
@@ -401,18 +416,34 @@ def infer_service_protocol(
     return "http"
 
 
-def infer_source_subdir(root: Path, dockerfiles: list[Path], compose_files: list[Path]) -> str:
-    anchors = dockerfiles or compose_files
+def infer_source_subdir(root: Path, dockerfiles: list[Path], compose_files: list[Path], compose_payload: dict[str, Any] | None = None) -> str:
+    compose_payload = compose_payload or {}
+    root_absolute = root.absolute()
+    compose_build_dirs = []
+    for service in compose_payload.get("services", []) if isinstance(compose_payload.get("services"), list) else []:
+        if not isinstance(service, dict):
+            continue
+        build = str(service.get("build") or "").strip()
+        if not build or build.startswith((".", "/")) is False and ":" in build:
+            continue
+        candidate = (root / build).absolute() if not Path(build).is_absolute() else Path(build).absolute()
+        try:
+            candidate.relative_to(root_absolute)
+        except ValueError:
+            continue
+        if candidate.is_dir():
+            compose_build_dirs.append(candidate)
+    anchors = dockerfiles or compose_build_dirs or compose_files
     if not anchors:
         return root.as_posix()
-    parents = [path.parent for path in anchors]
+    parents = [path.absolute().parent if path.is_file() else path.absolute() for path in anchors]
     try:
-        common_parts = list(parents[0].relative_to(root).parts)
+        common_parts = list(parents[0].relative_to(root_absolute).parts)
     except ValueError:
         return root.as_posix()
     for parent in parents[1:]:
         try:
-            rel_parts = parent.relative_to(root).parts
+            rel_parts = parent.relative_to(root_absolute).parts
         except ValueError:
             return root.as_posix()
         shared = []
@@ -421,7 +452,7 @@ def infer_source_subdir(root: Path, dockerfiles: list[Path], compose_files: list
                 break
             shared.append(left)
         common_parts = shared
-    common = root.joinpath(*common_parts) if common_parts else root
+    common = root_absolute.joinpath(*common_parts) if common_parts else root_absolute
     return common.as_posix()
 
 

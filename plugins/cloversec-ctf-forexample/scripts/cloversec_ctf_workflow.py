@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.10"
+WORKFLOW_VERSION = "1.0.11"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -1969,8 +1969,28 @@ def execute_stage_archive(base: Path) -> dict[str, Any]:
     cases = latest_cases_path(base)
     if not cases.exists():
         return {"status": "blocked", "errors": [{"message": "缺少 ctf_cases.jsonl，无法归档。"}]}
+    loaded_cases = data.load_cases(cases)
+    ready_cases = [case for case in loaded_cases if case_has_archive_input(case)]
+    if not ready_cases:
+        return {
+            "status": "blocked",
+            "errors": [
+                {
+                    "message": "没有可归档的本地材料。只有平台页、WP、solver 或搜索线索时，不能生成最终交付目录。",
+                    "case_count": len(loaded_cases),
+                }
+            ],
+        }
     result = archive_runner.run_archive_workflow(cases_path=cases, output_root=base / "归档", copy_files=True)
-    return {"status": "ok", "evidence_path": result.get("paths", {}).get("workflow", ""), "summary": result.get("summary", {})}
+    summary = result.get("summary", {}) if isinstance(result.get("summary"), dict) else {}
+    if int(summary.get("with_issues") or 0) > 0 or int(summary.get("archived") or 0) == 0:
+        return {
+            "status": "incomplete",
+            "evidence_path": result.get("paths", {}).get("workflow", ""),
+            "summary": summary,
+            "errors": [{"message": "归档已生成检查结果，但存在缺失项，不能作为最终交付。"}],
+        }
+    return {"status": "ok", "evidence_path": result.get("paths", {}).get("workflow", ""), "summary": summary}
 
 
 def execute_stage_quality(base: Path, *, execute_docker: bool) -> dict[str, Any]:
@@ -2536,11 +2556,26 @@ def check_archive_completion(workdir: Path, case: dict[str, Any], case_id: str) 
     archive_info = case.get("archive") if isinstance(case.get("archive"), dict) else {}
     manifest = str(archive_info.get("manifest_path") or "").strip()
     if manifest and Path(manifest).exists():
-        return completion_ok("archive", manifest)
+        return archive_manifest_completion(Path(manifest), case_id)
     for path in workdir.rglob("archive_manifest.json"):
         if path.is_file() and json_file_mentions_case(path, case_id):
-            return completion_ok("archive", path)
+            return archive_manifest_completion(path, case_id)
     return completion_error("archive", case_id, i18n.text("workflow.archive_manifest_missing"))
+
+
+def archive_manifest_completion(path: Path, case_id: str) -> dict[str, Any]:
+    try:
+        payload = read_json(path)
+    except Exception as exc:  # noqa: BLE001
+        return completion_error("archive", case_id, f"归档 manifest 读取失败：{exc}")
+    issues = payload.get("issues") if isinstance(payload.get("issues"), list) else []
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    file_count = int(summary.get("file_count") or len(payload.get("files", []) if isinstance(payload.get("files"), list) else []))
+    if issues:
+        return completion_error("archive", case_id, "归档 manifest 仍有问题：" + "；".join(str(item) for item in issues[:5]))
+    if file_count <= 0:
+        return completion_error("archive", case_id, "归档 manifest 没有有效文件，不能算归档完成。")
+    return completion_ok("archive", path)
 
 
 def check_quality_completion(workdir: Path, case_id: str) -> dict[str, Any]:
@@ -2601,6 +2636,31 @@ def case_local_paths(case: dict[str, Any]) -> list[Path]:
                 if value:
                     paths.append(Path(value))
     return paths
+
+
+def case_has_archive_input(case: dict[str, Any]) -> bool:
+    local_paths = case_local_paths(case)
+    has_existing_local = any(path.exists() for path in local_paths)
+    if has_existing_local:
+        return True
+    docker_artifacts = case.get("docker_artifacts") if isinstance(case.get("docker_artifacts"), dict) else {}
+    has_existing_docker_artifact = False
+    for key in ["tar_path", "image_tar", "project_dir"]:
+        raw_value = docker_artifacts.get(key)
+        candidates = []
+        if isinstance(raw_value, dict):
+            candidates.extend(str(raw_value.get(nested_key) or "").strip() for nested_key in ["path", "tar_path", "project_dir"])
+        else:
+            candidates.append(str(raw_value or "").strip())
+        if any(value and Path(value).exists() for value in candidates):
+            has_existing_docker_artifact = True
+            break
+    if has_existing_docker_artifact:
+        return True
+    writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
+    manual_path = str(writeup.get("formal_manual_path") or writeup.get("manual_path") or "").strip()
+    has_manual = bool(manual_path and Path(manual_path).exists())
+    return has_manual and (has_existing_local or has_existing_docker_artifact)
 
 
 def json_file_mentions_case(path: Path, case_id: str) -> bool:
@@ -3317,6 +3377,7 @@ def main(argv: list[str] | None = None) -> int:
     init_parser.add_argument("--category", action="append", default=[])
     init_parser.add_argument("--limit", type=int, default=20)
     init_parser.add_argument("--out")
+    init_parser.add_argument("--workdir", dest="out", help="alias for --out")
     init_parser.add_argument("--allow-browser-search", action="store_true")
     init_parser.add_argument("--dry-run", action="store_true")
     init_parser.add_argument("--output")

@@ -21,7 +21,22 @@ import cloversec_ctf_i18n as i18n
 
 TARGET_PLATFORM = "linux/amd64"
 DEFAULT_OPERATIONS = ["build", "load", "inspect", "run", "logs", "stop", "save"]
-VERSION = "1.0.10"
+OPERATION_ALIASES = {
+    "inspect_image": ["inspect"],
+    "image_inspect": ["inspect"],
+    "probe": ["run", "logs", "stop"],
+    "probe_http": ["run", "logs", "stop"],
+    "http_probe": ["run", "logs", "stop"],
+    "probe_tcp": ["run", "logs", "stop"],
+    "tcp_probe": ["run", "logs", "stop"],
+    "run_probe": ["run", "logs", "stop"],
+    "cleanup": ["stop"],
+    "remove": ["stop"],
+    "rm": ["stop"],
+    "save_image": ["save"],
+    "save_image_tar": ["save"],
+}
+VERSION = "1.0.11"
 VALIDATION_LEVELS = ["static_only", "inspect_only", "build_only", "run_probe", "solve_verify"]
 OPERATION_AUTH_ACTIONS = {
     "build": "docker_build",
@@ -114,6 +129,8 @@ def create_docker_plan(
     issues = []
     if selected_level == "static_only" and selected_operations:
         issues.append("static_only validation must not execute Docker operations")
+    if raw_operations is not None and raw_operations and not selected_operations:
+        issues.append("no recognized docker operations: " + ", ".join(str(item) for item in raw_operations))
     if selected_operations and not selected_image:
         issues.append("image_name is required")
     if "build" in selected_operations and not selected_project_dir_text:
@@ -494,9 +511,11 @@ def normalize_operations(operations: list[str]) -> list[str]:
     output = []
     for item in operations:
         value = str(item or "").strip().lower()
-        if value in allowed and value not in output:
-            output.append(value)
-    return output or list(DEFAULT_OPERATIONS)
+        mapped = OPERATION_ALIASES.get(value, [value])
+        for operation in mapped:
+            if operation in allowed and operation not in output:
+                output.append(operation)
+    return output
 
 
 def normalize_validation_level(value: str) -> str:

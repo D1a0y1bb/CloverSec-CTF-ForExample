@@ -18,7 +18,7 @@ import cloversec_ctf_naming as naming
 
 ROLE_DIRS = {
     "source": "题目源码",
-    "attachment": "题目源码",
+    "attachment": "题目附件",
     "image_tar": "题目镜像",
     "writeup": "题目手册",
 }
@@ -264,8 +264,6 @@ def render_missing_manual_placeholder(case: dict[str, Any]) -> str:
 
 
 def role_dir(role: str, attachment_only: bool) -> str:
-    if role == "attachment":
-        return "题目附件" if attachment_only else "题目源码"
     return ROLE_DIRS[role]
 
 

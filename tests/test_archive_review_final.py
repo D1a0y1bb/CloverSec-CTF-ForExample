@@ -121,7 +121,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             updated = archive.apply_archive_outputs(case, manifest)
 
             self.assertTrue((archive_dir / "题目源码" / "src.py").exists())
-            self.assertTrue((archive_dir / "题目源码" / "challenge.zip").exists())
+            self.assertTrue((archive_dir / "题目附件" / "challenge.zip").exists())
             self.assertTrue((archive_dir / "题目镜像" / "web.tar").exists())
             self.assertTrue((archive_dir / "题目手册" / "题目解题手册.md").exists())
             self.assertFalse((archive_dir / "题目手册" / "截图").exists())
@@ -1125,7 +1125,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.10")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.11")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

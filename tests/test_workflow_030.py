@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import threading
@@ -40,6 +41,39 @@ class Workflow030Tests(unittest.TestCase):
             plan = json.loads((out / "task_plan.json").read_text(encoding="utf-8"))
             self.assertEqual(plan["request"]["categories"], ["web"])
             self.assertTrue(any("IrisCTF 2025 web writeup" == item["query"] for item in plan["search_tasks"]))
+
+    def test_init_cli_accepts_workdir_alias(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            output = Path(tmp) / "init.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS / "cloversec_ctf_workflow.py"),
+                    "init",
+                    "--event",
+                    "CrateCTF",
+                    "--year",
+                    "2024",
+                    "--category",
+                    "pwn",
+                    "--limit",
+                    "1",
+                    "--workdir",
+                    str(out),
+                    "--output",
+                    str(output),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((out / "task_plan.json").exists())
+            payload = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(payload["workdir"], out.as_posix())
 
     def test_research_stage_rejects_empty_cases_and_regenerates_from_search_results(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -155,6 +189,48 @@ class Workflow030Tests(unittest.TestCase):
             self.assertIn("缺少 source_url", result["errors"][0]["message"])
             state = json.loads((out / "workflow_state.json").read_text(encoding="utf-8"))
             self.assertNotEqual(state["stages"]["research"]["status"], "completed")
+
+    def test_archive_stage_blocks_when_cases_only_have_writeup_leads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            workflow.init_workflow(event="DemoCTF", years=[2026], categories=["misc"], limit=1, out_dir=out)
+            workflow.write_jsonl(
+                out / "ctf_cases.jsonl",
+                [
+                    {
+                        "case_id": "lead-only",
+                        "metadata": {"名称": "Only WP", "分类": "Misc", "验证状态": "未验证", "是否通过": "否"},
+                        "research": {"gate": "cannot_continue", "blocking_rule": "writeup_without_attachment"},
+                        "evidence": [{"source_url": "https://example.com/wp", "title": "Only WP writeup"}],
+                    }
+                ],
+            )
+
+            result = workflow.execute_stage_archive(out)
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertIn("没有可归档的本地材料", result["errors"][0]["message"])
+
+    def test_archive_completion_rejects_manifest_with_issues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            manifest_dir = out / "归档" / "_cache" / "case"
+            manifest_dir.mkdir(parents=True)
+            manifest = manifest_dir / "archive_manifest.json"
+            workflow.write_json(
+                manifest,
+                {
+                    "case_id": "case-1",
+                    "summary": {"file_count": 1},
+                    "files": [{"relative_path": "题目手册/题目解题手册.md"}],
+                    "issues": ["missing source: /tmp/missing"],
+                },
+            )
+
+            result = workflow.check_archive_completion(out, {}, "case-1")
+
+            self.assertEqual(result["status"], "incomplete")
+            self.assertIn("仍有问题", result["errors"][0]["message"])
 
     def test_batch_apply_blocks_when_previous_stage_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -140,6 +140,32 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertEqual(payload["compose"]["services"][0]["name"], "web")
         self.assertIn("18081:80", payload["summary"]["ports"])
 
+    def test_infers_compose_build_context_as_source_subdir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "challenge_source"
+            src.mkdir()
+            (src / "Dockerfile").write_text("FROM python:3.12-alpine\nEXPOSE 1337\n", encoding="utf-8")
+            (root / "docker-compose.yml").write_text(
+                "\n".join(
+                    [
+                        "services:",
+                        "  jsfs:",
+                        "    build:",
+                        "      context: ./challenge_source",
+                        "    ports:",
+                        '      - "1337:1337"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            payload = container.infer_container_project(root)
+
+        self.assertEqual(payload["runtime"]["source_subdir"], src.absolute().as_posix())
+        self.assertIn("1337:1337", payload["summary"]["ports"])
+
     def test_image_tar_inference_still_requires_dockerizer_conversion(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -166,6 +192,21 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
         self.assertEqual(docker_runner.operations_for_validation_level("inspect_only", tar_path="image.tar"), ["load", "inspect"])
         self.assertEqual(docker_runner.operations_for_validation_level("build_only"), ["build", "inspect"])
         self.assertEqual(docker_runner.operations_for_validation_level("run_probe"), ["build", "inspect", "run", "logs", "stop"])
+
+    def test_docker_operation_aliases_do_not_fall_back_to_default_all(self):
+        self.assertEqual(docker_runner.normalize_operations(["probe_http"]), ["run", "logs", "stop"])
+        self.assertEqual(docker_runner.normalize_operations(["save_image_tar"]), ["save"])
+        self.assertEqual(docker_runner.normalize_operations(["not-a-step"]), [])
+
+    def test_docker_plan_reports_unknown_explicit_operation(self):
+        plan = docker_runner.create_docker_plan(
+            case={"case_id": "bad-step"},
+            image_name="cloversec/demo:local",
+            operations=["not-a-step"],
+        )
+
+        self.assertEqual(plan["operations"], [])
+        self.assertTrue(any("no recognized docker operations" in issue for issue in plan["issues"]))
 
     def test_docker_plan_rewrites_unavailable_host_port_before_run(self):
         plan = {
@@ -391,7 +432,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.10")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.0.11")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 
