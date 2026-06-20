@@ -16,7 +16,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.11"
+VERSION = "1.0.12"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
@@ -27,6 +27,7 @@ PROCESS_EVIDENCE_DIR = "过程证据"
 MACHINE_DATA_DIR = "机器数据"
 IMAGE_SUFFIXES = {".tar", ".gz", ".tgz"}
 BLOCKED_PATH_PARTS = {".ctfbuild", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "_cache", "_delivery_cache"}
+LEGACY_WRONG_ROOT_DIRS = {"容器交付件", "录题字段", "原始资料", "镜像包", "验证记录"}
 BLOCKED_PROCESS_FILENAMES = {
     "docker_artifacts.json",
     "docker_artifacts.validated.json",
@@ -99,12 +100,8 @@ def create_delivery_package(
     prepare_clean_delivery_dir(delivery)
 
     selected = select_delivery_sources(work, outputs)
-    ensure_final_sources(work, outputs, selected)
     files: list[dict[str, Any]] = []
     missing: list[dict[str, str]] = []
-
-    add_record(copy_or_reference(selected.get("final_xlsx"), delivery / "最终归档表.xlsx", key="final_xlsx", copy_limit=copy_limit, force_reference=False), files, missing)
-    add_record(copy_or_reference(selected.get("yuque_table"), delivery / "语雀粘贴表.md", key="yuque_table", copy_limit=copy_limit, force_reference=False), files, missing)
 
     challenge_records = copy_challenge_archives(
         archive_roots=selected.get("archive_roots", []),
@@ -122,6 +119,11 @@ def create_delivery_package(
     )
     files.extend(legacy_records["files"])
     missing.extend(legacy_records["missing"])
+
+    ensure_final_sources(work, outputs, selected, delivery)
+    add_record(copy_or_reference(selected.get("final_xlsx"), delivery / "最终归档表.xlsx", key="final_xlsx", copy_limit=copy_limit, force_reference=False), files, missing)
+    add_record(copy_or_reference(selected.get("yuque_table"), delivery / "语雀粘贴表.md", key="yuque_table", copy_limit=copy_limit, force_reference=False), files, missing)
+
     add_record(
         copy_or_write_text(
             selected.get("pending_issues"),
@@ -212,7 +214,7 @@ def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Any]:
     )
     selected["yuque_table"] = first_existing(outputs_dir, ["*语雀粘贴表.md", "*completed_yuque_table.md", "*after_docker_yuque_table.md", "*yuque_table.md"])
     selected["archive_roots"] = find_archive_roots(workdir, outputs_dir)
-    selected["legacy_challenges"] = [] if selected["archive_roots"] else find_legacy_single_challenges(workdir)
+    selected["legacy_challenges"] = [] if selected["archive_roots"] else find_legacy_challenges(workdir, outputs_dir)
     selected["pending_issues"] = first_available(
         first_existing(outputs_dir, ["*待处理问题.md", "*missing_report.md"]),
         first_existing_recursive(workdir, ["待处理问题.md", "missing_report.md"]),
@@ -228,16 +230,19 @@ def select_delivery_sources(workdir: Path, outputs_dir: Path) -> dict[str, Any]:
     }
 
 
-def ensure_final_sources(workdir: Path, outputs_dir: Path, selected: dict[str, Any]) -> None:
+def ensure_final_sources(workdir: Path, outputs_dir: Path, selected: dict[str, Any], delivery_dir: Path | None = None) -> None:
     if selected.get("final_xlsx") and selected.get("yuque_table"):
         return
     cases = load_delivery_cases(workdir, outputs_dir)
+    if not cases:
+        cases = cases_from_legacy_challenges(selected.get("legacy_challenges", []), delivery_dir=delivery_dir)
     if not cases:
         return
     import cloversec_ctf_final as final
 
     generated = workdir / "_delivery_cache" / "final"
-    payload = final.create_final_outputs(cases, generated, base_dir=outputs_dir)
+    path_base = delivery_dir.parent if delivery_dir else outputs_dir
+    payload = final.create_final_outputs(cases, generated, base_dir=path_base)
     summary = payload.get("summary", {}) if isinstance(payload.get("summary"), dict) else {}
     final_xlsx = Path(str(summary.get("xlsx_path") or ""))
     yuque_table = Path(str(summary.get("yuque_table_path") or ""))
@@ -287,6 +292,160 @@ def read_case_file(path: Path) -> list[dict[str, Any]]:
         return [item for item in payload if isinstance(item, dict)]
     if isinstance(payload, dict):
         return [payload]
+    return []
+
+
+def cases_from_legacy_challenges(items: list[dict[str, Any]], *, delivery_dir: Path | None = None) -> list[dict[str, Any]]:
+    cases: list[dict[str, Any]] = []
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            continue
+        source = Path(str(item.get("source") or ""))
+        fields = read_legacy_xlsx_fields(source)
+        metadata = dict(fields)
+        name = str(metadata.get("名称") or metadata.get("题目标题") or safe_display_name(source.name) or f"题目{index}").strip()
+        category = str(metadata.get("分类") or metadata.get("题目分类") or "").strip()
+        if not category and str(item.get("name") or "").count("-") >= 1:
+            category = str(item.get("name") or "").split("-", 1)[0].strip()
+        if not category:
+            category = "Misc"
+        metadata["名称"] = name
+        metadata["分类"] = normalized_category_name(category)
+        fill_blank(metadata, "题目类型", "附件型" if item.get("type") == "attachment" else "环境型")
+        fill_blank(metadata, "Flag类型", "动态Flag" if metadata["题目类型"] == "环境型" else "静态Flag")
+        fill_blank(metadata, "验证状态", legacy_validation_status(source))
+        fill_blank(metadata, "是否通过", "是" if metadata["验证状态"] == "通过" else "否")
+        fill_blank(metadata, "是否归档", "是")
+        target_archive_dir = (delivery_dir / str(item.get("name") or f"{metadata['分类']}-{name}")) if delivery_dir else source
+        metadata["归档目录"] = target_archive_dir.as_posix()
+        metadata["环境包/附件包路径"] = legacy_resource_path(item, metadata, normalize_for_delivery=delivery_dir is not None)
+        fill_blank(metadata, "题目来源", str(metadata.get("赛事来源") or ""))
+        case_id = str(metadata.get("记录ID") or metadata.get("case_id") or safe_case_id(f"{metadata['分类']}-{name}") or f"legacy-{index}")
+        case: dict[str, Any] = {
+            "case_id": case_id,
+            "metadata": metadata,
+            "flag": {"value": str(metadata.get("Flag") or ""), "type": str(metadata.get("Flag类型") or "")},
+            "source_files": legacy_source_records(item),
+            "attachments": legacy_attachment_records(item),
+            "docker_artifacts": {"tar_path": first_legacy_image_tar(item), "run_verified": metadata["验证状态"] == "通过"},
+            "writeup": {"manual_path": str(item.get("manual_source") or "")},
+        }
+        cases.append(case)
+    return cases
+
+
+def read_legacy_xlsx_fields(source: Path) -> dict[str, Any]:
+    for path in [source / "录题字段" / "xlsx_fields.json", source / "xlsx_fields.json"]:
+        payload = read_json_safely(path) if path.is_file() else {}
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
+def fill_blank(mapping: dict[str, Any], key: str, value: Any) -> None:
+    if str(mapping.get(key) or "").strip() == "":
+        mapping[key] = value
+
+
+def normalized_category_name(value: str) -> str:
+    mapping = {
+        "web": "Web",
+        "pwn": "Pwn",
+        "reverse": "Reverse",
+        "re": "Reverse",
+        "crypto": "Crypto",
+        "misc": "Misc",
+        "forensics": "Forensics",
+        "ai": "AI",
+    }
+    return mapping.get(value.strip().lower(), value.strip() or "Misc")
+
+
+def safe_case_id(value: str) -> str:
+    output = []
+    for char in value.lower():
+        if char.isalnum():
+            output.append(char)
+        elif char in {" ", "-", "_"}:
+            output.append("-")
+    text = "".join(output).strip("-")
+    while "--" in text:
+        text = text.replace("--", "-")
+    return text
+
+
+def legacy_validation_status(source: Path) -> str:
+    if not source.exists():
+        return "未验证"
+    for pattern in [
+        "验证记录/docker_artifacts.executed.json",
+        "验证记录/docker_artifacts.validated.json",
+        "docker_artifacts.executed.json",
+        "docker_artifacts.validated.json",
+        "dockerizer_validate_summary.json",
+    ]:
+        if (source / pattern).is_file():
+            return "通过"
+    return "部分通过"
+
+
+def legacy_resource_path(item: dict[str, Any], metadata: dict[str, Any], *, normalize_for_delivery: bool = False) -> str:
+    existing = str(metadata.get("环境包/附件包路径") or "").strip()
+    if existing and not normalize_for_delivery:
+        return existing
+    if item.get("type") == "attachment":
+        attachment_dir = Path(str(item.get("attachment_dir") or ""))
+        if attachment_dir.is_dir():
+            first_file = next((path for path in sorted(attachment_dir.rglob("*")) if path.is_file()), None)
+            if first_file:
+                relative = path_relative_to(first_file, Path(str(item.get("source") or "")))
+                return normalize_delivery_resource_path(relative)
+        return "题目附件"
+    image = first_legacy_image_tar(item)
+    if image:
+        return f"题目镜像/{Path(image).name}"
+    return normalize_delivery_resource_path(existing) if existing else ""
+
+
+def normalize_delivery_resource_path(value: str) -> str:
+    text = value.strip().replace("\\", "/")
+    for prefix, replacement in [("镜像包/", "题目镜像/"), ("容器交付件/", "题目源码/"), ("附件/", "题目附件/")]:
+        if text.startswith(prefix):
+            return replacement + text[len(prefix) :]
+    return text
+
+
+def path_relative_to(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.name
+
+
+def first_legacy_image_tar(item: dict[str, Any]) -> str:
+    image_dir = Path(str(item.get("image_dir") or ""))
+    if image_dir.is_dir():
+        first_file = next((path for path in sorted(image_dir.rglob("*")) if path.is_file() and looks_tar_archive_name(path)), None)
+        if first_file:
+            return first_file.as_posix()
+    for value in item.get("image_sources", []):
+        path = Path(str(value))
+        if path.is_file() and looks_tar_archive_name(path):
+            return path.as_posix()
+    return ""
+
+
+def legacy_source_records(item: dict[str, Any]) -> list[dict[str, str]]:
+    source_dir = Path(str(item.get("source_dir") or ""))
+    if source_dir.is_dir():
+        return [{"path": source_dir.as_posix(), "name": source_dir.name}]
+    return []
+
+
+def legacy_attachment_records(item: dict[str, Any]) -> list[dict[str, str]]:
+    attachment_dir = Path(str(item.get("attachment_dir") or ""))
+    if attachment_dir.is_dir():
+        return [{"path": attachment_dir.as_posix(), "name": attachment_dir.name}]
     return []
 
 
@@ -415,9 +574,9 @@ def select_formal_manual(source_dir: Path) -> Path | None:
 def find_legacy_single_challenges(workdir: Path) -> list[dict[str, Any]]:
     if not workdir.exists() or not workdir.is_dir():
         return []
-    source_dir = first_existing_dir(workdir, ["dockerizer_work", "platform", "题目源码"])
-    image_dir = first_existing_dir(workdir, ["题目镜像"])
-    manual_dir = first_existing_dir(workdir, ["手册", "题目手册", "writeup", "writeup_out"])
+    source_dir = first_existing_dir(workdir, ["dockerizer_work", "platform", "题目源码", "容器交付件"])
+    image_dir = first_existing_dir(workdir, ["题目镜像", "镜像包"])
+    manual_source = first_existing_path(workdir, ["手册", "题目手册", "writeup", "writeup_out"], ["题目解题手册.md", "题目手册-正式.md", "manual.md"])
     attachment_dir = first_existing_dir(workdir, ["题目附件", "附件"])
     if not any(is_existing_dir(path) for path in [source_dir, image_dir, attachment_dir]):
         return []
@@ -435,10 +594,28 @@ def find_legacy_single_challenges(workdir: Path) -> list[dict[str, Any]]:
             "source_dir": source_dir.as_posix() if is_existing_dir(source_dir) else "",
             "image_dir": image_dir.as_posix() if is_existing_dir(image_dir) else "",
             "image_sources": [path.as_posix() for path in find_legacy_image_sources(workdir)],
-            "manual_dir": manual_dir.as_posix() if is_existing_dir(manual_dir) else "",
+            "manual_source": manual_source.as_posix() if is_real_path(manual_source) and manual_source.exists() else "",
             "attachment_dir": attachment_dir.as_posix() if is_existing_dir(attachment_dir) else "",
         }
     ]
+
+
+def find_legacy_challenges(*roots: Path) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for root in roots:
+        if not root.exists() or not root.is_dir():
+            continue
+        candidates = [root]
+        candidates.extend(path for path in sorted(root.iterdir()) if path.is_dir())
+        for candidate in candidates:
+            for item in find_legacy_single_challenges(candidate):
+                key = str(item.get("source") or candidate.as_posix())
+                if key in seen:
+                    continue
+                seen.add(key)
+                output.append(item)
+    return output
 
 
 def find_legacy_image_sources(workdir: Path) -> list[Path]:
@@ -503,6 +680,22 @@ def first_existing_dir(root: Path, names: list[str]) -> Path:
     return Path()
 
 
+def first_existing_path(root: Path, dir_names: list[str], file_names: list[str]) -> Path:
+    for name in dir_names:
+        path = root / name
+        if path.is_dir():
+            return path
+    for name in file_names:
+        path = root / name
+        if path.is_file():
+            return path
+    for pattern in ["*手册*.md", "*writeup*.md", "*.md"]:
+        matches = sorted(path for path in root.glob(pattern) if path.is_file() and not manual_name_blocked(path.name))
+        if matches:
+            return matches[0]
+    return Path()
+
+
 def load_case_metadata(workdir: Path) -> dict[str, Any]:
     case_json = workdir / "ctf_case.json"
     if case_json.is_file():
@@ -521,7 +714,34 @@ def load_case_metadata(workdir: Path) -> dict[str, Any]:
             except json.JSONDecodeError:
                 continue
             return payload if isinstance(payload, dict) else {}
+    for path in [
+        workdir / "录题字段" / "xlsx_fields.json",
+        workdir / "xlsx_fields.json",
+        workdir / "录题字段" / "hub_fields.json",
+        workdir / "hub_fields.json",
+        workdir / "录题字段" / "writeup_context.json",
+        workdir / "writeup_context.json",
+    ]:
+        payload = read_json_safely(path) if path.is_file() else {}
+        metadata = metadata_from_field_payload(payload)
+        if metadata:
+            return {"metadata": metadata}
     return {}
+
+
+def metadata_from_field_payload(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    metadata: dict[str, Any] = {}
+    name = payload.get("名称") or payload.get("题目标题") or payload.get("title")
+    category = payload.get("分类") or payload.get("题目分类") or payload.get("category")
+    if isinstance(category, str) and category.lower() == "web":
+        category = "Web"
+    if name:
+        metadata["名称"] = str(name)
+    if category:
+        metadata["分类"] = str(category)
+    return metadata
 
 
 def copy_legacy_single_challenges(
@@ -584,7 +804,7 @@ def copy_legacy_single_challenges(
                             "tar": str(record.get("source") or record.get("target") or ""),
                         }
                     )
-        manual_copied = copy_legacy_manual(Path(str(item.get("manual_dir") or "")), target_case_dir / "题目手册", files, missing, challenge=name)
+        manual_copied = copy_legacy_manual(Path(str(item.get("manual_source") or "")), target_case_dir / "题目手册", files, missing, challenge=name)
         if manual_copied:
             subdirs.append("题目手册")
         challenges.append({"name": name, "source": str(item.get("source") or ""), "subdirs": dedupe_strings(subdirs)})
@@ -738,6 +958,20 @@ def copy_legacy_manual(source_dir: Path, target_dir: Path, files: list[dict[str,
     if source_dir.as_posix() in {"", "."}:
         missing.append({"key": "legacy:题目手册", "target": target_dir.as_posix()})
         return False
+    if source_dir.is_file():
+        if manual_name_blocked(source_dir.name):
+            missing.append({"key": "legacy:题目手册", "target": (target_dir / "题目解题手册.md").as_posix()})
+            return False
+        record = copy_or_reference(
+            source_dir,
+            target_dir / "题目解题手册.md",
+            key="legacy:题目手册",
+            copy_limit=DEFAULT_COPY_LIMIT,
+            force_reference=False,
+            extra={"challenge": challenge, "subdir": "题目手册"},
+        )
+        add_record(record, files, missing)
+        return record.get("status") == "copied"
     if not source_dir.is_dir():
         missing.append({"key": "legacy:题目手册", "target": target_dir.as_posix()})
         return False
@@ -966,7 +1200,7 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     allowed_root_files = set(ALL_ROOT_FILES)
     allowed_subdirs = set(CHALLENGE_SUBDIRS)
-    blocked_root_names = {"_cache", "_quality", "机器数据", "元数据", "reports", "manifests", "logs", "evidence", "snapshots", "Hub准备", "质量检查", "archive", "归档"}
+    blocked_root_names = {"_cache", "_quality", "机器数据", "元数据", "reports", "manifests", "logs", "evidence", "snapshots", "Hub准备", "质量检查", "archive", "归档", *LEGACY_WRONG_ROOT_DIRS}
     blocked_manual_tokens = ("draft", "草稿", "template", "manual_filled_draft", "manual_template")
 
     for child in sorted(delivery.iterdir()) if delivery.exists() else []:

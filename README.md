@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.11-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.12-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -24,9 +24,9 @@
 
 我们准备了一个演示视频，用来展示一批 CTF 题目怎样从公开线索整理到内部交付包：题目信息收集、附件和源码整理、平台镜像改造、手册撰写、检查、Hub 浏览器辅助填表和最终 xlsx/语雀表。
 
-## 1.0.11 交付样式
+## 1.0.12 交付样式
 
-`1.0.11` 按内部已经认可的真实题目归档样例调整输出，不再把英文过程文件当成最终交付入口。
+`1.0.12` 按内部已经认可的真实题目归档样例调整输出，不再把英文过程文件当成最终交付入口。
 
 批次根目录主要放这些文件：
 
@@ -66,14 +66,14 @@
 
 ```text
 来源：D1a0y1bb/CloverSec-CTF-ForExample
-Git 引用：v1.0.11
+Git 引用：v1.0.12
 稀疏路径：留空
 ```
 
 也可以用命令行：
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v1.0.11
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v1.0.12
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -184,9 +184,9 @@ python3 scripts/authorize_batch.py --workdir runs/xxxxxxxxx --action docker_buil
 python3 scripts/search_recall_benchmark.py \
   --run-search \
   --benchmark plugins/cloversec-ctf-forexample/references/search-recall-benchmark.json \
-  --input-dir docs/validation/search-recall-v1.0.11 \
-  --output docs/validation/search-recall-benchmark-v1.0.11.md \
-  --json-output docs/validation/search-recall-benchmark-v1.0.11.json
+  --input-dir docs/validation/search-recall-v1.0.12 \
+  --output docs/validation/search-recall-benchmark-v1.0.12.md \
+  --json-output docs/validation/search-recall-benchmark-v1.0.12.json
 ```
 
 这个基准不是看关键词有没有出现，而是看已人工核对过存在的公开资源是否被搜到。当前基准覆盖西电 XDSEC miniLCTF、中科大 Hackergame、HGame、IrisCTF、LA CTF 和 Google CTF，按 GitHub repo / URL 归一化命中统计召回。
@@ -262,7 +262,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scripts/package_plugin_release.py
 ```
 
-发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v1.0.11`；正文第一行使用 `# CloverSec CTF For Example 1.0.11`。
+发布前用 `scripts/bump_version.py` 更新版本号。Release 标题使用 tag，例如 `v1.0.12`；正文第一行使用 `# CloverSec CTF For Example 1.0.12`。
 
 ## License
 

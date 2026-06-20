@@ -78,7 +78,7 @@ python3 plugins/cloversec-ctf-forexample/scripts/cloversec_ctf_delivery.py \
   --output-dir outputs
 ```
 
-最终回复前必须让 `cloversec_ctf_delivery.py` 生成或扫描交付目录。扫描还有问题时，只能报告“交付目录待整理”，不能把 `archive/`、`_cache/`、`reports/`、`manifests/` 或手写目录当最终结果。
+最终回复前必须让 `cloversec_ctf_delivery.py` 生成或扫描交付目录。扫描还有问题时，只能报告“交付目录待整理”，不能把 `archive/`、`_cache/`、`reports/`、`manifests/` 或手写目录当最终结果。`容器交付件/`、`镜像包/`、`录题字段/`、`原始资料/`、`验证记录/` 这类目录只能作为整理器输入，不能出现在人看的最终交付根目录。
 
 默认目录：
 

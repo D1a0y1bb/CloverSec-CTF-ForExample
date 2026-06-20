@@ -82,6 +82,7 @@ research, collect, dedupe, download_preview, download_accept, archive, quality, 
 - 如果已经有安全下载预览或用户已经确认 safe，必须继续运行到 `final_report`，并用 `cloversec_ctf_delivery.py` 生成中文最终交付目录。
 - 最终只把 `outputs/` 或 `最终交付包/` 报给用户；如果当前只生成了 `archive/` 中间目录，必须先整理成最终交付包再汇报。
 - 最终交付必须由 `cloversec_ctf_delivery.py` 生成或扫描。扫描还存在问题时，只能说交付目录待整理，不能把过程目录报成最终目录。
+- 不能把 `WarmUp_正式交付/`、`容器交付件/`、`镜像包/`、`录题字段/`、`原始资料/`、`验证记录/` 这类手工目录报成最终交付。发现这类目录时，把它当输入材料交给 `cloversec_ctf_delivery.py` 重新整理。
 - `ctf_cases.jsonl` 为空时不能继续归档，必须从 `search_results.json` 重新生成题目清单，或继续搜索真实题目。
 
 ## 资源分流规则

@@ -615,6 +615,71 @@ class ArchiveReviewFinalTests(unittest.TestCase):
             self.assertIn("Pwn-JSFS/题目手册/题目解题手册.md", names)
             self.assertFalse(any(name.startswith("__MACOSX/") or name.endswith(".DS_Store") or "/_cache/" in name for name in names))
 
+    def test_delivery_package_normalizes_handmade_wrong_delivery_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            workdir = tmp_path / "thread"
+            outputs = workdir / "outputs"
+            wrong = outputs / "WarmUp_正式交付"
+            workdir.mkdir()
+            (wrong / "容器交付件" / "app").mkdir(parents=True)
+            (wrong / "镜像包").mkdir()
+            (wrong / "录题字段").mkdir()
+            (wrong / "验证记录").mkdir()
+            (wrong / "容器交付件" / "Dockerfile").write_text("FROM php:7.4-apache\n", encoding="utf-8")
+            (wrong / "容器交付件" / "start.sh").write_text("#!/bin/bash\napache2-foreground\n", encoding="utf-8")
+            (wrong / "容器交付件" / "changeflag.sh").write_text("#!/bin/bash\ncat \"$1\" > /flag\n", encoding="utf-8")
+            (wrong / "容器交付件" / "flag").write_text("csictf{typ3_juggl1ng_1n_php}\n", encoding="utf-8")
+            (wrong / "容器交付件" / "app" / "index.php").write_text("<?php echo 'ok';\n", encoding="utf-8")
+            (wrong / "镜像包" / "warm-up-php74-amd64.tar").write_bytes(b"tar")
+            (wrong / "题目手册-正式.md").write_text("# Warm Up\n\n## 1 题目设计部署信息\n\n## 2 HUB上传部分&题解信息\n", encoding="utf-8")
+            (wrong / "录题字段" / "xlsx_fields.json").write_text(
+                json.dumps(
+                    {
+                        "名称": "Warm Up",
+                        "分类": "Web",
+                        "题目类型": "环境型",
+                        "Flag类型": "静态Flag",
+                        "Flag": "csictf{typ3_juggl1ng_1n_php}",
+                        "环境包/附件包路径": "镜像包/warm-up-php74-amd64.tar",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = delivery.create_delivery_package(workdir=workdir, outputs_dir=outputs, output_dir=outputs / "最终交付包")
+
+            delivery_dir = Path(manifest["paths"]["delivery_dir"])
+            self.assertTrue((delivery_dir / "交付说明.md").exists())
+            self.assertTrue((delivery_dir / "最终归档表.xlsx").exists())
+            self.assertTrue((delivery_dir / "语雀粘贴表.md").exists())
+            self.assertTrue((delivery_dir / "Web-Warm Up" / "题目源码" / "Dockerfile").exists())
+            self.assertTrue((delivery_dir / "Web-Warm Up" / "题目镜像" / "warm-up-php74-amd64.tar").exists())
+            self.assertTrue((delivery_dir / "Web-Warm Up" / "题目手册" / "题目解题手册.md").exists())
+            self.assertFalse((delivery_dir / "WarmUp_正式交付").exists())
+            self.assertFalse((delivery_dir / "Web-Warm Up" / "录题字段").exists())
+            rows = data.read_xlsx(delivery_dir / "最终归档表.xlsx")
+            self.assertEqual(rows[0]["名称"], "Warm Up")
+            self.assertEqual(rows[0]["环境包/附件包路径"], "题目镜像/warm-up-php74-amd64.tar")
+            self.assertEqual(manifest["summary"]["package_issues"], 0)
+
+    def test_delivery_scan_rejects_handmade_wrong_delivery_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            wrong = Path(tmp) / "WarmUp_正式交付"
+            (wrong / "容器交付件").mkdir(parents=True)
+            (wrong / "镜像包").mkdir()
+            (wrong / "录题字段").mkdir()
+            (wrong / "验证记录").mkdir()
+            (wrong / "题目手册-正式.md").write_text("# 手册\n", encoding="utf-8")
+
+            issues = delivery.scan_delivery_package(wrong)
+
+            issue_paths = {item["path"] for item in issues}
+            self.assertIn("容器交付件", issue_paths)
+            self.assertIn("录题字段", issue_paths)
+            self.assertIn("验证记录", issue_paths)
+
     def test_delivery_package_rejects_output_dir_that_would_delete_workdir(self):
         with tempfile.TemporaryDirectory() as tmp:
             raw_output = Path(tmp) / "jsfs-cratectf-2024-platform"
@@ -1125,7 +1190,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.11")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.0.12")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)
