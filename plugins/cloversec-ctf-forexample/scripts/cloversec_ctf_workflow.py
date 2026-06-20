@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.0.2"
+WORKFLOW_VERSION = "1.0.3"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -1848,7 +1848,11 @@ def execute_stage_final_report(base: Path) -> dict[str, Any]:
     cases = data.load_cases(cases_path)
     internal_output = base / "_cache" / "final_report"
     result = final_reporter.create_final_outputs(cases, internal_output, base_dir=base)
-    delivery = delivery_packager.create_delivery_package(workdir=base, outputs_dir=internal_output, output_dir=base / "最终交付")
+    delivery = delivery_packager.create_delivery_package(
+        workdir=base,
+        outputs_dir=internal_output,
+        output_dir=delivery_output_dir_for_workdir(base),
+    )
     return {
         "status": "ok" if not delivery.get("package_issues") else "incomplete",
         "evidence_path": delivery.get("paths", {}).get("readme", ""),
@@ -1939,6 +1943,19 @@ def latest_cases_path(base: Path) -> Path:
         base / "ctf_cases.jsonl",
     ]
     return next((path for path in candidates if path.exists()), base / "ctf_cases.jsonl")
+
+
+def delivery_output_dir_for_workdir(base: Path) -> Path:
+    """Return the human-facing final delivery directory for a workflow workdir."""
+    candidates = [
+        base.parent.parent / "outputs",
+        base.parent / "outputs",
+        base / "outputs",
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir() and candidate.resolve() != base.resolve():
+            return candidate
+    return base / "最终交付"
 
 
 def first_existing(base: Path, names: list[str]) -> Path:
@@ -2350,10 +2367,10 @@ def check_hub_prepare_completion(workdir: Path, case: dict[str, Any], case_id: s
 
 def check_final_report_completion(workdir: Path, case_id: str) -> dict[str, Any]:
     required = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md", "待处理问题.md", "质量检查报告.md"]
-    delivery_dir = workdir / "最终交付"
-    paths = [delivery_dir / name for name in required]
-    if delivery_dir.exists() and all(path.is_file() for path in paths):
-        return completion_ok("final_report", delivery_dir)
+    for delivery_dir in [delivery_output_dir_for_workdir(workdir), workdir / "最终交付"]:
+        paths = [delivery_dir / name for name in required]
+        if delivery_dir.exists() and all(path.is_file() for path in paths):
+            return completion_ok("final_report", delivery_dir)
     return completion_error("final_report", case_id, "缺少最终归档表.xlsx、语雀粘贴表.md、交付说明.md、待处理问题.md 或 质量检查报告.md。")
 
 

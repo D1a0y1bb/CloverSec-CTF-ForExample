@@ -168,7 +168,7 @@ def dockerizer_rows_from_classification(classification: dict[str, Any]) -> list[
         "Flag路径": ";".join(flag_files),
         "缺失项": ";".join(missing),
         "自动动作": "auto_action=auto-render",
-        "下一步动作": f"交给 cloversec-ctf-build-dockerizer 自动生成 CloverSec 平台交付件并做静态校验；推荐命令：python3 scripts/workflow.py auto-render --project-dir {root}",
+        "下一步动作": f"交给 cloversec-ctf-build-dockerizer 自动生成 CloverSec 平台交付件并做静态校验；在 Dockerizer skill 的 scripts 目录执行 workflow.py auto-render --project-dir {root}",
     }
     return [row]
 

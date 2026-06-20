@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/1.0.2 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/1.0.3 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -268,6 +268,11 @@ LEGACY_MATERIAL_STATUS_MAP = {
     "已发现官方题目配置，待下载材料": MATERIAL_STATUS_ASSET_ONLY,
     "已发现官方题目配置和附件候选，待下载检查": MATERIAL_STATUS_ASSET_PLUS_OFFICIAL,
     "已收集": MATERIAL_STATUS_ASSET_ONLY,
+    "官方题包已收集": MATERIAL_STATUS_ASSET_PLUS_OFFICIAL,
+    "官方源码已收集": MATERIAL_STATUS_ASSET_ONLY,
+    "源码已下载": MATERIAL_STATUS_ASSET_ONLY,
+    "附件已下载": MATERIAL_STATUS_ASSET_ONLY,
+    "源码和附件已下载": MATERIAL_STATUS_ASSET_PLUS_OFFICIAL,
 }
 
 SEARCH_ENGINE_DOMAINS = {
@@ -1755,9 +1760,24 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         question_type = str(challenge_metadata.get("question_type") or "未知")
         flag_value = str(challenge_metadata.get("flag") or "")
         flag_type = str(challenge_metadata.get("flag_type") or ("静态" if flag_value else "未知"))
+        source_url = str(result.get("url") or "")
+        next_action = gate["next_action"] or material_profile["next_action"]
+        first_wp_url = candidate["source_url"] if writeup_candidates else ""
+        first_asset_url = attachment_candidates[0]["source_url"] if attachment_candidates else ""
         cases.append(
             {
                 "case_id": case_id,
+                "event_name": event,
+                "challenge_name": case_title,
+                "category": category,
+                "year": ",".join(years),
+                "source_url": source_url,
+                "source_level": material_profile["material_level"],
+                "material_status": material_profile["material_status"],
+                "wp_url": first_wp_url,
+                "asset_source_url": first_asset_url,
+                "next_action": next_action,
+                "missing_reason": missing_reason or material_profile["missing_reason"],
                 "source_files": [],
                 "research": {
                     "query": manifest.get("query", ""),
@@ -1772,7 +1792,7 @@ def results_to_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                     "material_level": material_profile["material_level"],
                     "material_status": material_profile["material_status"],
                     "reproducibility_status": material_profile["reproducibility_status"],
-                    "next_action": gate["next_action"] or material_profile["next_action"],
+                    "next_action": next_action,
                     "gate": gate["gate"],
                     "gate_reason": gate["gate_reason"],
                     "blocking_rule": gate["blocking_rule"],
@@ -2014,6 +2034,20 @@ def infer_case_event(result: dict[str, Any], manifest: dict[str, Any]) -> str:
     metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
     if str(metadata.get("event") or "").strip():
         return str(metadata.get("event"))
+    years = infer_case_years(result, manifest)
+    for source_text in [
+        str(result.get("title") or ""),
+        str(result.get("summary") or result.get("snippet") or ""),
+        str(result.get("url") or ""),
+        str(manifest.get("query") or ""),
+    ]:
+        display_tokens = extract_event_display_tokens(source_text)
+        if not display_tokens:
+            continue
+        event = display_tokens[0]
+        if years and not re.search(r"(?<!\d)20\d{2}(?!\d)", event):
+            event = f"{event} {years[0]}"
+        return event
     query = str(manifest.get("query") or "")
     event_tokens = extract_event_tokens(query)
     if event_tokens:
@@ -2519,6 +2553,25 @@ def extract_event_tokens(text: str) -> list[str]:
         if not cleaned or cleaned in seen:
             continue
         seen.add(cleaned)
+        output.append(cleaned)
+    return output
+
+
+def extract_event_display_tokens(text: str) -> list[str]:
+    tokens = EVENT_TOKEN_RE.findall(text)
+    tokens.extend(CJK_EVENT_RE.findall(text))
+    output: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        cleaned = token.strip("._- ")
+        normalized = cleaned.lower()
+        if normalized in GENERIC_CJK_EVENT_TERMS or normalized in GENERIC_EVENT_QUERY_TERMS:
+            continue
+        if not normalized or any(noise in normalized for noise in ["challenge", "writeup", "solution", "solver"]):
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
         output.append(cleaned)
     return output
 

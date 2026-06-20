@@ -95,6 +95,32 @@ class CollectionHumanOutputTests(unittest.TestCase):
         self.assertEqual(row["research"]["gate"], "can_continue")
         self.assertEqual(row["evidence"][0]["source_url"], "https://example.com")
 
+    def test_search_cases_include_top_level_handoff_fields(self):
+        cases = search.results_to_cases(
+            {
+                "query": "IrisCTF 2025 bad todo",
+                "years": [2025],
+                "results": [
+                    {
+                        "title": "IrisCTF 2025 bad-todo official source",
+                        "url": "https://github.com/IrisSec/IrisCTF-2025-Challenges/tree/main/web/bad-todo",
+                        "provider": "github",
+                        "layer": "attachment_candidate",
+                        "score": 90,
+                    }
+                ],
+            }
+        )
+
+        case = cases[0]
+        self.assertEqual(case["event_name"], "IrisCTF 2025")
+        self.assertEqual(case["challenge_name"], "bad todo")
+        self.assertEqual(case["category"], "Web")
+        self.assertIn(case["material_status"], search.COLLECTION_MATERIAL_STATUSES)
+        self.assertEqual(case["source_url"], "https://github.com/IrisSec/IrisCTF-2025-Challenges/tree/main/web/bad-todo")
+        self.assertTrue(case["next_action"])
+        self.assertEqual(case["research"]["source_url"], case["source_url"])
+
     def test_naming_helpers_follow_archive_sample(self):
         metadata = {"分类": "Web", "名称": "EZSmuggler", "题目类型": "环境型"}
 

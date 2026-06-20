@@ -15,25 +15,63 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]
 OPTIONAL_ROOT_FILES = ["待处理问题.md", "质量检查报告.md"]
 ALL_ROOT_FILES = ROOT_FILES + OPTIONAL_ROOT_FILES
 CHALLENGE_SUBDIRS = ["题目源码", "题目镜像", "题目手册", "题目附件"]
+PROCESS_EVIDENCE_DIR = "过程证据"
+MACHINE_DATA_DIR = "机器数据"
 IMAGE_SUFFIXES = {".tar", ".gz", ".tgz"}
 BLOCKED_PATH_PARTS = {".ctfbuild", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 BLOCKED_PROCESS_FILENAMES = {
     "docker_artifacts.json",
     "docker_artifacts.validated.json",
     "docker_artifacts.executed.json",
+    "docker_plan.json",
+    "docker_evidence.json",
+    "dockerizer_validate_summary.json",
+    "container_inference.json",
+    "resource_classification.json",
+    "resource_route.json",
+    "manual_quality.json",
+    "hub_fields.json",
+    "xlsx_fields.json",
+    "writeup_context.json",
+    "archive_manifest.json",
+    "workflow_state.json",
+    "search_results.json",
+    "download_preview.json",
+    "material_candidates.json",
+    "ctf_case.json",
+    "交付清单.json",
     "validate-summary.json",
     "image.inspect.json",
     "session.json",
     "proposal.json",
     "proposal.yaml",
 }
+BLOCKED_PROCESS_PATTERNS = (
+    "ctf_case",
+    "ctf_cases",
+    "docker_artifacts",
+    "docker_evidence",
+    "docker_plan",
+    "manual_quality",
+    "hub_upload_manifest",
+    "hub_session_state",
+    "hub_fields",
+    "xlsx_fields",
+    "resource_classification",
+    "resource_route",
+    "container_inference",
+    "archive_manifest",
+    "quality_review",
+    "quality_summary",
+    "workflow_engine",
+)
 
 
 def utc_now() -> str:
@@ -101,6 +139,9 @@ def create_delivery_package(
         files,
         missing,
     )
+    process_records = copy_process_machine_data(work, outputs, delivery, copy_limit=copy_limit)
+    files.extend(process_records["files"])
+    missing.extend(process_records["missing"])
 
     cleanup_ds_store(delivery)
     summary = build_summary(work, outputs, delivery, files, missing, selected)
@@ -125,6 +166,7 @@ def create_delivery_package(
         "archive_roots": [path.as_posix() for path in selected.get("archive_roots", [])],
         "challenges": challenge_records["challenges"] + legacy_records["challenges"],
         "image_tars": challenge_records["image_tars"] + legacy_records["image_tars"],
+        "process_evidence": process_records["summary"],
     }
     readme_path = delivery / "交付说明.md"
     manifest["paths"]["readme"] = readme_path.as_posix()
@@ -341,11 +383,11 @@ def copy_challenge_archives(
 def find_legacy_single_challenges(workdir: Path) -> list[dict[str, Any]]:
     if not workdir.exists() or not workdir.is_dir():
         return []
-    source_dir = first_existing_dir(workdir, ["dockerizer_work", "题目源码"])
+    source_dir = first_existing_dir(workdir, ["dockerizer_work", "platform", "题目源码"])
     image_dir = first_existing_dir(workdir, ["题目镜像"])
-    manual_dir = first_existing_dir(workdir, ["手册", "题目手册"])
+    manual_dir = first_existing_dir(workdir, ["手册", "题目手册", "writeup", "writeup_out"])
     attachment_dir = first_existing_dir(workdir, ["题目附件", "附件"])
-    if not any(is_existing_dir(path) for path in [source_dir, image_dir, manual_dir, attachment_dir]):
+    if not any(is_existing_dir(path) for path in [source_dir, image_dir, attachment_dir]):
         return []
     case = load_case_metadata(workdir)
     metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
@@ -360,10 +402,65 @@ def find_legacy_single_challenges(workdir: Path) -> list[dict[str, Any]]:
             "type": "attachment" if is_attachment else "container",
             "source_dir": source_dir.as_posix() if is_existing_dir(source_dir) else "",
             "image_dir": image_dir.as_posix() if is_existing_dir(image_dir) else "",
+            "image_sources": [path.as_posix() for path in find_legacy_image_sources(workdir)],
             "manual_dir": manual_dir.as_posix() if is_existing_dir(manual_dir) else "",
             "attachment_dir": attachment_dir.as_posix() if is_existing_dir(attachment_dir) else "",
         }
     ]
+
+
+def find_legacy_image_sources(workdir: Path) -> list[Path]:
+    output: list[Path] = []
+    for pattern in ["docker_evidence.json", "docker_artifacts*.json", "docker_plan.json"]:
+        for path in workdir.rglob(pattern):
+            payload = read_json_safely(path)
+            for candidate in image_paths_from_payload(payload):
+                if candidate.is_file():
+                    append_unique_path(output, candidate)
+    for image_dir in [workdir / "题目镜像", workdir / "images", workdir / "image"]:
+        if not image_dir.is_dir():
+            continue
+        for path in image_dir.rglob("*"):
+            if path.is_file() and looks_image_tar(path):
+                append_unique_path(output, path)
+    return output
+
+
+def image_paths_from_payload(payload: Any) -> list[Path]:
+    output: list[Path] = []
+    if isinstance(payload, dict):
+        for key in ["tar_path", "path"]:
+            text = str(payload.get(key) or "").strip()
+            if text and looks_image_tar(Path(text)):
+                output.append(Path(text))
+        artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), dict) else {}
+        image_tar = artifacts.get("image_tar") if isinstance(artifacts.get("image_tar"), dict) else {}
+        text = str(image_tar.get("path") or "").strip()
+        if text and looks_image_tar(Path(text)):
+            output.append(Path(text))
+        plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
+        text = str(plan.get("tar_path") or "").strip()
+        if text and looks_image_tar(Path(text)):
+            output.append(Path(text))
+        for value in payload.values():
+            output.extend(image_paths_from_payload(value))
+    elif isinstance(payload, list):
+        for item in payload:
+            output.extend(image_paths_from_payload(item))
+    return output
+
+
+def append_unique_path(paths: list[Path], path: Path) -> None:
+    key = path.resolve().as_posix() if path.exists() else path.as_posix()
+    if all((item.resolve().as_posix() if item.exists() else item.as_posix()) != key for item in paths):
+        paths.append(path)
+
+
+def read_json_safely(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def first_existing_dir(root: Path, names: list[str]) -> Path:
@@ -427,6 +524,22 @@ def copy_legacy_single_challenges(
                 copy_image_tars=copy_image_tars,
             )
             subdirs.extend(image_result)
+            image_sources = [Path(str(path)) for path in item.get("image_sources", []) if str(path).strip()]
+            for image_source in image_sources:
+                if not image_source.is_file() or not looks_image_tar(image_source):
+                    continue
+                effective_copy_limit = image_source.stat().st_size if copy_image_tars else copy_limit
+                record = copy_or_reference(
+                    image_source,
+                    target_case_dir / "题目镜像" / image_source.name,
+                    key="legacy:题目镜像",
+                    copy_limit=effective_copy_limit,
+                    force_reference=not copy_image_tars,
+                    extra={"challenge": name, "subdir": "题目镜像"},
+                )
+                add_record(record, files, missing)
+                if "题目镜像" not in subdirs and record.get("status") == "copied":
+                    subdirs.append("题目镜像")
             for record in files:
                 if record.get("challenge") == name and record.get("subdir") == "题目镜像" and str(record.get("target") or record.get("source") or "").lower().endswith((".tar", ".tar.gz", ".tgz")):
                     image_tars.append(
@@ -495,13 +608,81 @@ def challenge_file_allowed(path: Path, root: Path, subdir: str) -> bool:
         return False
     if path.name in BLOCKED_PROCESS_FILENAMES:
         return False
+    if is_machine_data_file(path):
+        return False
     if path.suffix in {".pyc", ".pyo"} or path.name == ".DS_Store":
+        return False
+    if subdir == "题目源码" and looks_image_tar(path):
         return False
     if subdir == "题目手册" and manual_name_blocked(path.name):
         return False
     if subdir in {"题目手册", "题目镜像"} and path.suffix.lower() in {".json", ".jsonl"}:
         return False
     return True
+
+
+def looks_image_tar(path: Path) -> bool:
+    name = path.name.lower()
+    return path.suffix.lower() in IMAGE_SUFFIXES or name.endswith(".tar.gz")
+
+
+def is_machine_data_file(path: Path) -> bool:
+    name = path.name
+    lower = name.lower()
+    if name in BLOCKED_PROCESS_FILENAMES:
+        return True
+    if lower.endswith((".json", ".jsonl")) and any(token in lower for token in BLOCKED_PROCESS_PATTERNS):
+        return True
+    if name in {"Dockerizer交接表.jsonl", "资源整理与处理建议表.jsonl", "赛事题目信息收集表.jsonl"}:
+        return True
+    return False
+
+
+def copy_process_machine_data(workdir: Path, outputs_dir: Path, delivery: Path, *, copy_limit: int) -> dict[str, Any]:
+    target_root = delivery / PROCESS_EVIDENCE_DIR / MACHINE_DATA_DIR
+    files: list[dict[str, Any]] = []
+    missing: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for root_label, root in [("workdir", workdir), ("outputs", outputs_dir)]:
+        if not root.exists():
+            continue
+        for source in sorted(path for path in root.rglob("*") if path.is_file()):
+            if delivery in source.parents:
+                continue
+            if not is_machine_data_file(source):
+                continue
+            key = source.resolve().as_posix()
+            if key in seen:
+                continue
+            seen.add(key)
+            relative = safe_relative_path(source, root)
+            target = target_root / root_label / relative
+            add_record(
+                copy_or_reference(
+                    source,
+                    target,
+                    key="process_machine_data",
+                    copy_limit=copy_limit,
+                    force_reference=False,
+                    extra={"process_source": root_label},
+                ),
+                files,
+                missing,
+            )
+    if not files and target_root.exists():
+        shutil.rmtree(delivery / PROCESS_EVIDENCE_DIR, ignore_errors=True)
+    return {
+        "files": files,
+        "missing": missing,
+        "summary": {"machine_files": len(files), "dir": target_root.as_posix() if files else ""},
+    }
+
+
+def safe_relative_path(path: Path, root: Path) -> Path:
+    try:
+        return path.relative_to(root)
+    except ValueError:
+        return Path(safe_display_name(path.parent.name)) / path.name
 
 
 def copy_legacy_manual(source_dir: Path, target_dir: Path, files: list[dict[str, Any]], missing: list[dict[str, str]], *, challenge: str) -> bool:
@@ -735,7 +916,7 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     allowed_root_files = set(ALL_ROOT_FILES)
     allowed_subdirs = set(CHALLENGE_SUBDIRS)
-    blocked_root_names = {"_cache", "过程证据", "机器数据", "reports", "logs", "evidence", "snapshots", "Hub准备", "质量检查"}
+    blocked_root_names = {"_cache", "机器数据", "reports", "logs", "evidence", "snapshots", "Hub准备", "质量检查", "archive", "归档"}
     blocked_manual_tokens = ("draft", "草稿", "template", "manual_filled_draft", "manual_template")
 
     for child in sorted(delivery.iterdir()) if delivery.exists() else []:
@@ -749,6 +930,14 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
                 issues.append({"path": child.name, "issue": "交付根目录禁止机器 JSON"})
             continue
         if not child.is_dir():
+            continue
+        if child.name == PROCESS_EVIDENCE_DIR:
+            machine_dir = child / MACHINE_DATA_DIR
+            if not machine_dir.is_dir():
+                issues.append({"path": child.name, "issue": "过程证据目录只能用于存放 机器数据"})
+            for item in child.iterdir():
+                if item.name != MACHINE_DATA_DIR:
+                    issues.append({"path": f"{child.name}/{item.name}", "issue": "过程证据目录只允许 机器数据 子目录"})
             continue
         if child.name in blocked_root_names:
             issues.append({"path": child.name, "issue": "交付根目录不能出现过程目录"})
@@ -779,11 +968,20 @@ def scan_delivery_package(delivery: Path) -> list[dict[str, str]]:
         if path.name == ".DS_Store":
             issues.append({"path": relative, "issue": "禁止 .DS_Store"})
             continue
+        if parts[0] == PROCESS_EVIDENCE_DIR:
+            if len(parts) == 1:
+                continue
+            if len(parts) < 2 or parts[1] != MACHINE_DATA_DIR:
+                issues.append({"path": relative, "issue": "过程证据目录只允许 机器数据"})
+            continue
         if any(part in BLOCKED_PATH_PARTS for part in parts):
             issues.append({"path": relative, "issue": "禁止过程目录进入交付包"})
             continue
         if path.is_file() and path.name in BLOCKED_PROCESS_FILENAMES:
             issues.append({"path": relative, "issue": "禁止过程文件进入交付包"})
+            continue
+        if path.is_file() and is_machine_data_file(path):
+            issues.append({"path": relative, "issue": "机器 JSON 只能放在 过程证据/机器数据"})
             continue
         if len(parts) >= 2 and parts[1] not in CHALLENGE_SUBDIRS:
             continue

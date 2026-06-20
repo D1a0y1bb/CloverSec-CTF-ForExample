@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-"""Create a scoped batch authorization record for repeated safe operations."""
+"""Create a scoped batch authorization record for installed plugin workflows."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-
-ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_SCRIPTS = ROOT / "plugins" / "cloversec-ctf-forexample" / "scripts"
-sys.path.insert(0, str(PLUGIN_SCRIPTS))
 
 import cloversec_ctf_i18n as i18n
 
@@ -29,25 +24,6 @@ ALLOWED_ACTIONS = {
     "quality_review",
 }
 FORBIDDEN_ACTIONS = {"hub_final_submit"}
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Create CloverSec CTF batch authorization")
-    parser.add_argument("--workdir", required=True)
-    parser.add_argument("--action", required=True)
-    parser.add_argument("--case-id", action="append", default=[])
-    parser.add_argument("--expires-minutes", type=int, default=120)
-    parser.add_argument("--note", default="")
-    args = parser.parse_args()
-    payload = create_authorization(
-        workdir=args.workdir,
-        action=args.action,
-        case_ids=args.case_id,
-        expires_minutes=args.expires_minutes,
-        note=args.note,
-    )
-    print(json.dumps({"authorization_path": payload["authorization_path"], "action": payload["action"]}, ensure_ascii=False))
-    return 0
 
 
 def create_authorization(
@@ -90,6 +66,25 @@ def create_authorization(
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     payload["authorization_path"] = auth_path.as_posix()
     return payload
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Create CloverSec CTF batch authorization")
+    parser.add_argument("--workdir", required=True)
+    parser.add_argument("--action", required=True)
+    parser.add_argument("--case-id", action="append", default=[])
+    parser.add_argument("--expires-minutes", type=int, default=120)
+    parser.add_argument("--note", default="")
+    args = parser.parse_args()
+    payload = create_authorization(
+        workdir=args.workdir,
+        action=args.action,
+        case_ids=args.case_id,
+        expires_minutes=args.expires_minutes,
+        note=args.note,
+    )
+    print(json.dumps({"authorization_path": payload["authorization_path"], "action": payload["action"]}, ensure_ascii=False))
+    return 0
 
 
 if __name__ == "__main__":

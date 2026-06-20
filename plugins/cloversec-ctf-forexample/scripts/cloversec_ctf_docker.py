@@ -21,7 +21,7 @@ import cloversec_ctf_i18n as i18n
 
 TARGET_PLATFORM = "linux/amd64"
 DEFAULT_OPERATIONS = ["build", "load", "inspect", "run", "logs", "stop", "save"]
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 VALIDATION_LEVELS = ["static_only", "inspect_only", "build_only", "run_probe", "solve_verify"]
 OPERATION_AUTH_ACTIONS = {
     "build": "docker_build",
@@ -65,9 +65,7 @@ def create_docker_plan(
     ).strip()
     selected_project_dir = Path(selected_project_dir_text) if selected_project_dir_text else None
     selected_dockerfile = Path(str(dockerfile or inferred_runtime.get("dockerfile") or "Dockerfile"))
-    dockerfile_for_command = selected_dockerfile
-    if selected_project_dir and not selected_dockerfile.is_absolute():
-        dockerfile_for_command = selected_project_dir / selected_dockerfile
+    dockerfile_for_command = resolve_dockerfile_path(selected_project_dir, selected_dockerfile)
     selected_command = str(container_command or environment.get("start_command") or inferred_runtime.get("container_command") or "").strip()
     selected_protocol = normalize_probe_protocol(
         inferred_runtime.get("probe_protocol")
@@ -77,7 +75,8 @@ def create_docker_plan(
     )
     raw_operations = operations if operations is not None else operations_for_validation_level(selected_level, tar_path=selected_tar)
     selected_operations = [] if selected_level == "static_only" and raw_operations == [] else normalize_operations(raw_operations)
-    container_name = f"cloversec-docker-{safe_token(str(case.get('case_id') or 'case'))}-{int(time.time())}"
+    case_id = infer_case_id(case=case, project_dir=selected_project_dir, image_name=selected_image)
+    container_name = f"cloversec-docker-{safe_token(case_id)}-{int(time.time())}"
 
     commands: dict[str, list[str]] = {}
     if "build" in selected_operations:
@@ -125,7 +124,7 @@ def create_docker_plan(
     return {
         "schema_version": "cloversec.ctf.docker_plan.v1",
         "version": VERSION,
-        "case_id": str(case.get("case_id") or ""),
+        "case_id": case_id,
         "validation_level": selected_level,
         "target_platform": TARGET_PLATFORM,
         "image_name": selected_image,
@@ -371,10 +370,28 @@ def compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
 def write_evidence(output_dir: Path, evidence: dict[str, Any]) -> None:
     evidence_path = output_dir / "docker_evidence.json"
     report_path = output_dir / "docker_evidence.md"
+    sync_evidence_summary(evidence)
     evidence["evidence_path"] = evidence_path.as_posix()
     evidence["report_path"] = report_path.as_posix()
+    sync_evidence_summary(evidence)
     evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report_path.write_text(render_docker_report(evidence), encoding="utf-8")
+
+
+def sync_evidence_summary(evidence: dict[str, Any]) -> None:
+    summary = evidence.get("summary") if isinstance(evidence.get("summary"), dict) else {}
+    plan = evidence.get("plan") if isinstance(evidence.get("plan"), dict) else {}
+    for key in ["status", "validation_level", "platform", "run_verified", "tar_sha256", "logs_path", "issues"]:
+        if key == "run_verified":
+            default: Any = False
+        elif key == "issues":
+            default = []
+        else:
+            default = ""
+        evidence[key] = summary.get(key, default)
+    evidence["operations"] = plan.get("operations", [])
+    evidence["target_platform"] = plan.get("target_platform", TARGET_PLATFORM)
+    evidence["port_rewrites"] = plan.get("port_rewrites", [])
 
 
 def render_docker_report(evidence: dict[str, Any]) -> str:
@@ -485,6 +502,40 @@ def normalize_operations(operations: list[str]) -> list[str]:
 def normalize_validation_level(value: str) -> str:
     text = str(value or "").strip().lower().replace("-", "_")
     return text if text in VALIDATION_LEVELS else "custom"
+
+
+def resolve_dockerfile_path(project_dir: Path | None, dockerfile: Path) -> Path:
+    if dockerfile.is_absolute() or not project_dir:
+        return dockerfile
+    dockerfile_text = dockerfile.as_posix()
+    project_text = project_dir.as_posix().rstrip("/")
+    if dockerfile.exists():
+        return dockerfile
+    if dockerfile_text == "Dockerfile":
+        return project_dir / dockerfile
+    if project_text and (dockerfile_text == project_text or dockerfile_text.startswith(project_text + "/")):
+        return dockerfile
+    joined = project_dir / dockerfile
+    if joined.exists():
+        return joined
+    if dockerfile.parent == Path("."):
+        return joined
+    return dockerfile
+
+
+def infer_case_id(*, case: dict[str, Any], project_dir: Path | None, image_name: str) -> str:
+    for value in [
+        case.get("case_id"),
+        case.get("id"),
+        case.get("记录ID"),
+        (case.get("metadata") if isinstance(case.get("metadata"), dict) else {}).get("名称"),
+        image_name.rsplit("/", 1)[-1].split(":", 1)[0] if image_name else "",
+        project_dir.name if project_dir else "",
+    ]:
+        text = str(value or "").strip()
+        if text:
+            return safe_token(text)
+    return "case"
 
 
 def operations_for_validation_level(level: str, *, tar_path: str = "") -> list[str]:
@@ -719,7 +770,7 @@ def load_authorizations(*, authorization_workdir: str | Path = "", authorization
 def has_valid_authorization(authorizations: list[dict[str, Any]], *, action: str, case_id: str) -> bool:
     now = datetime.now(timezone.utc)
     for payload in authorizations:
-        if payload.get("action") != action:
+        if payload.get("action") not in {action, "docker_all"}:
             continue
         if not authorization_covers_case(payload, case_id):
             continue

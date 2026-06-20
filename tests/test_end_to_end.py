@@ -146,6 +146,51 @@ class EndToEndTests(unittest.TestCase):
             state = json.loads((root / "workflow_state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["stages"]["final_report"]["status"], "completed")
 
+    def test_workflow_engine_writes_human_delivery_to_sibling_outputs_when_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "work" / "natural-run"
+            outputs = base / "outputs"
+            root.mkdir(parents=True)
+            outputs.mkdir()
+            attachment = root / "challenge.zip"
+            attachment.write_bytes(b"zip")
+            manual = root / "题目解题手册.md"
+            manual.write_text("# 题目解题手册\n\nflag{demo}\n", encoding="utf-8")
+            workflow.write_jsonl(
+                root / "ctf_cases.jsonl",
+                [
+                    {
+                        "case_id": "demo",
+                        "metadata": {
+                            "名称": "Demo",
+                            "分类": "Web",
+                            "Flag": "flag{demo}",
+                            "验证状态": "通过",
+                            "是否归档": "是",
+                            "是否通过": "是",
+                        },
+                        "flag": {"value": "flag{demo}", "type": "static", "sensitive": True},
+                        "attachments": [{"path": attachment.as_posix(), "name": "challenge.zip"}],
+                        "writeup": {"formal_manual_path": manual.as_posix()},
+                        "evidence": [{"source_url": "https://example.com/demo", "title": "Demo source"}],
+                    }
+                ],
+            )
+
+            payload = workflow.run_workflow_engine(
+                workdir=root,
+                stages=["archive", "quality", "final_report"],
+                force=True,
+            )
+
+            self.assertIn(payload["status"], {"completed", "partial"})
+            self.assertTrue((outputs / "交付说明.md").exists())
+            self.assertTrue((outputs / "最终归档表.xlsx").exists())
+            self.assertTrue((outputs / "语雀粘贴表.md").exists())
+            self.assertFalse((root / "最终交付" / "交付说明.md").exists())
+            self.assertFalse((outputs / "最终报告.md").exists())
+
     def test_dockerizer_static_chain_on_python_flask_example(self):
         try:
             import yaml  # noqa: F401
