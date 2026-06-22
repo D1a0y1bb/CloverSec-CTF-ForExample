@@ -12,7 +12,7 @@ from audit_input import audit_project, can_auto_proceed, proposal_gate_required
 from derive_config import derive
 from parse_config_block import _extract_proposal, _load_yaml_module, build_challenge, write_yaml
 from result_utils import dump_json, read_json, sha256_file, structured_error, structured_ok, write_json
-from utils import ConfigError
+from utils import ConfigError, write_unix_text
 
 
 SCHEMA_VERSION = "1.0"
@@ -119,10 +119,7 @@ def command_propose(args: argparse.Namespace) -> int:
     state_dir(project_dir).mkdir(parents=True, exist_ok=True)
     write_json(proposal_json_path(project_dir), proposal)
     yaml_mod = _load_yaml_module()
-    proposal_yaml_path(project_dir).write_text(
-        yaml_mod.safe_dump(proposal, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    write_unix_text(proposal_yaml_path(project_dir), yaml_mod.safe_dump(proposal, sort_keys=False, allow_unicode=True))
     challenge_path = default_challenge_path(project_dir)
     audit = audit_project(project_dir, challenge_path=challenge_path) if challenge_path.exists() else proposal["input_audit"]
     write_session(project_dir, stage="proposal_ready", audit=audit, challenge_path=default_challenge_path(project_dir))
@@ -327,10 +324,7 @@ def _derive_challenge_yaml(project_dir: Path, challenge_path: Path, *, name: str
     state_dir(project_dir).mkdir(parents=True, exist_ok=True)
     write_json(proposal_json_path(project_dir), proposal)
     yaml_mod = _load_yaml_module()
-    proposal_yaml_path(project_dir).write_text(
-        yaml_mod.safe_dump(proposal, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    write_unix_text(proposal_yaml_path(project_dir), yaml_mod.safe_dump(proposal, sort_keys=False, allow_unicode=True))
     config_proposal = _extract_proposal(proposal)
     challenge_doc = build_challenge(config_proposal, SimpleNamespace(name=name, output=str(challenge_path)))
     write_yaml(challenge_doc, challenge_path)
@@ -426,7 +420,7 @@ def command_auto_render(args: argparse.Namespace) -> int:
     validate_cmd = [
         "bash",
         str(VALIDATE_SH),
-        "--static-only",
+        "--with-dynamic-flag",
         "--json-summary",
         str(json_summary),
         str(output_dir / "Dockerfile"),
@@ -448,7 +442,7 @@ def command_auto_render(args: argparse.Namespace) -> int:
         "validate_summary": str(json_summary),
         "derived_challenge": derived_challenge,
         "assumptions": [
-            "auto-render 只完成平台交付文件生成和静态契约校验",
+            "auto-render 只完成平台交付文件生成和契约校验",
             "真实 Docker build/run/export 仍需后续授权执行",
         ],
         "unconfirmed": [
@@ -456,7 +450,7 @@ def command_auto_render(args: argparse.Namespace) -> int:
             "动态 flag 是否被业务逻辑正确读取",
             "运行时服务是否符合原题预期",
         ],
-        "blockers": [] if validate_result.returncode == 0 else ["validate.sh 静态校验未通过"],
+        "blockers": [] if validate_result.returncode == 0 else ["validate.sh 契约校验未通过"],
     }
     if derived_proposal:
         last_result["proposal_path"] = str(proposal_yaml_path(project_dir))
@@ -465,7 +459,7 @@ def command_auto_render(args: argparse.Namespace) -> int:
         payload = structured_error(
             "auto-render",
             "AUTO_RENDER_VALIDATE_FAILED",
-            "平台交付文件已生成，但静态契约校验未通过。",
+            "平台交付文件已生成，但契约校验未通过。",
             file=str(json_summary),
         )
         payload.update(
@@ -475,15 +469,12 @@ def command_auto_render(args: argparse.Namespace) -> int:
                 "validate_summary": str(json_summary),
             }
         )
-        emit(
-            payload,
-            args.format,
-        )
+        emit(payload, args.format)
         return validate_result.returncode
     emit(
         structured_ok(
             "auto-render",
-            summary="auto-render completed and static validation passed",
+            summary="auto-render completed and contract validation passed",
             challenge_path=str(challenge_path),
             output_dir=str(output_dir),
             validate_summary=str(json_summary),
@@ -599,7 +590,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reason", default="", help="人工审查原因，必填")
     p.set_defaults(func=command_reviewed_render)
 
-    p = sub.add_parser("auto-render", help="自动推导 challenge.yaml、渲染平台交付件并执行静态校验")
+    p = sub.add_parser("auto-render", help="自动推导 challenge.yaml、渲染平台交付件并执行契约校验")
     common(p)
     p.add_argument("--config", help="challenge.yaml 路径")
     p.add_argument("--output", help="渲染目录，默认 .ctfbuild/rendered")

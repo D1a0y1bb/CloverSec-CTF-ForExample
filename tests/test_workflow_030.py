@@ -735,6 +735,49 @@ class Workflow030Tests(unittest.TestCase):
             self.assertIn("Dockerfile", payload["repo_previews"][0]["summary"]["docker_hints"])
             self.assertEqual(payload["resource_candidates"][0]["next_skill"], "cloversec-ctf-attachment-packager")
 
+    def test_direct_asset_detection_includes_ctf_source_database_and_traffic_files(self):
+        for suffix in [".py", ".db", ".sqlite3", ".sql", ".pcap", ".pcapng", ".elf", ".so", ".wasm", ".jar"]:
+            self.assertTrue(workflow.search.looks_direct_asset_url(f"https://example.com/challenge{suffix}"), suffix)
+
+    def test_download_sandbox_merges_existing_preview_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "solve.py").write_text("print('ok')\n", encoding="utf-8")
+            (root / "users.db").write_bytes(b"sqlite-data")
+            out = root / "out"
+
+            with LocalServer(root) as server:
+                with mock.patch.object(workflow, "blocked_url_reason", return_value=""):
+                    workflow.download_sandbox(urls=[f"{server.url}/solve.py"], output_dir=out)
+                    payload = workflow.download_sandbox(urls=[f"{server.url}/users.db"], output_dir=out)
+
+            preview = json.loads((out / "download_preview.json").read_text(encoding="utf-8"))
+            self.assertEqual(preview["summary"]["total"], 2)
+            self.assertEqual(payload["preview_write"]["mode"], "merge")
+            self.assertEqual([Path(item["local_path"]).name for item in preview["records"]], ["0001-solve.py", "0002-users.db"])
+
+    def test_download_sandbox_manifest_accepts_bom_and_ctf_file_extensions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "solve.py").write_text("print('ok')\n", encoding="utf-8")
+            (root / "users.db").write_bytes(b"sqlite-data")
+            out = root / "out"
+
+            with LocalServer(root) as server:
+                manifest = {
+                    "results": [
+                        {"url": f"{server.url}/solve.py", "layer": "attachment_candidate", "metadata": {}},
+                        {"url": f"{server.url}/users.db", "layer": "attachment_candidate", "metadata": {}},
+                    ]
+                }
+                manifest_path = root / "search_results.json"
+                manifest_path.write_bytes(b"\xef\xbb\xbf" + json.dumps(manifest, ensure_ascii=False).encode("utf-8"))
+                with mock.patch.object(workflow, "blocked_url_reason", return_value=""):
+                    payload = workflow.download_sandbox_from_manifest(manifest_path=manifest_path, output_dir=out)
+
+            self.assertEqual(payload["summary"]["total"], 2)
+            self.assertEqual({item["asset_type"] for item in payload["records"]}, {"source", "database"})
+
     def test_auto_collect_routes_github_tree_preview_to_dockerizer(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

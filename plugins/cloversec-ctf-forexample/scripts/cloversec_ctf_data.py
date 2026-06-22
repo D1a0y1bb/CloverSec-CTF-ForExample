@@ -175,7 +175,7 @@ def normalize_material_status(value: Any = "", *, has_writeup: bool = False, has
 
 def load_cases(path: str | Path) -> list[dict[str, Any]]:
     source = Path(path)
-    text = source.read_text(encoding="utf-8")
+    text = source.read_text(encoding="utf-8-sig")
     if source.suffix.lower() == ".jsonl":
         cases = []
         for line_number, line in enumerate(text.splitlines(), start=1):

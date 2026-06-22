@@ -19,7 +19,7 @@ import cloversec_ctf_resource as resource
 import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "1.1.1"
+SERVER_VERSION = "1.1.2"
 SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {
@@ -658,7 +658,7 @@ def compact(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def read_json(path: str) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
 
 def response(request_id: Any, result: Any) -> dict[str, Any]:

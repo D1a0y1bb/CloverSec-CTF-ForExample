@@ -14,7 +14,7 @@ from typing import Any
 import cloversec_ctf_data as data
 
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 SCHEMA_VERSION = "cloversec.ctf.manual_quality.v1"
 REQUIRED_METADATA_FIELDS = ["名称", "分类", "题目类型", "Flag类型"]
 REQUIRED_HUB_FIELDS = ["题目标题", "题目内容", "题目来源", "题目分类", "题目分值", "题目等级", "题目类型", "资源等级", "添加关键字"]
@@ -526,7 +526,7 @@ def utc_now() -> str:
 def load_optional_json(path: str | Path | None) -> Any:
     if path is None or not str(path).strip():
         return None
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -539,7 +539,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args(argv)
 
-    case = json.loads(Path(args.case_json).read_text(encoding="utf-8"))
+    case = json.loads(Path(args.case_json).read_text(encoding="utf-8-sig"))
     manual = Path(args.manual).read_text(encoding="utf-8")
     check_manual_quality(
         case=case,

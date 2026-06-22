@@ -168,6 +168,23 @@ class ArchiveReviewFinalTests(unittest.TestCase):
         manual_files = [item for item in manifest["files"] if item["role"] == "writeup" and item["relative_path"].endswith("题目解题手册.md")]
         self.assertEqual(len(manual_files), 1)
 
+    def test_archive_package_prefers_formal_manual_when_manual_path_differs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            formal = tmp_path / "formal.md"
+            formal.write_text("# formal manual\n", encoding="utf-8")
+            case["writeup"]["formal_manual_path"] = formal.as_posix()
+
+            manifest = archive.create_archive_package(case, tmp_path / "archive")
+            archive_dir = Path(manifest["archive_dir"])
+            manual_path = archive_dir / "题目手册" / "题目解题手册.md"
+            manual_files = [item for item in manifest["files"] if item["role"] == "writeup" and item["relative_path"].endswith("题目解题手册.md")]
+
+            self.assertEqual(len(manual_files), 1)
+            self.assertEqual(manual_path.read_text(encoding="utf-8"), "# formal manual\n")
+            self.assertTrue(any("manual_path ignored" in item for item in manifest.get("warnings", [])))
+
     def test_archive_package_does_not_mark_unverified_case_archived(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1340,7 +1357,7 @@ class ArchiveReviewFinalTests(unittest.TestCase):
                     process.stdout.close()
                 process.wait(timeout=5)
 
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.1.1")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.1.2")
             names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, names)

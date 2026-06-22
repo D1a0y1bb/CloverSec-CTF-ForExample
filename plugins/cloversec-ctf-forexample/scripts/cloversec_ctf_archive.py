@@ -40,6 +40,7 @@ def create_archive_package(
         (archive_dir / subdir).mkdir(parents=True, exist_ok=True)
 
     issues: list[str] = []
+    warnings: list[str] = []
     files: list[dict[str, Any]] = []
 
     for item in _iter_path_items(case.get("source_files"), default_role="source"):
@@ -63,18 +64,7 @@ def create_archive_package(
         )
 
     writeup = case.get("writeup") if isinstance(case.get("writeup"), dict) else {}
-    manual_inputs: list[dict[str, Any]] = []
-    seen_manual_paths: set[str] = set()
-    for key in ["formal_manual_path", "manual_path"]:
-        manual_path = str(writeup.get(key) or "").strip()
-        if not manual_path:
-            continue
-        normalized = Path(manual_path).expanduser().resolve().as_posix() if Path(manual_path).exists() else manual_path
-        if normalized in seen_manual_paths:
-            continue
-        seen_manual_paths.add(normalized)
-        manual_name = FORMAL_MANUAL_NAME
-        manual_inputs.append({"path": manual_path, "name": manual_name})
+    manual_inputs = selected_manual_inputs(writeup, warnings)
     if manual_inputs:
         for item in manual_inputs:
             files.extend(_copy_or_record(item, archive_dir / role_dir("writeup", attachment_only), "writeup", copy_files, issues))
@@ -98,10 +88,12 @@ def create_archive_package(
         "archive_dir": archive_dir.as_posix(),
         "files": files,
         "issues": issues,
+        "warnings": warnings,
         "screenshot_references": screenshot_inputs,
         "summary": {
             "file_count": len(files),
             "issue_count": len(issues),
+            "warning_count": len(warnings),
             "attachments": len(attachment_paths),
             "image_tars": len(image_paths),
             "writeups": len(manual_paths),
@@ -118,6 +110,33 @@ def create_archive_package(
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return manifest
+
+
+def selected_manual_inputs(writeup: dict[str, Any], warnings: list[str]) -> list[dict[str, Any]]:
+    formal_path = str(writeup.get("formal_manual_path") or "").strip()
+    manual_path = str(writeup.get("manual_path") or "").strip()
+    if not formal_path and not manual_path:
+        return []
+
+    if formal_path and manual_path and normalized_manual_path(formal_path) == normalized_manual_path(manual_path):
+        return [{"path": formal_path, "name": FORMAL_MANUAL_NAME, "source_field": "formal_manual_path"}]
+
+    if formal_path:
+        if Path(formal_path).expanduser().is_file():
+            if manual_path:
+                warnings.append("writeup.manual_path ignored because formal_manual_path exists and differs")
+            return [{"path": formal_path, "name": FORMAL_MANUAL_NAME, "source_field": "formal_manual_path"}]
+        if manual_path and Path(manual_path).expanduser().is_file():
+            warnings.append("writeup.formal_manual_path missing; manual_path used as archive manual")
+            return [{"path": manual_path, "name": FORMAL_MANUAL_NAME, "source_field": "manual_path"}]
+        return [{"path": formal_path, "name": FORMAL_MANUAL_NAME, "source_field": "formal_manual_path"}]
+
+    return [{"path": manual_path, "name": FORMAL_MANUAL_NAME, "source_field": "manual_path"}]
+
+
+def normalized_manual_path(value: str) -> str:
+    path = Path(value)
+    return path.expanduser().resolve().as_posix() if path.exists() else value
 
 
 def apply_archive_outputs(case: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:

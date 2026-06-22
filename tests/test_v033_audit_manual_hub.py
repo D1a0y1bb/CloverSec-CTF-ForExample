@@ -384,6 +384,64 @@ class V033AuditManualHubTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((output_dir / "manual_quality.json").exists())
 
+    def test_manual_quality_cli_accepts_utf8_bom_json_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            case_path = tmp_path / "ctf_case.json"
+            manual_path = tmp_path / "manual.md"
+            hub_path = tmp_path / "hub_fields.json"
+            archive_manifest = tmp_path / "archive_manifest.json"
+            resource_manifest = tmp_path / "resource_manifest.json"
+            output_dir = tmp_path / "manual-quality-cli"
+
+            for path, payload in [
+                (case_path, case),
+                (hub_path, sample_hub_fields()),
+                (archive_manifest, {"files": [], "summary": {}}),
+                (resource_manifest, {"summary": {}, "items": []}),
+            ]:
+                path.write_bytes(b"\xef\xbb\xbf" + json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            manual_path.write_text(sample_manual(), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS / "cloversec_ctf_manual_quality.py"),
+                    "--case-json",
+                    str(case_path),
+                    "--manual",
+                    str(manual_path),
+                    "--hub-fields",
+                    str(hub_path),
+                    "--archive-manifest",
+                    str(archive_manifest),
+                    "--resource-manifest",
+                    str(resource_manifest),
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((output_dir / "manual_quality.json").exists())
+
+    def test_load_cases_accepts_utf8_bom_json_and_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            case = sample_case(tmp_path)
+            json_path = tmp_path / "cases.json"
+            jsonl_path = tmp_path / "cases.jsonl"
+            json_path.write_bytes(b"\xef\xbb\xbf" + json.dumps([case], ensure_ascii=False).encode("utf-8"))
+            jsonl_path.write_bytes(b"\xef\xbb\xbf" + (json.dumps(case, ensure_ascii=False) + "\n").encode("utf-8"))
+
+            self.assertEqual(data.load_cases(json_path)[0]["case_id"], case["case_id"])
+            self.assertEqual(data.load_cases(jsonl_path)[0]["case_id"], case["case_id"])
+
     def test_audit_artifacts_cover_preview_lock_confirmation_batch_failure_and_notification(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -575,7 +633,7 @@ class V033AuditManualHubTests(unittest.TestCase):
                 if process.stdout is not None:
                     process.stdout.close()
                 process.wait(timeout=5)
-            self.assertEqual(init["result"]["serverInfo"]["version"], "1.1.1")
+            self.assertEqual(init["result"]["serverInfo"]["version"], "1.1.2")
             tool_names = [item["name"] for item in tools["result"]["tools"]]
             for expected in expected_tools:
                 self.assertIn(expected, tool_names)

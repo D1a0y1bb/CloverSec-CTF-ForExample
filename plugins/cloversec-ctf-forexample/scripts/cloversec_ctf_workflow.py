@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.1.1"
+WORKFLOW_VERSION = "1.1.2"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -3278,11 +3278,66 @@ def canonical_url(url: str) -> str:
     return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip("/"), "", "", ""))
 
 
+def download_summary(records: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "total": len(records),
+        "safe": sum(1 for item in records if item.get("safety_status") == "safe"),
+        "needs_review": sum(1 for item in records if item.get("safety_status") == "needs_review"),
+        "blocked": sum(1 for item in records if item.get("safety_status") == "blocked"),
+        "accepted": sum(1 for item in records if item.get("accepted_path")),
+    }
+
+
+def existing_download_records(preview_path: Path) -> list[dict[str, Any]]:
+    if not preview_path.is_file():
+        return []
+    try:
+        payload = read_json(preview_path)
+    except Exception:
+        return []
+    records = payload.get("records", []) if isinstance(payload, dict) else []
+    return [item for item in records if isinstance(item, dict)]
+
+
+def download_record_key(record: dict[str, Any]) -> tuple[str, str]:
+    return (str(record.get("url") or ""), str(record.get("sha256") or ""))
+
+
+def next_download_index(sandbox_dir: Path, records: list[dict[str, Any]]) -> int:
+    max_index = 0
+    for record in records:
+        for value in [record.get("name"), record.get("local_path"), record.get("accepted_path")]:
+            name = Path(str(value or "")).name
+            match = re.match(r"^(\d{4,})-", name)
+            if match:
+                max_index = max(max_index, int(match.group(1)))
+    if sandbox_dir.is_dir():
+        for path in sandbox_dir.iterdir():
+            match = re.match(r"^(\d{4,})-", path.name)
+            if match:
+                max_index = max(max_index, int(match.group(1)))
+    return max_index + 1
+
+
+def merge_download_records(existing: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged = list(existing)
+    seen = {download_record_key(item) for item in existing if download_record_key(item) != ("", "")}
+    for record in new:
+        key = download_record_key(record)
+        if key != ("", "") and key in seen:
+            continue
+        merged.append(record)
+        if key != ("", ""):
+            seen.add(key)
+    return merged
+
+
 def download_sandbox(
     *,
     urls: list[str],
     output_dir: str | Path,
     accept: bool = False,
+    overwrite_preview: bool = False,
     max_file_size: int = DEFAULT_MAX_FILE_SIZE,
     max_archive_unpacked: int = DEFAULT_MAX_ARCHIVE_UNPACKED,
     max_archive_files: int = DEFAULT_MAX_ARCHIVE_FILES,
@@ -3294,8 +3349,11 @@ def download_sandbox(
     sandbox_dir.mkdir(parents=True, exist_ok=True)
     if accept:
         accepted_dir.mkdir(parents=True, exist_ok=True)
+    preview_path = base / "download_preview.json"
+    existing_records = [] if overwrite_preview else existing_download_records(preview_path)
+    start_index = next_download_index(sandbox_dir, existing_records)
     records = []
-    for index, url in enumerate(urls, start=1):
+    for index, url in enumerate(urls, start=start_index):
         record = sandbox_one_url(
             url,
             sandbox_dir,
@@ -3311,22 +3369,23 @@ def download_sandbox(
             shutil.copy2(source_path, target)
             record["accepted_path"] = target.as_posix()
         records.append(record)
+    merged_records = records if overwrite_preview else merge_download_records(existing_records, records)
     payload = {
         "schema_version": f"{SCHEMA_PREFIX}.download_sandbox.v1",
         "generated_at": utc_now(),
         "output_dir": base.as_posix(),
         "max_file_size": max_file_size,
         "max_redirects": max_redirects,
-        "records": records,
-        "summary": {
-            "total": len(records),
-            "safe": sum(1 for item in records if item.get("safety_status") == "safe"),
-            "needs_review": sum(1 for item in records if item.get("safety_status") == "needs_review"),
-            "blocked": sum(1 for item in records if item.get("safety_status") == "blocked"),
-            "accepted": sum(1 for item in records if item.get("accepted_path")),
+        "records": merged_records,
+        "summary": download_summary(merged_records),
+        "preview_write": {
+            "mode": "overwrite" if overwrite_preview else "merge",
+            "existing_records": 0 if overwrite_preview else len(existing_records),
+            "new_records": len(records),
+            "written_records": len(merged_records),
         },
     }
-    write_json(base / "download_preview.json", payload)
+    write_json(preview_path, payload)
     (base / "download_safety_report.md").write_text(render_download_report(payload), encoding="utf-8")
     return payload
 
@@ -3336,6 +3395,7 @@ def download_sandbox_from_manifest(
     manifest_path: str | Path,
     output_dir: str | Path,
     accept: bool = False,
+    overwrite_preview: bool = False,
     max_file_size: int = DEFAULT_MAX_FILE_SIZE,
     max_redirects: int = DEFAULT_MAX_REDIRECTS,
 ) -> dict[str, Any]:
@@ -3348,7 +3408,14 @@ def download_sandbox_from_manifest(
         url = str(item.get("source_url") or item.get("url") or "")
         if url and search.looks_direct_asset_url(url):
             urls.append(url)
-    return download_sandbox(urls=urls, output_dir=output_dir, accept=accept, max_file_size=max_file_size, max_redirects=max_redirects)
+    return download_sandbox(
+        urls=urls,
+        output_dir=output_dir,
+        accept=accept,
+        overwrite_preview=overwrite_preview,
+        max_file_size=max_file_size,
+        max_redirects=max_redirects,
+    )
 
 
 def sandbox_one_url(
@@ -3396,6 +3463,7 @@ def sandbox_one_url(
         "name": path.name,
         "size": path.stat().st_size,
         "sha256": search.sha256_file(path),
+        "asset_type": search.classify_download(path, content_type),
         "issues": issues,
         "archive_preview": {},
     }
@@ -3490,7 +3558,7 @@ def append_log(workdir: str | Path, message: str) -> None:
 
 
 def read_json(path: str | Path) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
 
 def write_json(path: str | Path, payload: Any) -> None:
@@ -3628,6 +3696,7 @@ def main(argv: list[str] | None = None) -> int:
     sandbox_parser.add_argument("--manifest")
     sandbox_parser.add_argument("--output-dir", required=True)
     sandbox_parser.add_argument("--accept", action="store_true")
+    sandbox_parser.add_argument("--overwrite-preview", action="store_true", help="replace download_preview.json instead of merging existing records")
     sandbox_parser.add_argument("--max-file-size", type=int, default=DEFAULT_MAX_FILE_SIZE)
     sandbox_parser.add_argument("--max-redirects", type=int, default=DEFAULT_MAX_REDIRECTS)
     sandbox_parser.add_argument("--output")
@@ -3791,6 +3860,7 @@ def main(argv: list[str] | None = None) -> int:
                 manifest_path=args.manifest,
                 output_dir=args.output_dir,
                 accept=args.accept,
+                overwrite_preview=args.overwrite_preview,
                 max_file_size=args.max_file_size,
                 max_redirects=args.max_redirects,
             )
@@ -3799,6 +3869,7 @@ def main(argv: list[str] | None = None) -> int:
                 urls=args.url,
                 output_dir=args.output_dir,
                 accept=args.accept,
+                overwrite_preview=args.overwrite_preview,
                 max_file_size=args.max_file_size,
                 max_redirects=args.max_redirects,
             )

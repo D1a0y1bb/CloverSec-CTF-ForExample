@@ -24,7 +24,7 @@ import cloversec_ctf_http as http
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-USER_AGENT = "CloverSec-CTF-For-Example/1.1.1 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
+USER_AGENT = "CloverSec-CTF-For-Example/1.1.2 (+https://github.com/D1a0y1bb/CloverSec-CTF-ForExample)"
 ALLOWED_URL_SCHEMES = {"http", "https"}
 GENERIC_EVENT_QUERY_TERMS = {
     "ctf",
@@ -334,7 +334,39 @@ CATEGORY_ALIASES = {
 WRITEUP_TERMS = {"writeup", "write-up", "wp", "题解", "复现"}
 ATTACHMENT_TERMS = {"attachment", "attachments", "source", "源码", "附件", "release", "download", "challenge.zip"}
 TUTORIAL_NOISE_TERMS = {"从零基础", "入门到竞赛", "学习路线", "保姆级", "看这一篇", "基础入门"}
-ATTACHMENT_CANDIDATE_EXTENSIONS = {".zip", ".7z", ".rar", ".tar", ".tgz", ".gz", ".xz", ".bz2"}
+ATTACHMENT_CANDIDATE_EXTENSIONS = {
+    ".zip",
+    ".7z",
+    ".rar",
+    ".tar",
+    ".tgz",
+    ".gz",
+    ".xz",
+    ".bz2",
+    ".py",
+    ".js",
+    ".php",
+    ".java",
+    ".c",
+    ".cpp",
+    ".h",
+    ".go",
+    ".rs",
+    ".sh",
+    ".sage",
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".sql",
+    ".pcap",
+    ".pcapng",
+    ".elf",
+    ".so",
+    ".wasm",
+    ".jar",
+    ".class",
+    ".apk",
+}
 
 DIRECT_ASSET_EXTENSIONS = {
     ".zip",
@@ -352,6 +384,51 @@ DIRECT_ASSET_EXTENSIONS = {
     ".jpg",
     ".jpeg",
     ".webp",
+    ".py",
+    ".js",
+    ".ts",
+    ".php",
+    ".java",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".go",
+    ".rs",
+    ".rb",
+    ".pl",
+    ".sh",
+    ".ps1",
+    ".lua",
+    ".sage",
+    ".ipynb",
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".sql",
+    ".pcap",
+    ".pcapng",
+    ".bin",
+    ".elf",
+    ".out",
+    ".so",
+    ".dylib",
+    ".exe",
+    ".dll",
+    ".wasm",
+    ".jar",
+    ".class",
+    ".apk",
+    ".ipa",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".xml",
+    ".toml",
+    ".ini",
+    ".conf",
+    ".cfg",
 }
 
 CHALLENGE_METADATA_NAMES = {
@@ -2886,6 +2963,16 @@ def classify_download(path: Path, content_type: str) -> str:
         return "writeup"
     if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
         return "screenshot"
+    if suffix in {".py", ".js", ".ts", ".php", ".java", ".c", ".cc", ".cpp", ".h", ".hpp", ".go", ".rs", ".rb", ".pl", ".sh", ".ps1", ".lua", ".sage", ".ipynb"}:
+        return "source"
+    if suffix in {".db", ".sqlite", ".sqlite3", ".sql"}:
+        return "database"
+    if suffix in {".pcap", ".pcapng"}:
+        return "traffic"
+    if suffix in {".bin", ".elf", ".out", ".so", ".dylib", ".exe", ".dll", ".wasm", ".jar", ".class", ".apk", ".ipa"}:
+        return "binary"
+    if suffix in {".json", ".yml", ".yaml", ".xml", ".toml", ".ini", ".conf", ".cfg"}:
+        return "metadata"
     return "download"
 
 
