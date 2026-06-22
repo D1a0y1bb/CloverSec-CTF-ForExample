@@ -12,6 +12,13 @@ SCRIPTS = DOCKERIZER / "scripts"
 
 
 class DockerizerRegressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import yaml  # noqa: F401
+        except ModuleNotFoundError as exc:
+            raise unittest.SkipTest("Dockerizer YAML regression tests require PyYAML") from exc
+
     def test_python_source_integrity_findings_block_auto_render(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)

@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install Dockerizer test requirements
+        run: python3 -m pip install -r plugins/cloversec-ctf-forexample/skills/cloversec-ctf-build-dockerizer/scripts/requirements.txt
+
       - name: Validate release metadata
         run: python3 scripts/validate_release.py
 
