@@ -314,7 +314,7 @@ def create_hub_draft(
     fill_plan = create_chrome_assist_plan(manifest, classify_options=classify_options)
     draft = {
         "schema_version": "cloversec.ctf.hub_draft.v1",
-        "version": "1.1.2",
+        "version": "1.1.3",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -372,7 +372,7 @@ def create_hub_review_state(
         status_notes.append("已发现疑似 Hub 编号，但还没有用户确认，不能用于 retag 或 xlsx。")
     state = {
         "schema_version": "cloversec.ctf.hub_review_state.v1",
-        "version": "1.1.2",
+        "version": "1.1.3",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or ""),
         "case_title": case_title(case),
@@ -432,7 +432,7 @@ def create_hub_session_state(
     resolved_hub_id = ids["hub_challenge_id"]
     state = {
         "schema_version": "cloversec.ctf.hub_session_state.v1",
-        "version": "1.1.2",
+        "version": "1.1.3",
         "created_at": utc_now(),
         "case_id": str(case.get("case_id") or draft.get("case_id") or manifest.get("case_id") or ""),
         "case_title": case_title(case) or str(draft.get("case_title") or ""),
@@ -1083,7 +1083,7 @@ def create_hub_diff(
         )
     return {
         "schema_version": "cloversec.ctf.hub_diff.v1",
-        "version": "1.1.2",
+        "version": "1.1.3",
         "case_id": str(case.get("case_id") or ""),
         "comparisons": comparisons,
         "validation": validation,
