@@ -211,6 +211,76 @@ class Workflow030Tests(unittest.TestCase):
             self.assertEqual(result["status"], "blocked")
             self.assertIn("没有可归档的本地材料", result["errors"][0]["message"])
 
+    def test_archive_stage_syncs_existing_dockerizer_rendered_materials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            workflow.init_workflow(event="DemoCTF", years=[2026], categories=["web"], limit=1, out_dir=out)
+            workflow.write_jsonl(
+                out / "ctf_cases.jsonl",
+                [
+                    {
+                        "case_id": "case-rendered",
+                        "metadata": {"名称": "Rendered", "分类": "Web", "验证状态": "未验证", "是否通过": "否"},
+                        "flag": {"value": "flag{demo}", "type": "static", "sensitive": True},
+                        "source_files": [],
+                        "attachments": [],
+                        "docker_artifacts": {},
+                        "writeup": {},
+                    }
+                ],
+            )
+            rendered = out / "materials" / "case-rendered" / ".ctfbuild" / "rendered"
+            rendered.mkdir(parents=True)
+            (rendered / "Dockerfile").write_text("FROM busybox\n", encoding="utf-8")
+            (rendered / "start.sh").write_text("#!/bin/bash\nsleep 1\n", encoding="utf-8")
+            summary = rendered.parent / "validate-summary.json"
+            summary.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "code": "CONTRACT_VALIDATION_PASSED",
+                        "summary": "无 ERROR",
+                        "counts": {"errors": 0, "warnings": 0},
+                        "verification": {"level": "static"},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = workflow.execute_stage_archive(out)
+            cases = workflow.data.load_cases(out / "ctf_cases.jsonl")
+            error_text = "\n".join(str(item.get("message") or "") for item in result.get("errors", []))
+
+            self.assertNotIn("没有可归档的本地材料", error_text)
+            self.assertEqual(cases[0]["docker_artifacts"]["project_dir"], rendered.resolve().as_posix())
+            self.assertEqual(cases[0]["docker_artifacts"]["validation_level"], "static")
+            self.assertFalse(cases[0]["docker_artifacts"]["run_verified"])
+            self.assertTrue((out / "case_material_sync.json").exists())
+
+    def test_case_material_sync_does_not_write_multi_case_without_unique_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            out.mkdir()
+            workflow.write_jsonl(
+                out / "ctf_cases.jsonl",
+                [
+                    {"case_id": "case-a", "metadata": {"名称": "Alpha"}, "docker_artifacts": {}},
+                    {"case_id": "case-b", "metadata": {"名称": "Beta"}, "docker_artifacts": {}},
+                ],
+            )
+            rendered = out / "materials" / "shared" / ".ctfbuild" / "rendered"
+            rendered.mkdir(parents=True)
+            (rendered / "Dockerfile").write_text("FROM busybox\n", encoding="utf-8")
+
+            payload = workflow.sync_cases_with_workflow_materials(out)
+            cases = workflow.data.load_cases(out / "ctf_cases.jsonl")
+
+            self.assertEqual(payload["status"], "unchanged")
+            self.assertEqual(cases[0]["docker_artifacts"], {})
+            self.assertEqual(cases[1]["docker_artifacts"], {})
+            self.assertGreaterEqual(len(payload["unmatched_materials"]), 1)
+
     def test_archive_completion_rejects_manifest_with_issues(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "run"
@@ -1004,9 +1074,12 @@ class Workflow030Tests(unittest.TestCase):
 
             self.assertEqual(payload["recommended_next"]["skill"], "cloversec-ctf-build-dockerizer")
             self.assertEqual(payload["dockerizer_handoff"]["required_skill"], "cloversec-ctf-build-dockerizer")
-            self.assertEqual(payload["dockerizer_handoff"]["auto_action"], "auto-render")
-            self.assertIn("auto-render", payload["dockerizer_handoff"]["recommended_command"])
+            self.assertEqual(payload["dockerizer_handoff"]["auto_action"], "manual_review")
+            self.assertFalse(payload["dockerizer_handoff"]["can_auto_render"])
+            self.assertTrue(payload["dockerizer_handoff"]["manual_required"])
+            self.assertIn("intake", payload["dockerizer_handoff"]["recommended_command"])
             self.assertIn((root / "challenge_source").as_posix(), payload["dockerizer_handoff"]["recommended_command"])
+            self.assertIn("challenge.yaml", payload["dockerizer_handoff"]["required_user_inputs"])
             self.assertIn("challenge_source/Dockerfile", payload["dockerizer_handoff"]["existing_dockerfiles"])
             self.assertIn("41236", ",".join(payload["dockerizer_handoff"]["port_hints"]))
             self.assertEqual(docker_rows[0]["入口目录"], (root / "challenge_source").as_posix())

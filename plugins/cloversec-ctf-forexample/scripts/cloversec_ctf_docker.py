@@ -36,7 +36,7 @@ OPERATION_ALIASES = {
     "save_image": ["save"],
     "save_image_tar": ["save"],
 }
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 VALIDATION_LEVELS = ["static_only", "inspect_only", "build_only", "run_probe", "solve_verify"]
 OPERATION_AUTH_ACTIONS = {
     "build": "docker_build",

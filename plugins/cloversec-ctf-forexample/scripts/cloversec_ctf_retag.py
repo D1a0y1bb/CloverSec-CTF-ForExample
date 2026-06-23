@@ -86,7 +86,7 @@ def create_image_naming_plan(
     tar_path = (output / tar_name).as_posix() if tar_name else ""
     plan = {
         "schema_version": "cloversec.ctf.image_naming_plan.v1",
-        "version": "1.1.3",
+        "version": "1.1.4",
         "case_id": str(case.get("case_id") or ""),
         "case_title": str(metadata.get("名称") or ""),
         "hub_id": hub_id,

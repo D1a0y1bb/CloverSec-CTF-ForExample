@@ -15,11 +15,14 @@ import cloversec_ctf_data as data
 import cloversec_ctf_delivery as delivery
 import cloversec_ctf_handoff as handoff
 import cloversec_ctf_mcp_runtime as mcp_runtime
+import cloversec_ctf_mcp_stdio as mcp_stdio
 import cloversec_ctf_resource as resource
 import cloversec_ctf_workflow as workflow
 
 
-SERVER_VERSION = "1.1.3"
+mcp_stdio.configure_stdio()
+
+SERVER_VERSION = "1.1.4"
 SERVER_NAME = "cloversec-ctf-workflow"
 
 PLATFORM_CONTRACT = {

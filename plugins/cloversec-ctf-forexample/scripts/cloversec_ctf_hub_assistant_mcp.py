@@ -10,10 +10,13 @@ from typing import Any
 
 import cloversec_ctf_hub as hub
 import cloversec_ctf_mcp_runtime as mcp_runtime
+import cloversec_ctf_mcp_stdio as mcp_stdio
 import cloversec_ctf_retag as retag
 
 
-SERVER_VERSION = "1.1.3"
+mcp_stdio.configure_stdio()
+
+SERVER_VERSION = "1.1.4"
 SERVER_NAME = "cloversec-ctf-hub-assistant"
 
 

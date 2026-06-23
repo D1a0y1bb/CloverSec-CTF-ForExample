@@ -34,11 +34,12 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.1.3"
+WORKFLOW_VERSION = "1.1.4"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
 SEARCH_STRATEGIES = REFERENCES / "search-strategies.json"
+DOCKERIZER_WORKFLOW = PLUGIN_ROOT / "skills" / "cloversec-ctf-build-dockerizer" / "scripts" / "workflow.py"
 
 STAGES = [
     "research",
@@ -781,6 +782,9 @@ def route_resource(
     route_path = base / "resource_route.json"
     write_json(route_path, route)
     write_text(base / "resource_route_report.md", render_resource_route_report(route))
+    workflow_base = find_workflow_case_base(base)
+    if workflow_base:
+        sync_cases_with_workflow_materials(workflow_base)
     return {
         "schema_version": f"{SCHEMA_PREFIX}.resource_route_result.v1",
         "root": source_root.as_posix(),
@@ -1441,6 +1445,9 @@ def render_resource_route_report(route: dict[str, Any]) -> str:
                 f"- Flag 路径：{', '.join(handoff.get('flag_paths', [])) or '待确认'}",
                 f"- Flag 运行时：{format_flag_runtime_policy(handoff.get('flag_runtime_policy', {}))}",
                 f"- 自动生成：{'可以执行' if handoff.get('can_auto_render') else '需要先人工补启动证据'}",
+                f"- Dockerizer 推荐路径：`{handoff.get('recommended_path', '')}`",
+                f"- 需要人工确认：{handoff.get('manual_required', False)}",
+                f"- 待确认字段：{', '.join(handoff.get('required_user_inputs', [])) or '无'}",
                 f"- 推荐命令：`{handoff.get('recommended_command', '')}`",
                 "",
                 handoff.get("input_prompt", ""),
@@ -1625,6 +1632,85 @@ def render_current_status(payload: dict[str, Any]) -> str:
     )
 
 
+def run_dockerizer_intake(project_dir: Path) -> dict[str, Any]:
+    if not DOCKERIZER_WORKFLOW.is_file():
+        return {
+            "status": "unavailable",
+            "ok": False,
+            "error": f"Dockerizer workflow not found: {DOCKERIZER_WORKFLOW.as_posix()}",
+            "input_audit": {},
+        }
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(DOCKERIZER_WORKFLOW),
+            "intake",
+            "--project-dir",
+            str(project_dir),
+            "--format",
+            "json",
+        ],
+        cwd=str(DOCKERIZER_WORKFLOW.parent),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    try:
+        payload = json.loads(result.stdout) if result.stdout.strip() else {}
+    except json.JSONDecodeError:
+        payload = {}
+    input_audit = payload.get("input_audit") if isinstance(payload.get("input_audit"), dict) else {}
+    return {
+        "status": "ok" if result.returncode == 0 and input_audit else "failed",
+        "ok": result.returncode == 0,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "input_audit": input_audit,
+        "payload": payload,
+    }
+
+
+def dockerizer_required_user_inputs(input_audit: dict[str, Any], local_missing: list[str]) -> list[str]:
+    required: list[str] = []
+    for item in local_missing:
+        if item not in required:
+            required.append(item)
+    for finding in input_audit.get("findings", []) if isinstance(input_audit.get("findings"), list) else []:
+        if not isinstance(finding, dict):
+            continue
+        code = str(finding.get("code") or "")
+        if code == "INTAKE_PORT_UNCONFIRMED":
+            label = "开放端口"
+        elif code == "INTAKE_START_UNCONFIRMED":
+            label = "启动命令"
+        elif code in {"INTAKE_EXISTING_DOCKERFILE", "INTAKE_DERIVE_GATES_TRUE"}:
+            label = "challenge.yaml"
+        elif code in {"INTAKE_COMPOSE_DETECTED", "INTAKE_VULHUB_LIKE_DETECTED"}:
+            label = "stack/profile"
+        else:
+            label = str(finding.get("summary") or code).strip()
+        if label and label not in required:
+            required.append(label)
+    return required
+
+
+def dockerizer_intake_summary(intake: dict[str, Any]) -> dict[str, Any]:
+    audit = intake.get("input_audit") if isinstance(intake.get("input_audit"), dict) else {}
+    return {
+        "status": intake.get("status", ""),
+        "ok": bool(intake.get("ok")),
+        "returncode": intake.get("returncode", 0),
+        "manual_required": bool(audit.get("manual_required")),
+        "recommended_path": str(audit.get("recommended_path") or ""),
+        "risk_level": str(audit.get("risk_level") or ""),
+        "support_level": str(audit.get("support_level") or ""),
+        "verification_level": str(audit.get("verification_level") or ""),
+        "findings": audit.get("findings", []) if isinstance(audit.get("findings"), list) else [],
+        "stderr": intake.get("stderr", ""),
+    }
+
+
 def dockerizer_handoff_details(
     root: Path,
     classification: dict[str, Any],
@@ -1665,11 +1751,33 @@ def dockerizer_handoff_details(
         missing_items.append("开放端口")
     if not flag_paths:
         missing_items.append("Flag 路径")
+    if existing_dockerfiles and not (root / "challenge.yaml").exists() and "challenge.yaml" not in missing_items:
+        missing_items.append("challenge.yaml")
     missing_start_evidence = not existing_dockerfiles and not existing_compose_files and not start_commands
     if missing_start_evidence:
         missing_items.append("启动方式")
     questions = [f"请确认{item}" for item in missing_items]
     source_subdir = str(runtime.get("source_subdir") or root.as_posix())
+    source_path = Path(source_subdir)
+    intake = run_dockerizer_intake(source_path if source_path.is_absolute() else root / source_subdir)
+    intake_summary = dockerizer_intake_summary(intake)
+    recommended_path = str(intake_summary.get("recommended_path") or "")
+    manual_required = bool(intake_summary.get("manual_required")) or not bool(intake.get("ok"))
+    required_user_inputs = dockerizer_required_user_inputs(
+        intake.get("input_audit") if isinstance(intake.get("input_audit"), dict) else {},
+        missing_items,
+    )
+    can_auto_render = bool(intake.get("ok")) and not manual_required and recommended_path not in {"manual_review", "scenario_draft", "bundle_recipe"}
+    if not intake.get("ok") or not recommended_path:
+        can_auto_render = False
+        if "Dockerizer intake 输出" not in required_user_inputs:
+            required_user_inputs.append("Dockerizer intake 输出")
+    auto_action = "auto-render" if can_auto_render else "manual_review"
+    recommended_command = (
+        f"python3 scripts/workflow.py auto-render --project-dir {source_subdir}"
+        if can_auto_render
+        else f"python3 scripts/workflow.py intake --project-dir {source_subdir} --format json"
+    )
     return {
         "challenge_dir": root.as_posix(),
         "existing_dockerfiles": existing_dockerfiles,
@@ -1682,9 +1790,14 @@ def dockerizer_handoff_details(
         "flag_runtime_policy": flag_runtime_policy,
         "missing_items": missing_items,
         "user_questions": questions,
-        "can_auto_render": not missing_start_evidence,
-        "auto_action": "auto-render",
-        "recommended_command": f"python3 scripts/workflow.py auto-render --project-dir {source_subdir}",
+        "can_auto_render": can_auto_render,
+        "auto_action": auto_action,
+        "recommended_command": recommended_command,
+        "manual_required": manual_required,
+        "recommended_path": recommended_path or "intake_failed",
+        "required_user_inputs": required_user_inputs,
+        "dockerizer_intake": intake_summary,
+        "manual_followup_command": f"python3 scripts/workflow.py reviewed-render --project-dir {source_subdir} --reason \"reviewed challenge.yaml\"",
     }
 
 
@@ -1993,14 +2106,18 @@ def execute_stage_collect(base: Path) -> dict[str, Any]:
     manifest = base / "search_results.json"
     if manifest.exists():
         result = auto_collect_and_route(manifest_path=manifest, output_dir=base, accept_safe_downloads=True)
+        sync_payload = sync_cases_with_workflow_materials(base) if cases_path.exists() else {}
+        summary = dict(result.get("summary", {}) if isinstance(result.get("summary"), dict) else {})
+        if sync_payload:
+            summary["case_material_sync_updates"] = len(sync_payload.get("updates", []))
         if int(result.get("summary", {}).get("routes", 0) or 0) <= 0 and int(result.get("summary", {}).get("accepted_downloads", 0) or 0) <= 0:
             return {
                 "status": "pending_user",
                 "evidence_path": (base / "auto_collect_and_route.json").as_posix(),
-                "summary": result.get("summary", {}),
+                "summary": summary,
                 "errors": [{"message": "没有可下载或可预览的源码、附件、GitHub 单题目录。"}],
             }
-        return {"status": "ok", "evidence_path": (base / "auto_collect_and_route.json").as_posix(), "summary": result.get("summary", {})}
+        return {"status": "ok", "evidence_path": (base / "auto_collect_and_route.json").as_posix(), "summary": summary}
     if (base / "material_candidates.json").exists() or (base / "resource_route.json").exists():
         return {"status": "ok", "evidence_path": first_existing(base, ["material_candidates.json", "resource_route.json"]).as_posix()}
     return {"status": "blocked", "errors": [{"message": "缺少 search_results.json，无法收集材料候选。"}]}
@@ -2080,6 +2197,7 @@ def execute_stage_archive(base: Path) -> dict[str, Any]:
     cases = latest_cases_path(base)
     if not cases.exists():
         return {"status": "blocked", "errors": [{"message": "缺少 ctf_cases.jsonl，无法归档。"}]}
+    sync_cases_with_workflow_materials(base, cases)
     loaded_cases = data.load_cases(cases)
     ready_cases = [case for case in loaded_cases if case_has_archive_input(case)]
     if not ready_cases:
@@ -2252,6 +2370,270 @@ def cases_file_has_rows(path: Path) -> bool:
 def write_cases_jsonl(cases: list[dict[str, Any]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(json.dumps(case, ensure_ascii=False) + "\n" for case in cases), encoding="utf-8")
+
+
+def find_workflow_case_base(path: Path) -> Path | None:
+    for candidate in [path, *path.parents]:
+        if (candidate / "ctf_cases.jsonl").is_file():
+            return candidate
+    return None
+
+
+def sync_cases_with_workflow_materials(base: Path, cases_path: Path | None = None) -> dict[str, Any]:
+    cases_path = cases_path or base / "ctf_cases.jsonl"
+    if not cases_path.is_file():
+        payload = {
+            "schema_version": f"{SCHEMA_PREFIX}.case_material_sync.v1",
+            "generated_at": utc_now(),
+            "base": base.as_posix(),
+            "cases_path": cases_path.as_posix(),
+            "status": "no_cases",
+            "updates": [],
+            "unmatched_materials": [],
+        }
+        write_json(base / "case_material_sync.json", payload)
+        return payload
+    cases = data.load_cases(cases_path)
+    before = json.dumps(cases, ensure_ascii=False, sort_keys=True)
+    materials = discover_workflow_materials(base)
+    updates: list[dict[str, Any]] = []
+    unmatched: list[dict[str, Any]] = []
+    for material in materials:
+        index = match_material_to_case(material, cases)
+        if index is None:
+            unmatched.append(material_summary(material, reason="no_unique_case_match"))
+            continue
+        changed_fields = apply_material_to_case(cases[index], material)
+        if changed_fields:
+            updates.append(
+                {
+                    "case_id": str(cases[index].get("case_id") or ""),
+                    "material": material_summary(material),
+                    "changed_fields": changed_fields,
+                }
+            )
+    after = json.dumps(cases, ensure_ascii=False, sort_keys=True)
+    if after != before:
+        write_cases_jsonl(cases, cases_path)
+    payload = {
+        "schema_version": f"{SCHEMA_PREFIX}.case_material_sync.v1",
+        "generated_at": utc_now(),
+        "base": base.as_posix(),
+        "cases_path": cases_path.as_posix(),
+        "status": "updated" if after != before else "unchanged",
+        "materials_seen": len(materials),
+        "updates": updates,
+        "unmatched_materials": unmatched,
+    }
+    write_json(base / "case_material_sync.json", payload)
+    return payload
+
+
+def discover_workflow_materials(base: Path) -> list[dict[str, Any]]:
+    materials: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, path: Path, **extra: Any) -> None:
+        if not path.exists():
+            return
+        resolved = path.resolve()
+        key = (kind, resolved.as_posix())
+        if key in seen:
+            return
+        seen.add(key)
+        item = {"kind": kind, "path": resolved.as_posix(), "path_name": path.name}
+        item.update(extra)
+        materials.append(item)
+
+    accepted = base / "downloads_accepted"
+    if accepted.exists():
+        for path in sorted(item for item in accepted.rglob("*") if item.is_file()):
+            add("attachment", path, source="downloads_accepted")
+
+    materials_dir = base / "materials"
+    if materials_dir.exists():
+        for path in sorted(item for item in materials_dir.iterdir() if item.exists()):
+            add("source_dir" if path.is_dir() else "attachment", path, source="materials")
+
+    for route_path in sorted(base.rglob("resource_route.json")):
+        try:
+            route = read_json(route_path)
+        except Exception:  # noqa: BLE001
+            continue
+        root = path_from_payload(route.get("root"))
+        if root and root.exists():
+            add("source_dir", root, source="resource_route", route_path=route_path.resolve().as_posix())
+        handoff = route.get("dockerizer_handoff") if isinstance(route.get("dockerizer_handoff"), dict) else {}
+        for key in ["project_dir", "source_subdir", "challenge_dir"]:
+            path = path_from_payload(handoff.get(key))
+            if path and path.exists():
+                add("source_dir", path, source="dockerizer_handoff", route_path=route_path.resolve().as_posix())
+
+    for rendered in sorted(base.rglob(".ctfbuild/rendered")):
+        if not rendered.is_dir():
+            continue
+        add("docker_rendered", rendered, source="dockerizer_rendered")
+        project_dir = rendered.parent.parent
+        if project_dir.exists():
+            add("source_dir", project_dir, source="dockerizer_project")
+
+    for path in sorted(base.rglob("*.json")):
+        if "validate" not in path.name.lower() and "summary" not in path.name.lower():
+            continue
+        try:
+            payload = read_json(path)
+        except Exception:  # noqa: BLE001
+            continue
+        if looks_like_dockerizer_validation(payload):
+            add("docker_validation", path, source="dockerizer_validate", validation=payload)
+
+    manual_names = {"题目解题手册.md", "manual_filled_draft.md", "formal_manual.md", "writeup.md"}
+    for path in sorted(base.rglob("*.md")):
+        lowered = path.name.lower()
+        if path.name in manual_names or "manual" in lowered or "writeup" in lowered:
+            add("manual", path, source="writeup")
+
+    return materials
+
+
+def path_from_payload(value: Any) -> Path | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return Path(text)
+
+
+def looks_like_dockerizer_validation(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if "ok" in payload and ("code" in payload or "counts" in payload or "verification" in payload):
+        return True
+    summary = payload.get("summary")
+    if isinstance(summary, str) and ("code" in payload or "counts" in payload):
+        return True
+    return isinstance(summary, dict) and any(key in summary for key in ["validation_level", "run_verified", "status"])
+
+
+def match_material_to_case(material: dict[str, Any], cases: list[dict[str, Any]]) -> int | None:
+    if not cases:
+        return None
+    if len(cases) == 1:
+        return 0
+    path_text = str(material.get("path") or "").lower()
+    existing_matches = []
+    material_path = Path(str(material.get("path") or ""))
+    for index, case in enumerate(cases):
+        for existing in case_local_paths(case):
+            try:
+                if existing.exists() and (material_path == existing or existing in material_path.parents or material_path in existing.parents):
+                    existing_matches.append(index)
+            except RuntimeError:
+                continue
+    if len(set(existing_matches)) == 1:
+        return existing_matches[0]
+    token_matches = []
+    for index, case in enumerate(cases):
+        for token in case_match_tokens(case):
+            if token and token in path_text:
+                token_matches.append(index)
+                break
+    return token_matches[0] if len(set(token_matches)) == 1 else None
+
+
+def case_match_tokens(case: dict[str, Any]) -> list[str]:
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    raw_tokens = [
+        str(case.get("case_id") or ""),
+        str(metadata.get("名称") or ""),
+        str(metadata.get("题目名称") or ""),
+        str(metadata.get("name") or ""),
+        str(metadata.get("title") or ""),
+    ]
+    tokens: list[str] = []
+    for token in raw_tokens:
+        for value in {token.strip().lower(), safe_slug(token).lower()}:
+            if len(value) >= 3 and value not in tokens:
+                tokens.append(value)
+    return tokens
+
+
+def apply_material_to_case(case: dict[str, Any], material: dict[str, Any]) -> list[str]:
+    kind = str(material.get("kind") or "")
+    path = str(material.get("path") or "")
+    changed: list[str] = []
+    if kind == "source_dir":
+        if append_case_path(case, "source_files", {"path": path, "name": Path(path).name, "source": material.get("source", "")}):
+            changed.append("source_files")
+    elif kind == "attachment":
+        if append_case_path(case, "attachments", {"path": path, "name": Path(path).name, "source": material.get("source", "")}):
+            changed.append("attachments")
+    elif kind == "manual":
+        writeup = case.setdefault("writeup", {})
+        if isinstance(writeup, dict) and not str(writeup.get("manual_path") or "").strip():
+            writeup["manual_path"] = path
+            changed.append("writeup.manual_path")
+    elif kind == "docker_rendered":
+        docker_artifacts = case.setdefault("docker_artifacts", {})
+        if isinstance(docker_artifacts, dict):
+            if docker_artifacts.get("project_dir") != path:
+                docker_artifacts["project_dir"] = path
+                changed.append("docker_artifacts.project_dir")
+            if docker_artifacts.get("run_verified") is not False:
+                docker_artifacts["run_verified"] = False
+                changed.append("docker_artifacts.run_verified")
+    elif kind == "docker_validation":
+        validation = material.get("validation") if isinstance(material.get("validation"), dict) else {}
+        docker_artifacts = case.setdefault("docker_artifacts", {})
+        if isinstance(docker_artifacts, dict):
+            updates = docker_validation_case_updates(validation, path)
+            for key, value in updates.items():
+                if docker_artifacts.get(key) != value:
+                    docker_artifacts[key] = value
+                    changed.append(f"docker_artifacts.{key}")
+    return changed
+
+
+def append_case_path(case: dict[str, Any], field: str, record: dict[str, Any]) -> bool:
+    rows = case.setdefault(field, [])
+    if not isinstance(rows, list):
+        return False
+    path = str(record.get("path") or "")
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        if any(str(item.get(key) or "") == path for key in ["path", "local_path", "accepted_path"]):
+            return False
+    rows.append(record)
+    return True
+
+
+def docker_validation_case_updates(validation: dict[str, Any], path: str) -> dict[str, Any]:
+    verification = validation.get("verification") if isinstance(validation.get("verification"), dict) else {}
+    counts = validation.get("counts") if isinstance(validation.get("counts"), dict) else {}
+    ok = validation.get("ok")
+    level = str(verification.get("level") or validation.get("validation_level") or "static")
+    if ok is True and int(counts.get("errors") or 0) == 0:
+        status = "pass"
+    elif ok is False:
+        status = "fail"
+    else:
+        status = "unknown"
+    return {
+        "validation_path": path,
+        "validate_summary_path": path,
+        "validation_level": level,
+        "static_validation_status": status,
+        "run_verified": False,
+    }
+
+
+def material_summary(material: dict[str, Any], *, reason: str = "") -> dict[str, Any]:
+    return {
+        "kind": material.get("kind", ""),
+        "path": material.get("path", ""),
+        "source": material.get("source", ""),
+        "reason": reason,
+    }
 
 
 def accept_existing_download_preview(base: Path) -> dict[str, Any]:

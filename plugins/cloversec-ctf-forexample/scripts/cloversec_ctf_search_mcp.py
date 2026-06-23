@@ -9,7 +9,11 @@ import traceback
 from typing import Any
 
 import cloversec_ctf_mcp_runtime as mcp_runtime
+import cloversec_ctf_mcp_stdio as mcp_stdio
 import cloversec_ctf_search as search
+
+
+mcp_stdio.configure_stdio()
 
 SERVER_NAME = "cloversec-ctf-search"
 
@@ -109,7 +113,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "cloversec-ctf-search", "version": "1.1.3"},
+                    "serverInfo": {"name": "cloversec-ctf-search", "version": "1.1.4"},
                 },
             )
         if method == "tools/list":

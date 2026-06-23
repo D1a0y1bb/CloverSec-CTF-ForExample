@@ -22,9 +22,60 @@ class McpServerProtocolTests(unittest.TestCase):
         self.assertEqual(len(servers), 8)
         self.assertIn("cloversec-ctf-workflow", servers)
         for name, server in servers.items():
-            self.assertEqual(server["command"], "python3")
-            script = plugin_dir / server["args"][0]
+            self.assertEqual(server["command"], "node")
+            self.assertEqual(server["args"][0], "./scripts/mcp_python_launcher.mjs")
+            launcher = plugin_dir / server["args"][0]
+            script = plugin_dir / server["args"][1]
+            self.assertTrue(launcher.exists(), f"{name} launcher missing: {launcher}")
             self.assertTrue(script.exists(), f"{name} script missing: {script}")
+            self.assertEqual(server["env"]["PYTHONUNBUFFERED"], "1")
+            self.assertEqual(server["env"]["PYTHONUTF8"], "1")
+            self.assertEqual(server["env"]["PYTHONIOENCODING"], "utf-8")
+
+    def test_manifest_mcp_servers_initialize_and_list_tools_through_node_launcher(self):
+        plugin_dir = ROOT / "plugins" / "cloversec-ctf-forexample"
+        mcp_config = json.loads((plugin_dir / ".mcp.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_dir = Path(tmp) / "mcp-runtime"
+            for name, server in mcp_config["mcpServers"].items():
+                with self.subTest(server=name):
+                    responses = call_mcp_server_from_manifest(plugin_dir, server, runtime_dir=runtime_dir / name)
+                    self.assertEqual(responses[0]["result"]["capabilities"], {"tools": {}})
+                    self.assertGreater(len(responses[1]["result"]["tools"]), 0)
+
+    def test_workflow_mcp_stdout_is_utf8_when_local_encoding_is_cp936(self):
+        plugin_dir = ROOT / "plugins" / "cloversec-ctf-forexample"
+        mcp_config = json.loads((plugin_dir / ".mcp.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            server = mcp_config["mcpServers"]["cloversec-ctf-workflow"]
+            responses = call_mcp_server_from_manifest(
+                plugin_dir,
+                server,
+                runtime_dir=Path(tmp) / "mcp-runtime",
+                extra_env={"PYTHONIOENCODING": "cp936"},
+                decode_as_utf8=True,
+            )
+        tools_text = json.dumps(responses[1], ensure_ascii=False)
+        self.assertIn("Hub提交材料", tools_text)
+
+    def test_doctor_installed_reports_mcp_command_and_smoke_checks(self):
+        doctor = SCRIPTS / "cloversec_ctf_doctor.py"
+        proc = subprocess.run(
+            [sys.executable, str(doctor), "--installed", "--json"],
+            cwd=SCRIPTS,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        report = json.loads(proc.stdout)
+        by_id = {item["id"]: item for item in report["checks"]}
+
+        self.assertEqual(report["capabilities"]["mcp_runtime"], "available")
+        self.assertEqual(by_id["mcp_command_cloversec-ctf-workflow"]["status"], "ok")
+        self.assertEqual(by_id["mcp_encoding_cloversec-ctf-workflow"]["status"], "ok")
+        self.assertEqual(by_id["mcp_smoke_cloversec-ctf-workflow"]["status"], "ok")
 
     def test_all_mcp_servers_support_list_and_representative_call(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -193,6 +244,45 @@ def call_mcp_server(script: Path, tool_name: str, arguments: dict, *, runtime_di
     lines = [line for line in proc.stdout.splitlines() if line.strip()]
     if len(lines) != 3:
         raise AssertionError(f"{script.name} returned {len(lines)} lines: stdout={proc.stdout!r} stderr={proc.stderr!r}")
+    return [json.loads(line) for line in lines]
+
+
+def call_mcp_server_from_manifest(
+    plugin_dir: Path,
+    server: dict,
+    *,
+    runtime_dir: Path,
+    extra_env: dict[str, str] | None = None,
+    decode_as_utf8: bool = False,
+) -> list[dict]:
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+    ]
+    env = {
+        **os.environ,
+        **{str(key): str(value) for key, value in server.get("env", {}).items()},
+        **(extra_env or {}),
+        "CLOVERSEC_CTF_MCP_STATE_DIR": runtime_dir.as_posix(),
+    }
+    proc = subprocess.run(
+        [server["command"], *server["args"]],
+        input=("\n".join(json.dumps(item) for item in requests) + "\n").encode("utf-8"),
+        capture_output=True,
+        timeout=20,
+        cwd=plugin_dir / server.get("cwd", "."),
+        env=env,
+        check=False,
+    )
+    if proc.returncode != 0:
+        stderr = proc.stderr.decode("utf-8", errors="replace")
+        raise AssertionError(f"{server['command']} exited {proc.returncode}: {stderr}")
+    stdout = proc.stdout.decode("utf-8")
+    if decode_as_utf8:
+        proc.stderr.decode("utf-8")
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    if len(lines) != 2:
+        raise AssertionError(f"manifest server returned {len(lines)} lines: stdout={stdout!r}")
     return [json.loads(line) for line in lines]
 
 

@@ -13,11 +13,14 @@ import cloversec_ctf_audit as audit
 import cloversec_ctf_data as data
 import cloversec_ctf_manual_quality as manual_quality
 import cloversec_ctf_mcp_runtime as mcp_runtime
+import cloversec_ctf_mcp_stdio as mcp_stdio
 import cloversec_ctf_quality_runner as quality_runner
 import cloversec_ctf_proof as proof
 
 
-SERVER_VERSION = "1.1.3"
+mcp_stdio.configure_stdio()
+
+SERVER_VERSION = "1.1.4"
 SERVER_NAME = "cloversec-ctf-quality-runner"
 
 TOOLS = [

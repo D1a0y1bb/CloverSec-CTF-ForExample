@@ -13,7 +13,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "cloversec.ctf.proof_pack.v1"
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 MAX_COPY_BYTES = 2 * 1024 * 1024
 
 
@@ -138,7 +138,7 @@ def build_summary(
     flag = case_payload.get("flag") if isinstance(case_payload.get("flag"), dict) else {}
     resource_summary = resource_classification.get("root_classification", {})
     container_summary = container_inference.get("summary", {})
-    docker_summary = docker_evidence.get("summary", {})
+    docker_summary = normalize_docker_summary(docker_evidence)
     quality_summary = quality_review.get("summary", {})
     issues: list[str] = []
     issues.extend(str(item.get("message") or item) for item in quality_review.get("checks", []) if item.get("status") != "pass")
@@ -159,6 +159,33 @@ def build_summary(
         "flag_present": bool(str(flag.get("value") or "").strip()),
         "ready_for_review": ready,
         "issues": dedupe([text for text in issues if text]),
+    }
+
+
+def normalize_docker_summary(docker_evidence: dict[str, Any]) -> dict[str, Any]:
+    summary = docker_evidence.get("summary")
+    if isinstance(summary, dict):
+        return summary
+    verification = docker_evidence.get("verification") if isinstance(docker_evidence.get("verification"), dict) else {}
+    counts = docker_evidence.get("counts") if isinstance(docker_evidence.get("counts"), dict) else {}
+    code = str(docker_evidence.get("code") or "")
+    ok = docker_evidence.get("ok")
+    errors = int(counts.get("errors") or 0)
+    message = str(summary or docker_evidence.get("message") or code)
+    if ok is True and errors == 0:
+        status = "pass"
+    elif ok is False or "FAILED" in code or errors > 0:
+        status = "fail"
+    else:
+        status = ""
+    issues = [message] if status == "fail" and message else []
+    return {
+        "status": status,
+        "validation_level": str(verification.get("level") or docker_evidence.get("validation_level") or ""),
+        "run_verified": bool(verification.get("run_verified") or docker_evidence.get("run_verified") or False),
+        "issues": issues,
+        "message": message,
+        "code": code,
     }
 
 

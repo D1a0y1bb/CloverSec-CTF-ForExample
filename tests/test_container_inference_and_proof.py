@@ -435,6 +435,40 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             self.assertGreaterEqual(len(payload["copied_evidence"]), 5)
             self.assertGreaterEqual(len(payload["hashes"]), 1)
 
+    def test_proof_package_accepts_dockerizer_validate_string_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            docker_path = root / "validate-summary.json"
+            quality_path = root / "quality_review.json"
+            docker_path.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "code": "CONTRACT_VALIDATION_PASSED",
+                        "summary": "无 ERROR",
+                        "counts": {"errors": 0, "warnings": 0},
+                        "verification": {"level": "static"},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            quality_path.write_text(
+                json.dumps({"case_id": "proof-validate", "summary": {"status": "通过"}, "checks": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            payload = proof.create_proof_package(
+                output_dir=root / "proof",
+                case={"case_id": "proof-validate", "flag": {"value": "flag{demo}"}},
+                docker_evidence_path=docker_path,
+                quality_review_path=quality_path,
+            )
+
+            self.assertEqual(payload["summary"]["docker_status"], "pass")
+            self.assertEqual(payload["summary"]["docker_validation_level"], "static")
+            self.assertFalse(payload["summary"]["docker_run_verified"])
+
     def test_mcp_servers_expose_container_and_proof_tools(self):
         expectations = {
             "cloversec_ctf_workflow_mcp.py": ["cloversec_ctf_container_infer"],
@@ -460,7 +494,7 @@ class ContainerInferenceAndProofTests(unittest.TestCase):
             tools = [item["name"] for item in lines[1]["result"]["tools"]]
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.1.3")
+            self.assertEqual(lines[0]["result"]["serverInfo"]["version"], "1.1.4")
             for expected in expected_tools:
                 self.assertIn(expected, tools)
 

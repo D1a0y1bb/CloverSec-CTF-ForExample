@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERIZER = ROOT / "plugins" / "cloversec-ctf-forexample" / "skills" / "cloversec-ctf-build-dockerizer"
 SCRIPTS = DOCKERIZER / "scripts"
+
+
+def load_dockerizer_workflow_module():
+    spec = importlib.util.spec_from_file_location("dockerizer_workflow_under_test", SCRIPTS / "workflow.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(SCRIPTS))
+    try:
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+    finally:
+        try:
+            sys.path.remove(str(SCRIPTS))
+        except ValueError:
+            pass
+    return module
 
 
 class DockerizerRegressionTests(unittest.TestCase):
@@ -209,6 +225,47 @@ class DockerizerRegressionTests(unittest.TestCase):
             self.assertNotEqual(validate.returncode, 0)
             self.assertIn("CRLF/Windows", combined)
             self.assertIn("嵌套参数展开", combined)
+
+    def test_windows_wsl_validate_command_converts_paths(self):
+        workflow = load_dockerizer_workflow_module()
+
+        self.assertEqual(workflow.windows_drive_to_wsl_path(r"C:\Users\ctf\demo\Dockerfile"), "/mnt/c/Users/ctf/demo/Dockerfile")
+        cmd, cwd = workflow.build_validate_command(
+            project_dir=Path("C:/Users/ctf/demo"),
+            validate_sh=Path("C:/skill/scripts/validate.sh"),
+            dockerfile=Path("C:/Users/ctf/demo/.ctfbuild/rendered/Dockerfile"),
+            start_sh=Path("C:/Users/ctf/demo/.ctfbuild/rendered/start.sh"),
+            challenge_path=Path("C:/Users/ctf/demo/challenge.yaml"),
+            json_summary=Path("C:/Users/ctf/demo/.ctfbuild/validate-summary.json"),
+            with_dynamic_flag=True,
+            platform_name="nt",
+            bash_executable=r"C:\Windows\System32\bash.exe",
+        )
+
+        self.assertEqual(cwd, None)
+        self.assertEqual(cmd[:2], [r"C:\Windows\System32\bash.exe", "-lc"])
+        shell = cmd[2]
+        self.assertIn("cd /mnt/c/Users/ctf/demo", shell)
+        self.assertIn("/mnt/c/skill/scripts/validate.sh", shell)
+        self.assertIn("--with-dynamic-flag", shell)
+        self.assertIn("/mnt/c/Users/ctf/demo/.ctfbuild/rendered/Dockerfile", shell)
+
+    def test_windows_non_wsl_bash_keeps_original_paths(self):
+        workflow = load_dockerizer_workflow_module()
+        cmd, cwd = workflow.build_validate_command(
+            project_dir=Path("C:/Users/ctf/demo"),
+            validate_sh=Path("C:/skill/scripts/validate.sh"),
+            dockerfile=Path("C:/Users/ctf/demo/.ctfbuild/rendered/Dockerfile"),
+            start_sh=Path("C:/Users/ctf/demo/.ctfbuild/rendered/start.sh"),
+            challenge_path=Path("C:/Users/ctf/demo/challenge.yaml"),
+            json_summary=Path("C:/Users/ctf/demo/.ctfbuild/validate-summary.json"),
+            platform_name="nt",
+            bash_executable=r"C:\Program Files\Git\bin\bash.exe",
+        )
+
+        self.assertEqual(cwd, "C:/Users/ctf/demo")
+        self.assertEqual(cmd[0], r"C:\Program Files\Git\bin\bash.exe")
+        self.assertIn("C:/skill/scripts/validate.sh", cmd)
 
 
 if __name__ == "__main__":

@@ -2,82 +2,106 @@
   "mcpServers": {
     "cloversec-ctf-search": {
       "cwd": ".",
-      "command": "python3",
+      "command": "node",
       "args": [
+        "./scripts/mcp_python_launcher.mjs",
         "./scripts/cloversec_ctf_search_mcp.py"
       ],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     },
     "cloversec-ctf-browser-search": {
       "cwd": ".",
-      "command": "python3",
+      "command": "node",
       "args": [
+        "./scripts/mcp_python_launcher.mjs",
         "./scripts/cloversec_ctf_browser_search_mcp.py"
       ],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     },
     "cloversec-ctf-search-plus": {
       "cwd": ".",
-      "command": "python3",
+      "command": "node",
       "args": [
+        "./scripts/mcp_python_launcher.mjs",
         "./scripts/cloversec_ctf_search_plus_mcp.py"
       ],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     },
     "cloversec-ctf-docker": {
       "cwd": ".",
-      "command": "python3",
+      "command": "node",
       "args": [
+        "./scripts/mcp_python_launcher.mjs",
         "./scripts/cloversec_ctf_docker_mcp.py"
       ],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     },
     "cloversec-ctf-archive": {
       "cwd": ".",
-      "command": "python3",
+      "command": "node",
       "args": [
+        "./scripts/mcp_python_launcher.mjs",
         "./scripts/cloversec_ctf_archive_mcp.py"
       ],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     },
     "cloversec-ctf-quality-runner": {
       "cwd": ".",
-      "command": "python3",
+      "command": "node",
       "args": [
+        "./scripts/mcp_python_launcher.mjs",
         "./scripts/cloversec_ctf_quality_runner_mcp.py"
       ],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     },
     "cloversec-ctf-hub-assistant": {
       "cwd": ".",
-      "command": "python3",
+      "command": "node",
       "args": [
+        "./scripts/mcp_python_launcher.mjs",
         "./scripts/cloversec_ctf_hub_assistant_mcp.py"
       ],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     },
     "cloversec-ctf-workflow": {
       "cwd": ".",
-      "command": "python3",
+      "command": "node",
       "args": [
+        "./scripts/mcp_python_launcher.mjs",
         "./scripts/cloversec_ctf_workflow_mcp.py"
       ],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     }
   }
