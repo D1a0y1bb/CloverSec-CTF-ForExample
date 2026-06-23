@@ -20,7 +20,7 @@ import cloversec_ctf_proof as proof
 
 mcp_stdio.configure_stdio()
 
-SERVER_VERSION = "1.1.4"
+SERVER_VERSION = "1.1.5"
 SERVER_NAME = "cloversec-ctf-quality-runner"
 
 TOOLS = [

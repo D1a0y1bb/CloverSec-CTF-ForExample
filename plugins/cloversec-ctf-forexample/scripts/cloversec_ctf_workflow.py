@@ -34,7 +34,7 @@ import cloversec_ctf_search_plus as search_plus
 
 
 SCHEMA_PREFIX = "cloversec.ctf.workflow"
-WORKFLOW_VERSION = "1.1.4"
+WORKFLOW_VERSION = "1.1.5"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 REFERENCES = PLUGIN_ROOT / "references"
@@ -1277,6 +1277,13 @@ def build_resource_route(
             "reason": "检测到源码、Dockerfile、compose、镜像 tar 或服务型题目，必须进入 CloverSec 平台镜像改造。",
         }
         handoff_details = dockerizer_handoff_details(root, classification, container_payload)
+        if handoff_details.get("can_auto_render"):
+            dockerizer_prompt_action = "，把已有 Dockerfile/compose/启动说明作为迁移输入，运行 workflow.py auto-render 生成平台交付件并做静态校验。"
+        else:
+            dockerizer_prompt_action = (
+                "，把已有 Dockerfile/compose/启动说明作为 Dockerizer intake 输入，先运行 workflow.py intake --format json；"
+                "按 manual_required、recommended_path、required_user_inputs 补齐端口、启动命令、stack/profile 或 challenge.yaml 后，再进入 reviewed-render。"
+            )
         dockerizer_handoff = {
             "schema_version": f"{SCHEMA_PREFIX}.dockerizer_handoff.v1",
             "required_skill": "cloversec-ctf-build-dockerizer",
@@ -1292,7 +1299,7 @@ def build_resource_route(
                 f"使用 cloversec-ctf-build-dockerizer 处理 {root.as_posix()}。"
                 f"先读取 {classification_path.as_posix()}"
                 + (f" 和 {container_path.as_posix()}" if container_path else "")
-                + "，把已有 Dockerfile/compose/启动说明作为迁移输入，运行 workflow.py auto-render 生成平台交付件并做静态校验。"
+                + dockerizer_prompt_action
             ),
             **handoff_details,
         }

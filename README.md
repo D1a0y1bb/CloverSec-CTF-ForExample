@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v1.1.4-2563eb"></a>
+  <a href="https://github.com/D1a0y1bb/CloverSec-CTF-ForExample/releases"><img alt="Version" src="https://img.shields.io/badge/version-v1.1.5-2563eb"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-22c55e"></a>
   <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-Plugin-111827">
   <img alt="Skills" src="https://img.shields.io/badge/skills-15-f59e0b">
@@ -37,14 +37,14 @@ In the Codex plugin page, choose **Add plugin marketplace**:
 
 ```text
 Source:    D1a0y1bb/CloverSec-CTF-ForExample
-Git ref:   v1.1.4
+Git ref:   v1.1.5
 Sparse path: (leave empty)
 ```
 
 Or from the command line:
 
 ```bash
-codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v1.1.4
+codex plugin marketplace add D1a0y1bb/CloverSec-CTF-ForExample --ref v1.1.5
 codex plugin add cloversec-ctf-forexample@cloversec-ctf
 ```
 
@@ -160,9 +160,9 @@ Verify search quality. The report stays in `docs/validation/` and never ships in
 python3 scripts/search_recall_benchmark.py \
   --run-search \
   --benchmark plugins/cloversec-ctf-forexample/references/search-recall-benchmark.json \
-  --input-dir docs/validation/search-recall-v1.1.4 \
-  --output docs/validation/search-recall-benchmark-v1.1.4.md \
-  --json-output docs/validation/search-recall-benchmark-v1.1.4.json
+  --input-dir docs/validation/search-recall-v1.1.5 \
+  --output docs/validation/search-recall-benchmark-v1.1.5.md \
+  --json-output docs/validation/search-recall-benchmark-v1.1.5.json
 ```
 
 This benchmark doesn't check whether a keyword appeared — it checks whether a public resource that a human confirmed exists was actually found. It currently covers XDSEC miniLCTF, USTC Hackergame, HGAME, IrisCTF, LA CTF, and Google CTF, scoring recall by normalized GitHub repo / URL hits.
@@ -237,7 +237,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scripts/package_plugin_release.py
 ```
 
-Codex users can additionally validate against the local plugin-creator (`validate_plugin.py` under `~/.codex/skills/.system/plugin-creator/`). Bump the version with `scripts/bump_version.py` before a release; the Release title is the tag (e.g. `v1.1.4`) and the body's first line is `# CloverSec CTF For Example 1.1.4`.
+Codex users can additionally validate against the local plugin-creator (`validate_plugin.py` under `~/.codex/skills/.system/plugin-creator/`). Bump the version with `scripts/bump_version.py` before a release; the Release title is the tag (e.g. `v1.1.5`) and the body's first line is `# CloverSec CTF For Example 1.1.5`.
 
 ## License
 

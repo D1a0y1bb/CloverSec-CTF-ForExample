@@ -17,7 +17,7 @@ import cloversec_ctf_naming as naming
 
 
 SCHEMA_VERSION = "cloversec.ctf.delivery.v1"
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 DEFAULT_COPY_LIMIT = 300 * 1024 * 1024
 
 ROOT_FILES = ["最终归档表.xlsx", "语雀粘贴表.md", "交付说明.md"]

@@ -16,7 +16,7 @@ import cloversec_ctf_retag as retag
 
 mcp_stdio.configure_stdio()
 
-SERVER_VERSION = "1.1.4"
+SERVER_VERSION = "1.1.5"
 SERVER_NAME = "cloversec-ctf-hub-assistant"
 
 

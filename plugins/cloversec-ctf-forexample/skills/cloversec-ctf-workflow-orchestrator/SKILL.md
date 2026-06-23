@@ -60,7 +60,7 @@ reports/
 - Hub 页面上传附件、填写真实提交内容、最终提交。
 - 审核后根据 Hub 编号 retag、导出镜像 tar、回写最终归档。
 
-发现源码、Dockerfile、compose、镜像 tar 或端口服务时，直接交给 `cloversec-ctf-build-dockerizer` 的 `auto-render` 流程；不要因为它会生成或覆盖 `Dockerfile`、`start.sh`、`changeflag.sh`、`flag` 就额外要求审批。Dockerizer 输出中如果标出 high_risk、unsupported、缺少关键业务判断或需要真实 Docker 执行，再把问题列给用户决定。
+发现源码、Dockerfile、compose、镜像 tar 或端口服务时，直接交给 `cloversec-ctf-build-dockerizer` 做 `intake` 判断。`resource_route` 输出 `can_auto_render=true` 时可执行 `auto-render`；输出 `manual_required=true` 或 `recommended_path=manual_review` 时，按 `required_user_inputs` 让用户确认端口、启动命令、stack/profile、`challenge.yaml` 等，再进入 `reviewed-render`。
 
 中断后优先读取 `workflow_state.json`，从未完成阶段继续，不把未验证阶段写成通过。
 
@@ -105,7 +105,10 @@ research, collect, dedupe, download_preview, download_accept, archive, quality, 
 
 机器字段必须使用精确值：
 
-- `auto_action`: `auto-render`
+- `auto_action`: `auto-render` 或 `manual_review`
+- `recommended_path`: Dockerizer intake 给出的路径
+- `manual_required`: Dockerizer intake 是否要求人工确认
+- `required_user_inputs`: 需要用户确认的端口、启动命令、stack/profile、`challenge.yaml` 等
 - `failure_category`: `platform_conversion_required`
 - `next_skill`: `cloversec-ctf-build-dockerizer`
 - `can_archive`: `false`
